@@ -810,7 +810,9 @@ export async function runDatabaseBackup(opts: RunDatabaseBackupOptions): Promise
       emit("");
     }
 
-    // Foreign keys (after all tables and referenced unique constraints are created)
+    // Collect foreign keys now. Emit them after routines and standalone indexes
+    // because PostgreSQL permits a non-constraint unique index to be the target
+    // of a foreign key.
     const allForeignKeys = await sql<{
       constraint_name: string;
       source_schema: string;
@@ -849,18 +851,6 @@ export async function runDatabaseBackup(opts: RunDatabaseBackupOptions): Promise
       (fk) => includedTableNames.has(tableKey(fk.source_schema, fk.source_table))
         && includedTableNames.has(tableKey(fk.target_schema, fk.target_table)),
     );
-
-    if (fks.length > 0) {
-      emit("-- Foreign keys");
-      for (const fk of fks) {
-        const srcCols = fk.source_columns.map((c) => `"${c}"`).join(", ");
-        const tgtCols = fk.target_columns.map((c) => `"${c}"`).join(", ");
-        emitStatement(
-          `ALTER TABLE ${quoteQualifiedName(fk.source_schema, fk.source_table)} ADD CONSTRAINT "${fk.constraint_name}" FOREIGN KEY (${srcCols}) REFERENCES ${quoteQualifiedName(fk.target_schema, fk.target_table)} (${tgtCols}) ON UPDATE ${fk.update_rule} ON DELETE ${fk.delete_rule};`,
-        );
-      }
-      emit("");
-    }
 
     // JavaScript backups are used when a worktree seed filters or transforms
     // table data. Preserve user-defined routines before indexes because an
@@ -907,6 +897,18 @@ export async function runDatabaseBackup(opts: RunDatabaseBackupOptions): Promise
       emit("-- Indexes");
       for (const idx of indexes) {
         emitStatement(`${idx.indexdef};`);
+      }
+      emit("");
+    }
+
+    if (fks.length > 0) {
+      emit("-- Foreign keys");
+      for (const fk of fks) {
+        const srcCols = fk.source_columns.map((c) => `"${c}"`).join(", ");
+        const tgtCols = fk.target_columns.map((c) => `"${c}"`).join(", ");
+        emitStatement(
+          `ALTER TABLE ${quoteQualifiedName(fk.source_schema, fk.source_table)} ADD CONSTRAINT "${fk.constraint_name}" FOREIGN KEY (${srcCols}) REFERENCES ${quoteQualifiedName(fk.target_schema, fk.target_table)} (${tgtCols}) ON UPDATE ${fk.update_rule} ON DELETE ${fk.delete_rule};`,
+        );
       }
       emit("");
     }

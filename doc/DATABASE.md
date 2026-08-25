@@ -210,11 +210,14 @@ rollout explicitly selects it.
 `completion_contracts`, `native_run_results`, `native_run_finalizations`,
 `work_assessments`, `status_decisions`, and `status_decision_effects` form the
 append-oriented evidence and status-decision chain. Unique fingerprints,
-versions, ordinals, and idempotency keys make retries deterministic. Native
-source identities on `heartbeat_run_events` are nullable so legacy events remain
-readable without rewriting historical rows. Per-run native source identifiers
-are unique, while the existing legacy sequence behavior remains unchanged until
-an atomic event allocator is introduced with the native writer.
+versions, ordinals, and idempotency keys make retries deterministic. Composite
+foreign keys bind every contract, result, assessment, decision, effect, and
+finalization to one company, issue, and run. The database rejects mixed-owner
+evidence even when every referenced ID exists. Native source identities on
+`heartbeat_run_events` are nullable so legacy events remain readable without
+rewriting historical rows. Per-run native source identifiers are unique, while
+the existing legacy sequence behavior remains unchanged until an atomic event
+allocator is introduced with the native writer.
 
 Issue `status_version` advances only when `status` changes. The JavaScript backup
 path includes user-defined functions and triggers so a restored database keeps

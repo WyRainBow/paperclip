@@ -1,4 +1,14 @@
-import { pgTable, uuid, text, timestamp, bigint, jsonb, uniqueIndex } from "drizzle-orm/pg-core";
+import {
+  foreignKey,
+  pgTable,
+  uuid,
+  text,
+  timestamp,
+  bigint,
+  jsonb,
+  unique,
+  uniqueIndex,
+} from "drizzle-orm/pg-core";
 import { companies } from "./companies.js";
 import { issues } from "./issues.js";
 import { workAssessments } from "./work_assessments.js";
@@ -8,8 +18,9 @@ export const statusDecisions = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     companyId: uuid("company_id").notNull().references(() => companies.id),
-    issueId: uuid("issue_id").notNull().references(() => issues.id),
-    assessmentId: uuid("assessment_id").notNull().references(() => workAssessments.id),
+    issueId: uuid("issue_id").notNull(),
+    runId: uuid("run_id").notNull(),
+    assessmentId: uuid("assessment_id").notNull(),
     decisionVersion: bigint("decision_version", { mode: "number" }).notNull(),
     policyVersion: text("policy_version").notNull(),
     fromStatus: text("from_status").notNull(),
@@ -23,6 +34,40 @@ export const statusDecisions = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
+    companyIssueIdUq: unique("status_decisions_company_issue_id_uq").on(
+      table.companyId,
+      table.issueId,
+      table.id,
+    ),
+    companyIssueRunAssessmentIdUq: unique(
+      "status_decisions_company_issue_run_assessment_id_uq",
+    ).on(
+      table.companyId,
+      table.issueId,
+      table.runId,
+      table.assessmentId,
+      table.id,
+    ),
+    issueCompanyFk: foreignKey({
+      columns: [table.companyId, table.issueId],
+      foreignColumns: [issues.companyId, issues.id],
+      name: "status_decisions_issue_company_fk",
+    }),
+    assessmentOwnerFk: foreignKey({
+      columns: [table.companyId, table.issueId, table.runId, table.assessmentId],
+      foreignColumns: [
+        workAssessments.companyId,
+        workAssessments.issueId,
+        workAssessments.runId,
+        workAssessments.id,
+      ],
+      name: "status_decisions_assessment_owner_fk",
+    }),
+    supersedesOwnerFk: foreignKey({
+      columns: [table.companyId, table.issueId, table.supersedesDecisionId],
+      foreignColumns: [table.companyId, table.issueId, table.id],
+      name: "status_decisions_supersedes_owner_fk",
+    }),
     issueVersionUq: uniqueIndex("status_decisions_company_issue_version_uq").on(
       table.companyId,
       table.issueId,

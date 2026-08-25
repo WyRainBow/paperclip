@@ -75,6 +75,7 @@ CREATE TABLE IF NOT EXISTS "status_decisions" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"company_id" uuid NOT NULL,
 	"issue_id" uuid NOT NULL,
+	"run_id" uuid NOT NULL,
 	"assessment_id" uuid NOT NULL,
 	"decision_version" bigint NOT NULL,
 	"policy_version" text NOT NULL,
@@ -124,6 +125,7 @@ ALTER TABLE "heartbeat_runs" ADD COLUMN IF NOT EXISTS "runtime_mode_resolved_at"
 ALTER TABLE "heartbeat_runs" ADD COLUMN IF NOT EXISTS "runner_profile_json" jsonb;--> statement-breakpoint
 ALTER TABLE "heartbeat_runs" ADD COLUMN IF NOT EXISTS "runner_instance_id" uuid;--> statement-breakpoint
 ALTER TABLE "heartbeat_runs" ADD COLUMN IF NOT EXISTS "native_session_id" uuid;--> statement-breakpoint
+ALTER TABLE "heartbeat_runs" ADD COLUMN IF NOT EXISTS "native_issue_id" uuid;--> statement-breakpoint
 ALTER TABLE "heartbeat_runs" ADD COLUMN IF NOT EXISTS "driver_kind" text;--> statement-breakpoint
 ALTER TABLE "heartbeat_runs" ADD COLUMN IF NOT EXISTS "driver_version" text;--> statement-breakpoint
 ALTER TABLE "heartbeat_runs" ADD COLUMN IF NOT EXISTS "completion_contract_id" uuid;--> statement-breakpoint
@@ -131,6 +133,8 @@ ALTER TABLE "heartbeat_runs" ADD COLUMN IF NOT EXISTS "completion_contract_sha25
 ALTER TABLE "heartbeat_runs" ADD COLUMN IF NOT EXISTS "next_event_seq" bigint DEFAULT 1 NOT NULL;--> statement-breakpoint
 ALTER TABLE "heartbeat_runs" ADD COLUMN IF NOT EXISTS "native_phase" text;--> statement-breakpoint
 ALTER TABLE "heartbeat_runs" ADD COLUMN IF NOT EXISTS "native_phase_updated_at" timestamp with time zone;--> statement-breakpoint
+ALTER TABLE "status_decisions" ADD COLUMN IF NOT EXISTS "run_id" uuid;--> statement-breakpoint
+ALTER TABLE "status_decisions" ALTER COLUMN "run_id" SET NOT NULL;--> statement-breakpoint
 ALTER TABLE "issues" ADD COLUMN IF NOT EXISTS "status_version" bigint DEFAULT 0 NOT NULL;--> statement-breakpoint
 ALTER TABLE "issues" ADD COLUMN IF NOT EXISTS "last_status_decision_id" uuid;--> statement-breakpoint
 UPDATE "heartbeat_runs" AS run
@@ -277,3 +281,130 @@ CREATE UNIQUE INDEX IF NOT EXISTS "work_assessments_company_issue_input_uq" ON "
 CREATE UNIQUE INDEX IF NOT EXISTS "heartbeat_run_events_run_source_event_uq" ON "heartbeat_run_events" USING btree ("run_id","source_event_id") WHERE "heartbeat_run_events"."source_event_id" is not null;--> statement-breakpoint
 -- paperclip:migration-safety-ignore large-create-index-not-concurrently: nullable native source sequence fields mean historical rows need no backfill and the invariant must commit atomically with the new columns.
 CREATE UNIQUE INDEX IF NOT EXISTS "heartbeat_run_events_run_source_seq_uq" ON "heartbeat_run_events" USING btree ("run_id","source_instance_id","source_seq") WHERE "heartbeat_run_events"."source_instance_id" is not null and "heartbeat_run_events"."source_seq" is not null;
+--> statement-breakpoint
+-- paperclip:migration-safety-ignore large-create-index-not-concurrently: the primary key already makes this ownership tuple unique; this supporting index only enables composite foreign keys.
+CREATE UNIQUE INDEX IF NOT EXISTS "issues_company_id_uq" ON "issues" USING btree ("company_id","id");--> statement-breakpoint
+-- paperclip:migration-safety-ignore large-create-index-not-concurrently: the primary key already makes this ownership tuple unique; this supporting index only enables composite foreign keys.
+CREATE UNIQUE INDEX IF NOT EXISTS "heartbeat_runs_company_native_issue_id_uq" ON "heartbeat_runs" USING btree ("company_id","native_issue_id","id");--> statement-breakpoint
+-- paperclip:migration-safety-ignore large-create-index-not-concurrently: the primary key already makes this ownership tuple unique; this supporting index only enables composite foreign keys.
+CREATE UNIQUE INDEX IF NOT EXISTS "heartbeat_runs_company_native_issue_contract_id_uq" ON "heartbeat_runs" USING btree ("company_id","native_issue_id","id","completion_contract_id");--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS "completion_contracts_company_issue_id_uq" ON "completion_contracts" USING btree ("company_id","issue_id","id");--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS "native_run_results_company_issue_run_id_uq" ON "native_run_results" USING btree ("company_id","issue_id","run_id","id");--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS "work_assessments_company_issue_run_id_uq" ON "work_assessments" USING btree ("company_id","issue_id","run_id","id");--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS "status_decisions_company_issue_id_uq" ON "status_decisions" USING btree ("company_id","issue_id","id");--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS "status_decisions_company_issue_run_assessment_id_uq" ON "status_decisions" USING btree ("company_id","issue_id","run_id","assessment_id","id");--> statement-breakpoint
+DO $$ BEGIN
+	ALTER TABLE "completion_contracts" ADD CONSTRAINT "completion_contracts_issue_company_fk" FOREIGN KEY ("company_id","issue_id") REFERENCES "public"."issues"("company_id","id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+	WHEN duplicate_object THEN NULL;
+END $$;--> statement-breakpoint
+DO $$ BEGIN
+	ALTER TABLE "completion_contracts" ADD CONSTRAINT "completion_contracts_supersedes_owner_fk" FOREIGN KEY ("company_id","issue_id","supersedes_contract_id") REFERENCES "public"."completion_contracts"("company_id","issue_id","id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+	WHEN duplicate_object THEN NULL;
+END $$;--> statement-breakpoint
+DO $$ BEGIN
+	ALTER TABLE "native_run_results" ADD CONSTRAINT "native_run_results_issue_company_fk" FOREIGN KEY ("company_id","issue_id") REFERENCES "public"."issues"("company_id","id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+	WHEN duplicate_object THEN NULL;
+END $$;--> statement-breakpoint
+DO $$ BEGIN
+	ALTER TABLE "native_run_results" ADD CONSTRAINT "native_run_results_run_contract_owner_fk" FOREIGN KEY ("company_id","issue_id","run_id","completion_contract_id") REFERENCES "public"."heartbeat_runs"("company_id","native_issue_id","id","completion_contract_id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+	WHEN duplicate_object THEN NULL;
+END $$;--> statement-breakpoint
+DO $$ BEGIN
+	ALTER TABLE "native_run_results" ADD CONSTRAINT "native_run_results_completion_contract_owner_fk" FOREIGN KEY ("company_id","issue_id","completion_contract_id") REFERENCES "public"."completion_contracts"("company_id","issue_id","id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+	WHEN duplicate_object THEN NULL;
+END $$;--> statement-breakpoint
+DO $$ BEGIN
+	ALTER TABLE "work_assessments" ADD CONSTRAINT "work_assessments_issue_company_fk" FOREIGN KEY ("company_id","issue_id") REFERENCES "public"."issues"("company_id","id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+	WHEN duplicate_object THEN NULL;
+END $$;--> statement-breakpoint
+DO $$ BEGIN
+	ALTER TABLE "work_assessments" ADD CONSTRAINT "work_assessments_run_owner_fk" FOREIGN KEY ("company_id","issue_id","run_id") REFERENCES "public"."heartbeat_runs"("company_id","native_issue_id","id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+	WHEN duplicate_object THEN NULL;
+END $$;--> statement-breakpoint
+DO $$ BEGIN
+	ALTER TABLE "work_assessments" ADD CONSTRAINT "work_assessments_contract_owner_fk" FOREIGN KEY ("company_id","issue_id","contract_id") REFERENCES "public"."completion_contracts"("company_id","issue_id","id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+	WHEN duplicate_object THEN NULL;
+END $$;--> statement-breakpoint
+DO $$ BEGIN
+	ALTER TABLE "work_assessments" ADD CONSTRAINT "work_assessments_result_owner_fk" FOREIGN KEY ("company_id","issue_id","run_id","result_id") REFERENCES "public"."native_run_results"("company_id","issue_id","run_id","id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+	WHEN duplicate_object THEN NULL;
+END $$;--> statement-breakpoint
+DO $$ BEGIN
+	ALTER TABLE "work_assessments" ADD CONSTRAINT "work_assessments_supersedes_owner_fk" FOREIGN KEY ("company_id","issue_id","run_id","supersedes_assessment_id") REFERENCES "public"."work_assessments"("company_id","issue_id","run_id","id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+	WHEN duplicate_object THEN NULL;
+END $$;--> statement-breakpoint
+DO $$ BEGIN
+	ALTER TABLE "status_decisions" ADD CONSTRAINT "status_decisions_issue_company_fk" FOREIGN KEY ("company_id","issue_id") REFERENCES "public"."issues"("company_id","id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+	WHEN duplicate_object THEN NULL;
+END $$;--> statement-breakpoint
+DO $$ BEGIN
+	ALTER TABLE "status_decisions" ADD CONSTRAINT "status_decisions_assessment_owner_fk" FOREIGN KEY ("company_id","issue_id","run_id","assessment_id") REFERENCES "public"."work_assessments"("company_id","issue_id","run_id","id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+	WHEN duplicate_object THEN NULL;
+END $$;--> statement-breakpoint
+DO $$ BEGIN
+	ALTER TABLE "status_decisions" ADD CONSTRAINT "status_decisions_supersedes_owner_fk" FOREIGN KEY ("company_id","issue_id","supersedes_decision_id") REFERENCES "public"."status_decisions"("company_id","issue_id","id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+	WHEN duplicate_object THEN NULL;
+END $$;--> statement-breakpoint
+DO $$ BEGIN
+	ALTER TABLE "status_decision_effects" ADD CONSTRAINT "status_decision_effects_issue_company_fk" FOREIGN KEY ("company_id","issue_id") REFERENCES "public"."issues"("company_id","id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+	WHEN duplicate_object THEN NULL;
+END $$;--> statement-breakpoint
+DO $$ BEGIN
+	ALTER TABLE "status_decision_effects" ADD CONSTRAINT "status_decision_effects_decision_owner_fk" FOREIGN KEY ("company_id","issue_id","decision_id") REFERENCES "public"."status_decisions"("company_id","issue_id","id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+	WHEN duplicate_object THEN NULL;
+END $$;--> statement-breakpoint
+DO $$ BEGIN
+	ALTER TABLE "native_run_finalizations" ADD CONSTRAINT "native_run_finalizations_issue_company_fk" FOREIGN KEY ("company_id","issue_id") REFERENCES "public"."issues"("company_id","id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+	WHEN duplicate_object THEN NULL;
+END $$;--> statement-breakpoint
+DO $$ BEGIN
+	ALTER TABLE "native_run_finalizations" ADD CONSTRAINT "native_run_finalizations_run_owner_fk" FOREIGN KEY ("company_id","issue_id","run_id") REFERENCES "public"."heartbeat_runs"("company_id","native_issue_id","id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+	WHEN duplicate_object THEN NULL;
+END $$;--> statement-breakpoint
+DO $$ BEGIN
+	ALTER TABLE "native_run_finalizations" ADD CONSTRAINT "native_run_finalizations_result_owner_fk" FOREIGN KEY ("company_id","issue_id","run_id","result_id") REFERENCES "public"."native_run_results"("company_id","issue_id","run_id","id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+	WHEN duplicate_object THEN NULL;
+END $$;--> statement-breakpoint
+DO $$ BEGIN
+	ALTER TABLE "native_run_finalizations" ADD CONSTRAINT "native_run_finalizations_assessment_owner_fk" FOREIGN KEY ("company_id","issue_id","run_id","assessment_id") REFERENCES "public"."work_assessments"("company_id","issue_id","run_id","id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+	WHEN duplicate_object THEN NULL;
+END $$;--> statement-breakpoint
+DO $$ BEGIN
+	ALTER TABLE "native_run_finalizations" ADD CONSTRAINT "native_run_finalizations_decision_owner_fk" FOREIGN KEY ("company_id","issue_id","run_id","assessment_id","decision_id") REFERENCES "public"."status_decisions"("company_id","issue_id","run_id","assessment_id","id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+	WHEN duplicate_object THEN NULL;
+END $$;--> statement-breakpoint
+DO $$ BEGIN
+	ALTER TABLE "native_run_finalizations" ADD CONSTRAINT "native_run_finalizations_assessment_requires_result_check" CHECK ("assessment_id" is null or "result_id" is not null);
+EXCEPTION
+	WHEN duplicate_object THEN NULL;
+END $$;--> statement-breakpoint
+DO $$ BEGIN
+	ALTER TABLE "native_run_finalizations" ADD CONSTRAINT "native_run_finalizations_decision_requires_assessment_check" CHECK ("decision_id" is null or "assessment_id" is not null);
+EXCEPTION
+	WHEN duplicate_object THEN NULL;
+END $$;--> statement-breakpoint
+DO $$ BEGIN
+	ALTER TABLE "work_assessments" ADD CONSTRAINT "work_assessments_trigger_actor_company_check" CHECK ("trigger_actor_company_id" = "company_id");
+EXCEPTION
+	WHEN duplicate_object THEN NULL;
+END $$;

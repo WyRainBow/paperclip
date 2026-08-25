@@ -1,5 +1,17 @@
 import { sql } from "drizzle-orm";
-import { type AnyPgColumn, pgTable, uuid, text, timestamp, jsonb, index, integer, bigint, boolean } from "drizzle-orm/pg-core";
+import {
+  type AnyPgColumn,
+  pgTable,
+  uuid,
+  text,
+  timestamp,
+  jsonb,
+  index,
+  integer,
+  bigint,
+  boolean,
+  unique,
+} from "drizzle-orm/pg-core";
 import { companies } from "./companies.js";
 import { agents } from "./agents.js";
 import { agentWakeupRequests } from "./agent_wakeup_requests.js";
@@ -29,6 +41,7 @@ export const heartbeatRuns = pgTable(
     runnerProfileJson: jsonb("runner_profile_json").$type<Record<string, unknown>>(),
     runnerInstanceId: uuid("runner_instance_id"),
     nativeSessionId: uuid("native_session_id"),
+    nativeIssueId: uuid("native_issue_id"),
     driverKind: text("driver_kind"),
     driverVersion: text("driver_version"),
     completionContractId: uuid("completion_contract_id"),
@@ -74,6 +87,19 @@ export const heartbeatRuns = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
+    companyNativeIssueRunUq: unique("heartbeat_runs_company_native_issue_id_uq").on(
+      table.companyId,
+      table.nativeIssueId,
+      table.id,
+    ),
+    companyNativeIssueRunContractUq: unique(
+      "heartbeat_runs_company_native_issue_contract_id_uq",
+    ).on(
+      table.companyId,
+      table.nativeIssueId,
+      table.id,
+      table.completionContractId,
+    ),
     companyAgentStartedIdx: index("heartbeat_runs_company_agent_started_idx").on(
       table.companyId,
       table.agentId,
