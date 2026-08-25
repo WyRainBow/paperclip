@@ -250,11 +250,12 @@ export function IssueProperties({
     || paneTabStandaloneDocuments.length > 0
     || selectAgentArtifactAttachments(paneTabAttachments, paneTabWorkProducts).length > 0;
   // Progress ledger: agent progress notes (terminal contributors file them as
-  // they work) earn their own pane tab once the first note lands.
+  // they work) earn their own pane tab once the first note lands. Runs in both
+  // the chat shell and the classic task interface — progress is pane content,
+  // not a chat-shell feature.
   const { data: paneTabComments } = useQuery({
     queryKey: queryKeys.issues.comments(issue.id),
     queryFn: () => issuesApi.listComments(issue.id, { order: "desc", limit: 200 }),
-    enabled: taskChatShellEnabled,
   });
   const hasProgressTab = (paneTabComments ?? []).some(isProgressNoteComment);
   const [paneTab, setPaneTab] = useState("properties");
