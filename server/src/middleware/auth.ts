@@ -211,7 +211,7 @@ export function actorMiddleware(db: Db, opts: ActorMiddlewareOptions): RequestHa
         ? {
             type: "board",
             userId: "local-board",
-            userName: "Local Board",
+            userName: process.env.PAPERCLIP_BOARD_NAME?.trim() || "Local Board",
             userEmail: null,
             isInstanceAdmin: true,
             source: "local_implicit",
