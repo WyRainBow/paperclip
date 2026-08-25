@@ -516,12 +516,13 @@ function createCommentMessage(args: {
   // Comments without a presentation keep today's routing (graceful fallback for
   // old data both directions).
   const renderAsSystemNotice = isSystemAuthor || comment.presentation?.kind === "system_notice";
+  const renderAsProgressNote = comment.presentation?.kind === "progress_note";
   const authorAgentId = effectiveCommentAuthorAgentId(comment);
   const authorName = authorNameForComment(comment, agentMap, currentUserId, userLabelMap, {
     isSystemNotice: isSystemAuthor,
   });
   const custom = {
-    kind: renderAsSystemNotice ? "system_notice" : "comment",
+    kind: renderAsProgressNote ? "progress_note" : renderAsSystemNotice ? "system_notice" : "comment",
     commentId: comment.id,
     anchorId: `comment-${comment.id}`,
     authorName,
