@@ -119,15 +119,23 @@ export function decisionService(db: Db, options: DecisionServiceOptions) {
   let targetSweepCursor: string | null = null;
   type CreateInput = { companyId: string; actor: AuthorizationActor; agentId: string; runId: string; bundleId?: string | null;
     ruleKey?: string | null; title: string; body: string; options: DecisionOption[]; inputs?: DecisionInput[] | null; expiresAt?: Date | null;
-    idempotencyKey?: string | null; continuationPolicy?: "none" | "wake_origin_agent"; metadata?: Record<string, unknown> };
+    idempotencyKey?: string | null; continuationPolicy?: "none" | "wake_origin_agent"; metadata?: Record<string, unknown>;
+    resolverPolicy?: "board" | "agents"; originIssueId?: string | null };
   type CreateInputWithSnapshots = CreateInput & { additionalTargetSnapshots?: Record<string, Snapshot> };
 
-  async function origin(companyId: string, agentId: string, runId: string) {
+  async function origin(companyId: string, agentId: string, runId: string, fallbackIssueId?: string | null) {
     const run = await db.select().from(heartbeatRuns).where(and(eq(heartbeatRuns.id, runId), eq(heartbeatRuns.companyId, companyId), eq(heartbeatRuns.agentId, agentId)))
       .then((rows) => rows[0] ?? null);
     if (!run) throw forbidden("Decision provenance requires the origin run");
     const issueId = typeof run.contextSnapshot?.issueId === "string" ? run.contextSnapshot.issueId : null;
-    if (!issueId) throw unprocessable("Origin run is not issue-scoped");
+    if (!issueId) {
+      // Terminal contributor sessions are not pinned to one issue; their
+      // provenance issue is supplied explicitly by the create call.
+      if (run.contextSnapshot?.kind === "terminal_contributor" && fallbackIssueId) {
+        return { run, issueId: fallbackIssueId };
+      }
+      throw unprocessable("Origin run is not issue-scoped");
+    }
     return { run, issueId };
   }
 
@@ -190,7 +198,7 @@ export function decisionService(db: Db, options: DecisionServiceOptions) {
       const lockKey = `decision-create:${input.companyId}:${input.idempotencyKey}`;
       await dbOrTx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`);
     }
-    const provenance = await origin(input.companyId, input.agentId, input.runId);
+    const provenance = await origin(input.companyId, input.agentId, input.runId, input.originIssueId ?? targetIds(input.options)[0] ?? null);
     if (input.idempotencyKey) {
       const existing = await dbOrTx.select().from(decisions).where(and(eq(decisions.companyId, input.companyId), eq(decisions.idempotencyKey, input.idempotencyKey)))
         .then((rows) => rows[0] ?? null);
@@ -224,7 +232,8 @@ export function decisionService(db: Db, options: DecisionServiceOptions) {
       originAgentId: input.agentId, originIssueId: provenance.issueId, originRunId: input.runId, ruleKey: input.ruleKey ?? null,
       title: input.title, body: input.body, options: input.options, inputs: input.inputs ?? null, expiresAt,
       idempotencyKey: input.idempotencyKey ?? null, signedSpec: signDecisionSpec(spec({ id, options: input.options, targetSnapshots })),
-      targetSnapshots, continuationPolicy: input.continuationPolicy ?? "none", metadata: input.metadata ?? {} }).onConflictDoNothing().returning();
+      targetSnapshots, continuationPolicy: input.continuationPolicy ?? "none", metadata: input.metadata ?? {},
+      resolverPolicy: input.resolverPolicy ?? "board" }).onConflictDoNothing().returning();
     if (!created) {
       const existing = input.idempotencyKey
         ? await dbOrTx.select().from(decisions).where(and(eq(decisions.companyId, input.companyId), eq(decisions.idempotencyKey, input.idempotencyKey))).then((rows) => rows[0] ?? null)
@@ -387,7 +396,16 @@ export function decisionService(db: Db, options: DecisionServiceOptions) {
   }
 
   async function executeEffect(decision: typeof decisions.$inferSelect, effect: DecisionEffect, effectIndex: number,
-    userActor: AuthorizationActor, decidedByUserId: string, originResponsibleUserId: string | null) {
+    userActor: AuthorizationActor, decidedByUserId: string | null, decidedByAgentId: string | null, originResponsibleUserId: string | null) {
+    // Agent-resolved decisions (resolverPolicy "agents") land their effects
+    // attributed to the deciding agent for comments and to the origin run's
+    // responsible user for status/assignment mutations the issue service
+    // attributes to a user.
+    const resolverAuditId = decidedByUserId ?? decidedByAgentId!;
+    const resolverCommentActor = decidedByAgentId
+      ? { agentId: decidedByAgentId, runId: decision.originRunId, onBehalfOfUserId: originResponsibleUserId }
+      : { userId: decidedByUserId! };
+    const resolverActorUserId = decidedByUserId ?? originResponsibleUserId ?? null;
     const lockKey = `decision-effect:${decision.id}:${effectIndex}`;
     const recordFailure = async (reason: string, details: Record<string, unknown>) => db.transaction(async (tx) => {
       await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`);
@@ -399,7 +417,7 @@ export function decisionService(db: Db, options: DecisionServiceOptions) {
         if (!execution) execution = await tx.select().from(decisionEffectExecutions).where(and(eq(decisionEffectExecutions.decisionId, decision.id), eq(decisionEffectExecutions.effectIndex, effectIndex))).then((rows) => rows[0] ?? null);
       }
       if (!execution || execution.status !== "claimed") return execution;
-      const activity = await effectAudit(tx as unknown as Db, decision, execution.id, effect, "failed", decidedByUserId, originResponsibleUserId, details);
+      const activity = await effectAudit(tx as unknown as Db, decision, execution.id, effect, "failed", resolverAuditId, originResponsibleUserId, details);
       const [row] = await tx.update(decisionEffectExecutions).set({ status: "failed", error: reason, result: details, activityLogId: activity?.id ?? null, executedAt: new Date() }).where(eq(decisionEffectExecutions.id, execution.id)).returning();
       return row;
     });
@@ -417,7 +435,7 @@ export function decisionService(db: Db, options: DecisionServiceOptions) {
           if (!execution || execution.status !== "claimed") return execution;
         }
         const finish = async (status: "failed" | "skipped", reason: string, details: Record<string, unknown>) => {
-          const activity = await effectAudit(tx as unknown as Db, decision, execution!.id, effect, status, decidedByUserId, originResponsibleUserId, details);
+          const activity = await effectAudit(tx as unknown as Db, decision, execution!.id, effect, status, resolverAuditId, originResponsibleUserId, details);
           const [row] = await tx.update(decisionEffectExecutions).set({ status, error: reason, result: details, activityLogId: activity?.id ?? null, executedAt: new Date() }).where(eq(decisionEffectExecutions.id, execution!.id)).returning();
           return row;
         };
@@ -438,7 +456,13 @@ export function decisionService(db: Db, options: DecisionServiceOptions) {
         const originAction = effect.type === "comment_on_issue" ? "issue:comment" : "issue:mutate";
         const originAccess = await Promise.all(referencedIssues.map((item) => authz.decide({ actor: originActor, action: originAction, resource: resource(item) })));
         let userAccess: { allowed: boolean; reason: string };
-        if (effect.type === "assign_issue" || (effect.type === "create_issue" && (effect.draft.assigneeAgentId || effect.draft.assigneeUserId))) {
+        // The proposer signed these effects and opted into agent resolution
+        // (resolverPolicy "agents"), so a peer-agent resolver may land them;
+        // the origin-side access checks above still apply either way.
+        const agentResolverAllowed = decision.resolverPolicy === "agents" && decidedByAgentId != null;
+        if (agentResolverAllowed) {
+          userAccess = { allowed: true, reason: "allow_agent_resolver" };
+        } else if (effect.type === "assign_issue" || (effect.type === "create_issue" && (effect.draft.assigneeAgentId || effect.draft.assigneeUserId))) {
           const assigneeAgentId = effect.type === "assign_issue" ? effect.assigneeAgentId : effect.draft.assigneeAgentId;
           const assigneeUserId = effect.type === "assign_issue" ? effect.assigneeUserId : effect.draft.assigneeUserId;
           const parentIssueId = effect.type === "create_issue" ? effect.draft.parentId ?? target.id : target.parentId;
@@ -464,7 +488,7 @@ export function decisionService(db: Db, options: DecisionServiceOptions) {
         const values = decision.inputValues ?? {};
         let result: Record<string, unknown>;
         if (effect.type === "comment_on_issue") {
-          const comment = await svc.addComment(target.id, interpolate(effect.bodyMarkdown, values), { userId: decidedByUserId }, undefined, tx);
+          const comment = await svc.addComment(target.id, interpolate(effect.bodyMarkdown, values), resolverCommentActor, undefined, tx);
           result = { commentId: comment.id };
         } else if (effect.type === "update_issue_status") {
           const updated = await svc.update(
@@ -473,7 +497,7 @@ export function decisionService(db: Db, options: DecisionServiceOptions) {
             tx,
             postCommitActivityPublications,
           );
-          if (effect.comment) await svc.addComment(target.id, interpolate(effect.comment, values), { userId: decidedByUserId }, undefined, tx);
+          if (effect.comment) await svc.addComment(target.id, interpolate(effect.comment, values), resolverCommentActor, undefined, tx);
           result = { issueId: updated?.id, status: updated?.status };
         } else if (effect.type === "assign_issue") {
           const updated = await svc.update(
@@ -481,12 +505,12 @@ export function decisionService(db: Db, options: DecisionServiceOptions) {
             {
               assigneeAgentId: effect.assigneeAgentId ?? null,
               assigneeUserId: effect.assigneeUserId ?? null,
-              actorUserId: decidedByUserId,
+              actorUserId: resolverActorUserId ?? undefined,
             },
             tx,
             postCommitActivityPublications,
           );
-          if (effect.comment) await svc.addComment(target.id, interpolate(effect.comment, values), { userId: decidedByUserId }, undefined, tx);
+          if (effect.comment) await svc.addComment(target.id, interpolate(effect.comment, values), resolverCommentActor, undefined, tx);
           result = { issueId: updated?.id };
         } else if (effect.type === "resolve_blocker") {
           const current = await tx.select({ id: issueRelations.issueId }).from(issueRelations).where(and(eq(issueRelations.companyId, decision.companyId), eq(issueRelations.relatedIssueId, target.id), eq(issueRelations.type, "blocks")));
@@ -494,7 +518,7 @@ export function decisionService(db: Db, options: DecisionServiceOptions) {
             target.id,
             {
               blockedByIssueIds: current.map((row) => row.id).filter((id) => !effect.removeBlockedByIssueIds.includes(id)),
-              actorUserId: decidedByUserId,
+              actorUserId: resolverActorUserId ?? undefined,
             },
             tx,
             postCommitActivityPublications,
@@ -504,7 +528,7 @@ export function decisionService(db: Db, options: DecisionServiceOptions) {
           const draft = effect.draft;
           const created = await svc.create(decision.companyId, { title: draft.title, description: draft.description ?? null, parentId: draft.parentId ?? target.id,
             assigneeAgentId: draft.assigneeAgentId ?? null, assigneeUserId: draft.assigneeUserId ?? null, projectId: draft.projectId ?? target.projectId,
-            goalId: draft.goalId ?? null, blockedByIssueIds: draft.blockedByIssueIds ?? [], createdByUserId: decidedByUserId, actorRunId: decision.originRunId,
+            goalId: draft.goalId ?? null, blockedByIssueIds: draft.blockedByIssueIds ?? [], createdByUserId: resolverActorUserId ?? undefined, actorRunId: decision.originRunId,
             idempotencyKey: `decision-effect:${decision.id}:${effectIndex}` });
           result = { issueId: created.id };
         } else {
@@ -517,10 +541,10 @@ export function decisionService(db: Db, options: DecisionServiceOptions) {
               postCommitActivityPublications,
             );
           }
-          await svc.addComment(target.id, interpolate(effect.reasonComment, values), { userId: decidedByUserId }, undefined, tx);
+          await svc.addComment(target.id, interpolate(effect.reasonComment, values), resolverCommentActor, undefined, tx);
           result = { cancelledIssueIds: cancelled };
         }
-        const activity = await effectAudit(tx as unknown as Db, decision, execution.id, effect, "executed", decidedByUserId, originResponsibleUserId, result);
+        const activity = await effectAudit(tx as unknown as Db, decision, execution.id, effect, "executed", resolverAuditId, originResponsibleUserId, result);
         const [row] = await tx.update(decisionEffectExecutions).set({ status: "executed", result, error: null, activityLogId: activity?.id ?? null, executedAt: new Date() }).where(eq(decisionEffectExecutions.id, execution.id)).returning();
         return row;
       });
@@ -534,10 +558,17 @@ export function decisionService(db: Db, options: DecisionServiceOptions) {
 
   async function runEffects(decision: typeof decisions.$inferSelect, userActor: AuthorizationActor) {
     const option = decision.options.find((item) => item.id === decision.chosenOptionId);
-    if (!option || !decision.decidedByUserId) throw unprocessable("Stored decision outcome is invalid");
+    if (!option || (!decision.decidedByUserId && !decision.decidedByAgentId)) throw unprocessable("Stored decision outcome is invalid");
     const run = await db.select({ responsibleUserId: heartbeatRuns.responsibleUserId }).from(heartbeatRuns).where(eq(heartbeatRuns.id, decision.originRunId)).then((rows) => rows[0] ?? null);
     const metadata = decision.metadata as Record<string, unknown>;
     if (metadata.kind === "attention_archive_proposal") {
+      // Archive proposals resolve on the board side only; an agent resolver
+      // here means the row predates resolver policies — refuse safely.
+      if (!decision.decidedByUserId) {
+        await db.update(decisions).set({ executionStatus: "failed", updatedAt: new Date(), metadata: { ...metadata, archiveProposalError: "missing_board_resolver" } })
+          .where(eq(decisions.id, decision.id));
+        return outcome(decision.id);
+      }
       if (!verifyDecisionSpec(spec({
         id: decision.id,
         options: decision.options,
@@ -588,7 +619,7 @@ export function decisionService(db: Db, options: DecisionServiceOptions) {
       }).where(eq(decisions.id, decision.id));
       return outcome(decision.id);
     }
-    for (let index = 0; index < option.effects.length; index += 1) await executeEffect(decision, option.effects[index]!, index, userActor, decision.decidedByUserId, run?.responsibleUserId ?? null);
+    for (let index = 0; index < option.effects.length; index += 1) await executeEffect(decision, option.effects[index]!, index, userActor, decision.decidedByUserId, decision.decidedByAgentId, run?.responsibleUserId ?? null);
     const rows = await db.select().from(decisionEffectExecutions).where(eq(decisionEffectExecutions.decisionId, decision.id));
     const successful = rows.filter((row) => row.status === "executed").length;
     const status = rows.every((row) => row.status === "executed") ? "succeeded" : successful ? "partial" : "failed";
@@ -623,18 +654,21 @@ export function decisionService(db: Db, options: DecisionServiceOptions) {
     return outcome(decision.id);
   }
 
-  async function decide(input: { id: string; optionId: string; inputValues?: Record<string, string>; idempotencyKey?: string | null; decidedByUserId: string;
+  async function decide(input: { id: string; optionId: string; inputValues?: Record<string, string>; idempotencyKey?: string | null; decidedByUserId?: string;
+    decidedByAgentId?: string; decidedByRunId?: string | null;
     userActor: AuthorizationActor; dismissed?: boolean; dismissReason?: string | null }) {
     const current = await get(input.id); if (!current) throw notFound("Decision not found");
     const metadata = current.metadata as Record<string, unknown>;
     if (!verifyDecisionSpec(spec({ id: current.id, options: current.options, targetSnapshots: current.targetSnapshots as Record<string, Snapshot> }), current.signedSpec)) throw forbidden("Decision signature verification failed");
+    const replayOwnerMatches = current.decidedByUserId === (input.decidedByUserId ?? null) &&
+      current.decidedByAgentId === (input.decidedByAgentId ?? null);
     if (current.status === "decided" && input.idempotencyKey && metadata.decideIdempotencyKey === input.idempotencyKey) {
-      if (current.decidedByUserId !== input.decidedByUserId) throw forbidden("Decision replay belongs to a different user");
+      if (!replayOwnerMatches) throw forbidden("Decision replay belongs to a different resolver");
       return resumeDecision(current, input.userActor);
     }
     if (current.status === "decided" && current.chosenOptionId === input.optionId &&
       sameInputValues(current.inputValues ?? {}, input.inputValues ?? {})) {
-      if (current.decidedByUserId !== input.decidedByUserId) throw forbidden("Decision replay belongs to a different user");
+      if (!replayOwnerMatches) throw forbidden("Decision replay belongs to a different resolver");
       return resumeDecision(current, input.userActor);
     }
     if (current.status !== "open") throw conflict("decision_already_resolved", { code: "decision_already_resolved" });
@@ -653,16 +687,19 @@ export function decisionService(db: Db, options: DecisionServiceOptions) {
     const values = input.inputValues ?? {};
     for (const field of current.inputs ?? []) { const value = values[field.id] ?? ""; if (field.required && !value.trim()) throw unprocessable(`Input ${field.id} is required`); if (field.maxLength && value.length > field.maxLength) throw unprocessable(`Input ${field.id} is too long`); }
     const [claimed] = await db.update(decisions).set({ status: "decided", executionStatus: "running", chosenOptionId: input.optionId, inputValues: values,
-      decidedByUserId: input.decidedByUserId, decidedAt: new Date(), updatedAt: new Date(), metadata: { ...metadata,
+      decidedByUserId: input.decidedByUserId ?? null, decidedByAgentId: input.decidedByAgentId ?? null, decidedAt: new Date(), updatedAt: new Date(), metadata: { ...metadata,
         decideIdempotencyKey: input.idempotencyKey ?? null,
         ...(current.continuationPolicy === "wake_origin_agent" ? { continuationPending: true } : {}),
         ...(input.dismissed ? { dismissed: true, dismissReason: input.dismissReason ?? null } : {}) } })
       .where(and(eq(decisions.id, current.id), eq(decisions.status, "open"))).returning();
     if (!claimed) throw conflict("decision_already_resolved", { code: "decision_already_resolved" });
     const run = await db.select({ responsibleUserId: heartbeatRuns.responsibleUserId }).from(heartbeatRuns).where(eq(heartbeatRuns.id, claimed.originRunId)).then((rows) => rows[0] ?? null);
-    await logActivity(db, { companyId: claimed.companyId, actorType: "system", actorId: "decision-executor", agentId: claimed.originAgentId, runId: claimed.originRunId,
-      responsibleUserIdOverride: input.decidedByUserId, action: input.dismissed ? "decision.dismissed" : "decision.decided", entityType: "decision", entityId: claimed.id,
-      details: { chosenOptionId: input.optionId, decidedByUserId: input.decidedByUserId, originResponsibleUserId: run?.responsibleUserId ?? null,
+    const agentResolver = input.decidedByAgentId
+      ? { actorType: "agent" as const, actorId: input.decidedByAgentId, agentId: input.decidedByAgentId, runId: input.decidedByRunId ?? claimed.originRunId }
+      : { actorType: "system" as const, actorId: "decision-executor", agentId: claimed.originAgentId, runId: claimed.originRunId };
+    await logActivity(db, { companyId: claimed.companyId, ...agentResolver,
+      responsibleUserIdOverride: input.decidedByUserId ?? null, action: input.dismissed ? "decision.dismissed" : "decision.decided", entityType: "decision", entityId: claimed.id,
+      details: { chosenOptionId: input.optionId, decidedByUserId: input.decidedByUserId ?? null, decidedByAgentId: input.decidedByAgentId ?? null, originResponsibleUserId: run?.responsibleUserId ?? null,
         ...(input.dismissed ? { dismissed: true, dismissReason: input.dismissReason ?? null } : {}) } });
     return resumeDecision(claimed, input.userActor);
   }

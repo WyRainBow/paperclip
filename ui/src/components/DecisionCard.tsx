@@ -53,6 +53,8 @@ export interface DecisionCardProps {
   /** Full sub-tree that a `cancel_issue_tree` option would cancel. */
   cancelTreePreview?: (targetIssueId: string) => DecisionIssueRef[] | null;
   originAgentName?: string | null;
+  /** Resolved name of the agent that decided, when an agent resolved it. */
+  decidedByAgentName?: string | null;
   originIssue?: DecisionIssueRef | null;
   runHref?: string | null;
   busy?: boolean;
@@ -232,6 +234,7 @@ export function DecisionCard({
   resolveIssue = () => null,
   cancelTreePreview,
   originAgentName,
+  decidedByAgentName,
   originIssue,
   runHref,
   busy = false,
@@ -613,7 +616,10 @@ export function DecisionCard({
                 {decision.decidedAt && (
                   <span className="text-muted-foreground"> · {new Date(decision.decidedAt).toLocaleString()}</span>
                 )}
-                {decision.decidedByUserId && (
+                {decision.decidedByAgentId && decidedByAgentName && (
+                  <span className="text-muted-foreground"> · by {decidedByAgentName}</span>
+                )}
+                {!decision.decidedByAgentId && decision.decidedByUserId && (
                   <span className="text-muted-foreground"> · by {decision.decidedByUserId}</span>
                 )}
                 <ChevronDown

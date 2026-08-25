@@ -110,10 +110,16 @@ export async function observeCrossIssueInfluence(
     }
 
     const sourceIssueId = readRunSourceIssueId(run.contextSnapshot);
-    if (!sourceIssueId) throw crossIssueInfluenceRunContextError();
+    // Terminal contributor sessions have no home issue, so every write counts
+    // against the shared cap — same containment, no source shortcut.
+    const terminalSession = (run.contextSnapshot as { kind?: unknown } | null)?.kind === "terminal_contributor";
+    if (!sourceIssueId && !terminalSession) throw crossIssueInfluenceRunContextError();
     if (
-      sourceIssueId === input.targetIssueId ||
-      (input.targetIssueIdentifier && sourceIssueId.toUpperCase() === input.targetIssueIdentifier.toUpperCase())
+      sourceIssueId &&
+      (
+        sourceIssueId === input.targetIssueId ||
+        (input.targetIssueIdentifier && sourceIssueId.toUpperCase() === input.targetIssueIdentifier.toUpperCase())
+      )
     ) {
       return null;
     }

@@ -43,6 +43,8 @@ function mkDecision(overrides: Partial<Decision> = {}): Decision {
     chosenOptionId: null,
     inputValues: null,
     decidedByUserId: null,
+    decidedByAgentId: null,
+    resolverPolicy: "board",
     decidedAt: null,
     expiresAt: "2026-07-29T12:00:00Z",
     idempotencyKey: null,

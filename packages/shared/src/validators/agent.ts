@@ -171,15 +171,27 @@ export const skillTestAgentKeyScopeSchema = z.object({
   issueId: z.string().guid(),
 }).strict();
 
+/**
+ * Terminal contributor keys authenticate an external AI (claude/codex/zcode
+ * running in the operator's own terminal) as its agent record without a
+ * Paperclip-spawned run. The middleware lazily attaches a synthetic
+ * heartbeat run so attribution, caps, and the audit trail keep working.
+ */
+export const terminalContributorAgentKeyScopeSchema = z.object({
+  kind: z.literal("terminal_contributor"),
+}).strict();
+
 export const agentApiKeyScopeSchema = z.union([
   standardAgentKeyScopeSchema,
   taskBridgeAgentKeyScopeSchema,
   skillTestAgentKeyScopeSchema,
+  terminalContributorAgentKeyScopeSchema,
 ]);
 
 export type AgentApiKeyScope = z.infer<typeof agentApiKeyScopeSchema>;
 export type TaskBridgeAgentKeyScope = z.infer<typeof taskBridgeAgentKeyScopeSchema>;
 export type SkillTestAgentKeyScope = z.infer<typeof skillTestAgentKeyScopeSchema>;
+export type TerminalContributorAgentKeyScope = z.infer<typeof terminalContributorAgentKeyScopeSchema>;
 
 export function normalizeAgentApiKeyScope(value: unknown): AgentApiKeyScope {
   const parsed = agentApiKeyScopeSchema.safeParse(value);

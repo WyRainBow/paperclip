@@ -178,7 +178,7 @@ import { nextWorkMode, titleForPendingWorkMode, workModeMetaFor, workModeMetaLis
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
-import { AlertTriangle, ArrowRight, Brain, Check, ChevronDown, ClipboardList, Copy, Hammer, Loader2, MoreHorizontal, Paperclip, PauseCircle, Search, Square, ThumbsDown, ThumbsUp, Trash2 } from "lucide-react";
+import { Activity, AlertTriangle, ArrowRight, Brain, Check, ChevronDown, ClipboardList, Copy, Hammer, Loader2, MoreHorizontal, Paperclip, PauseCircle, Search, Square, ThumbsDown, ThumbsUp, Trash2 } from "lucide-react";
 import { IssueBlockedNotice } from "./IssueBlockedNotice";
 import { IssueAssignedBacklogNotice } from "./IssueAssignedBacklogNotice";
 import {
@@ -2451,7 +2451,7 @@ function ExpiredRequestConfirmationActivity({
 function isIssueCommentPresentation(value: unknown): value is IssueCommentPresentation {
   if (!value || typeof value !== "object") return false;
   const v = value as Record<string, unknown>;
-  return v.kind === "system_notice" || v.kind === "message";
+  return v.kind === "system_notice" || v.kind === "message" || v.kind === "progress_note";
 }
 
 function isIssueCommentMetadata(value: unknown): value is IssueCommentMetadata {
@@ -2770,6 +2770,34 @@ function CompactSystemNoticeRow({
   );
 }
 
+function ProgressNoteCommentRow({
+  message,
+  anchorId,
+}: {
+  message: ThreadMessage;
+  anchorId?: string;
+}) {
+  const custom = message.metadata.custom as Record<string, unknown>;
+  const authorName = typeof custom.authorName === "string" ? custom.authorName : null;
+  const authorType = typeof custom.authorType === "string" ? custom.authorType : null;
+  const bodyText = message.content
+    .filter((p): p is { type: "text"; text: string } => p.type === "text")
+    .map((p) => p.text)
+    .join("\n\n");
+  const label = authorName ?? (authorType === "agent" ? "agent" : "progress");
+  return (
+    <div id={anchorId} className="mx-auto w-full max-w-(--tc-shell-max-w) px-4 py-1">
+      <div className="flex items-start gap-2 rounded-lg border border-border/60 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+        <Activity className="mt-0.5 h-3.5 w-3.5 shrink-0 text-sky-600 dark:text-sky-400" aria-hidden />
+        <div className="min-w-0 flex-1">
+          <span className="font-medium text-foreground">{label}</span>
+          <span className="ml-2 whitespace-pre-wrap">{bodyText}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function SystemNoticeCommentRow({
   message,
   anchorId,
@@ -2995,6 +3023,15 @@ function IssueChatSystemMessage({ message }: { message: ThreadMessage }) {
   if (custom.kind === "system_notice") {
     return (
       <SystemNoticeCommentRow
+        message={message}
+        anchorId={anchorId}
+      />
+    );
+  }
+
+  if (custom.kind === "progress_note") {
+    return (
+      <ProgressNoteCommentRow
         message={message}
         anchorId={anchorId}
       />
