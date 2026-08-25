@@ -254,10 +254,10 @@ export function IssueProperties({
   // the chat shell and the classic task interface — progress is pane content,
   // not a chat-shell feature.
   const { data: paneTabComments } = useQuery({
-    queryKey: queryKeys.issues.comments(issue.id),
+    queryKey: [...queryKeys.issues.comments(issue.id), "progress-ledger"],
     queryFn: () => issuesApi.listComments(issue.id, { order: "desc", limit: 200 }),
   });
-  const hasProgressTab = (paneTabComments ?? []).some(isProgressNoteComment);
+  const hasProgressTab = Array.isArray(paneTabComments) && paneTabComments.some(isProgressNoteComment);
   const [paneTab, setPaneTab] = useState("properties");
   // Once a plan document exists, surface it: switch the pane to the Plan tab so
   // the write-up is exposed alongside the plan-approval card, instead of leaving

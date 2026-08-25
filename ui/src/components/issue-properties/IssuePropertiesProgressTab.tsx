@@ -32,7 +32,7 @@ function relativeTime(at: string | Date): string {
  */
 export function IssuePropertiesProgressTab({ issueId, companyId }: IssuePropertiesProgressTabProps) {
   const { data: comments, isLoading: commentsLoading } = useQuery({
-    queryKey: queryKeys.issues.comments(issueId),
+    queryKey: [...queryKeys.issues.comments(issueId), "progress-ledger"],
     queryFn: () => issuesApi.listComments(issueId, { order: "desc", limit: 200 }),
   });
   const { data: agents } = useQuery({
@@ -40,7 +40,7 @@ export function IssuePropertiesProgressTab({ issueId, companyId }: IssueProperti
     queryFn: () => agentsApi.list(companyId),
   });
 
-  const notes = (comments ?? []).filter(isProgressNoteComment);
+  const notes = (Array.isArray(comments) ? comments : []).filter(isProgressNoteComment);
   const agentName = (id: string | null) =>
     (id && (agents ?? []).find((agent) => agent.id === id)?.name) || null;
 
