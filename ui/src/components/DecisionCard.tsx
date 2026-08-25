@@ -594,6 +594,21 @@ export function DecisionCard({
               This decision was withdrawn by the proposer before a response.
             </p>
           )}
+          {decision.status === "decided" && !dismissed && (
+            <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-xs">
+              <span className="font-medium text-foreground">
+                Chosen:{" "}
+                {decision.options.find((option) => option.id === decision.chosenOptionId)?.label ??
+                  decision.chosenOptionId}
+              </span>
+              {decision.decidedAt && (
+                <span className="text-muted-foreground"> · {new Date(decision.decidedAt).toLocaleString()}</span>
+              )}
+              {decision.decidedByUserId && (
+                <span className="text-muted-foreground"> · by {decision.decidedByUserId}</span>
+              )}
+            </div>
+          )}
           {decision.status === "decided" && dismissed && (
             <p className="rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
               Dismissed — no effects were run.
