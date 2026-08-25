@@ -13640,7 +13640,9 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
     const staleThresholdMs = opts?.staleThresholdMs ?? 0;
     const now = new Date();
 
-    // Find all runs stuck in "running" state (queued runs are legitimately waiting; resumeQueuedRuns handles them)
+    // Find all runs stuck in "running" state (queued runs are legitimately waiting; resumeQueuedRuns handles them).
+    // Terminal contributor sessions are synthetic runs with no child process by
+    // design — they must not be reaped as orphans.
     const activeRuns = await db
       .select({
         run: heartbeatRuns,
@@ -13649,7 +13651,10 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
       })
       .from(heartbeatRuns)
       .innerJoin(agents, eq(heartbeatRuns.agentId, agents.id))
-      .where(eq(heartbeatRuns.status, "running"));
+      .where(and(
+        eq(heartbeatRuns.status, "running"),
+        ne(heartbeatRuns.invocationSource, "terminal_contributor"),
+      ));
 
     const monitorIssueIds = [...new Set(activeRuns.flatMap(({ run }) => {
       const runContext = parseObject(run.contextSnapshot);
