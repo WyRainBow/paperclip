@@ -23,6 +23,7 @@ import {
   MessagesSquare,
   GanttChartSquare,
   LayoutGrid,
+  Globe,
 } from "lucide-react";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -244,6 +245,7 @@ export function Sidebar() {
           ) : null}
           <SidebarNavItem to="/artifacts" label="Artifacts" icon={Package} />
           <SidebarNavItem to="/skills" label="Skills" icon={Boxes} />
+          <SidebarNavItem to="/openspace" label="Openspace" icon={Globe} />
           {showWorkspacesLink ? (
             <SidebarNavItem to="/workspaces" label="Workspaces" icon={GitBranch} />
           ) : null}

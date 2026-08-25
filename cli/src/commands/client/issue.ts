@@ -78,6 +78,16 @@ interface IssueUpdateOptions extends BaseClientOptions {
   hiddenAt?: string;
 }
 
+interface IssueClaimOptions extends BaseClientOptions {
+  branch?: string;
+  note?: string;
+  status?: string;
+}
+
+interface IssueProgressOptions extends BaseClientOptions {
+  tone?: string;
+}
+
 interface IssueCommentOptions extends BaseClientOptions {
   body: string;
   reopen?: boolean;
@@ -349,6 +359,75 @@ export function registerIssueCommands(program: Command): void {
 
           const updated = await ctx.api.patch<Issue & { comment?: IssueComment | null }>(apiPath`/api/issues/${issueId}`, payload);
           printOutput(updated, { json: ctx.json });
+        } catch (err) {
+          handleCommandError(err);
+        }
+      }),
+  );
+
+  addCommonClientOptions(
+    issue
+      .command("claim")
+      .description("Claim an issue as a terminal agent: move it to in_progress and file an opening progress note")
+      .argument("<issueId>", "Issue ID or identifier")
+      .option("--branch <name>", "Working branch name to record in the note")
+      .option("--note <text>", "Extra opening note text")
+      .option("--status <status>", "Target status (default in_progress)", "in_progress")
+      .action(async (issueId: string, opts: IssueClaimOptions) => {
+        try {
+          const ctx = resolveCommandContext(opts);
+          const issue = await ctx.api.get<Issue>(apiPath`/api/issues/${issueId}`);
+          if (!issue) throw new Error(`Issue not found: ${issueId}`);
+          let updated: Issue | null = issue;
+          if (issue.status !== opts.status) {
+            try {
+              updated = await ctx.api.patch<Issue>(apiPath`/api/issues/${issue.id}`, { status: opts.status });
+            } catch (err) {
+              // in_progress requires an assignee; agent callers self-assign, board
+              // callers get a hint.
+              const message = err instanceof Error ? err.message : String(err);
+              if (!message.includes("require an assignee")) throw err;
+              const me = await ctx.api.get<Issue & { id: string; name?: string }>(apiPath`/api/agents/me`).catch(() => null);
+              if (!me?.id) {
+                throw new Error("in_progress requires an assignee; assign one first or run this with --api-key as the claiming agent");
+              }
+              updated = await ctx.api.patch<Issue>(apiPath`/api/issues/${issue.id}`, {
+                status: opts.status,
+                assigneeAgentId: me.id,
+              });
+            }
+          }
+          const lines = [`接卡开工：${issue.identifier} → ${opts.status}（by claim command）`];
+          if (opts.branch) lines.push(`工作分支：${opts.branch}`);
+          if (opts.note) lines.push(opts.note);
+          await ctx.api.post(apiPath`/api/issues/${issue.id}/comments`, {
+            body: lines.join("\n"),
+            presentation: { kind: "progress_note", tone: "info" },
+          });
+          printOutput({ identifier: issue.identifier, status: updated?.status ?? opts.status, branch: opts.branch ?? null }, { json: ctx.json });
+        } catch (err) {
+          handleCommandError(err);
+        }
+      }),
+  );
+
+  addCommonClientOptions(
+    issue
+      .command("progress")
+      .description("File a progress note on an issue (compact ledger entry)")
+      .argument("<issueId>", "Issue ID or identifier")
+      .argument("<text>", "Progress note text")
+      .option("--tone <tone>", "info | success | warning | danger", "info")
+      .action(async (issueId: string, text: string, opts: IssueProgressOptions) => {
+        try {
+          const ctx = resolveCommandContext(opts);
+          const issue = await ctx.api.get<Issue>(apiPath`/api/issues/${issueId}`);
+          if (!issue) throw new Error(`Issue not found: ${issueId}`);
+          const comment = await ctx.api.post<IssueComment>(apiPath`/api/issues/${issue.id}/comments`, {
+            body: text,
+            presentation: { kind: "progress_note", tone: opts.tone },
+          });
+          printOutput(comment, { json: ctx.json });
         } catch (err) {
           handleCommandError(err);
         }

@@ -69,6 +69,7 @@ import { GatewaysList } from "./pages/apps/gateways/GatewaysList";
 import { GatewayDetail } from "./pages/apps/gateways/GatewayDetail";
 import { CompanyInvites } from "./pages/CompanyInvites";
 import { CompanySkills } from "./pages/CompanySkills";
+import { Openspace } from "./pages/Openspace";
 import { SkillStudio } from "./pages/SkillStudio";
 import { Secrets } from "./pages/Secrets";
 import { CompanyImport } from "./pages/CompanyImport";
@@ -187,6 +188,7 @@ function boardRoutes() {
       <Route path="skills/studio/:skillId" element={<SkillStudio />} />
       <Route path="skills/:skillId/studio" element={<LegacySkillStudioRedirect />} />
       <Route path="skills/*" element={<CompanySkills />} />
+      <Route path="openspace" element={<Openspace />} />
       <Route path="settings" element={<LegacySettingsRedirect />} />
       <Route path="settings/*" element={<LegacySettingsRedirect />} />
       <Route path="plugins/:pluginId" element={<PluginPage />} />
