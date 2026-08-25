@@ -68,6 +68,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { IssuePropertiesPlansTab } from "./IssuePropertiesPlansTab";
 import { IssuePropertiesArtifactsTab } from "./IssuePropertiesArtifactsTab";
+import { IssuePropertiesProgressTab, isProgressNoteComment } from "./IssuePropertiesProgressTab";
 import { User, ArrowUpRight, Plus, GitBranch, FolderOpen, HardDrive, Check, Clock, RotateCcw, Loader2, CheckCircle2, ArchiveRestore } from "lucide-react";
 import { AgentIcon } from "../AgentIconPicker";
 import { InlineEntitySelector, type InlineEntityOption } from "../InlineEntitySelector";
@@ -248,6 +249,14 @@ export function IssueProperties({
     (paneTabWorkProducts?.length ?? 0) > 0
     || paneTabStandaloneDocuments.length > 0
     || selectAgentArtifactAttachments(paneTabAttachments, paneTabWorkProducts).length > 0;
+  // Progress ledger: agent progress notes (terminal contributors file them as
+  // they work) earn their own pane tab once the first note lands.
+  const { data: paneTabComments } = useQuery({
+    queryKey: queryKeys.issues.comments(issue.id),
+    queryFn: () => issuesApi.listComments(issue.id, { order: "desc", limit: 200 }),
+    enabled: taskChatShellEnabled,
+  });
+  const hasProgressTab = (paneTabComments ?? []).some(isProgressNoteComment);
   const [paneTab, setPaneTab] = useState("properties");
   // Once a plan document exists, surface it: switch the pane to the Plan tab so
   // the write-up is exposed alongside the plan-approval card, instead of leaving
@@ -2605,7 +2614,7 @@ export function IssueProperties({
 
   // Chat-style with nothing to switch between: no tab strip — the header bar
   // shows a plain title and the pane body is just the properties stack.
-  if (!hasPlanTab && !hasArtifactsTab) {
+  if (!hasPlanTab && !hasArtifactsTab && !hasProgressTab) {
     return (
       <>
         {paneHeaderSlot
@@ -2625,6 +2634,7 @@ export function IssueProperties({
   const activePaneTab =
     (paneTab === "plans" && !hasPlanTab)
     || (paneTab === "artifacts" && !hasArtifactsTab)
+    || (paneTab === "progress" && !hasProgressTab)
       ? "properties"
       : paneTab;
   // In the pane header the strip stretches to the bar's full height and the
@@ -2652,6 +2662,11 @@ export function IssueProperties({
       {hasArtifactsTab ? (
         <TabsTrigger value="artifacts" className={paneTabTriggerClass}>
           Artifacts
+        </TabsTrigger>
+      ) : null}
+      {hasProgressTab ? (
+        <TabsTrigger value="progress" className={paneTabTriggerClass}>
+          Progress
         </TabsTrigger>
       ) : null}
     </TabsList>
@@ -2682,6 +2697,11 @@ export function IssueProperties({
             issue={issue}
             documentDeepLink={documentDeepLink?.tab === "artifacts" ? documentDeepLink : null}
           />
+        </TabsContent>
+      ) : null}
+      {hasProgressTab ? (
+        <TabsContent value="progress">
+          <IssuePropertiesProgressTab issueId={issue.id} companyId={issue.companyId} />
         </TabsContent>
       ) : null}
     </Tabs>
