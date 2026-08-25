@@ -106,7 +106,7 @@ export function WhatNeedsMe() {
   const [snoozedOpen, setSnoozedOpen] = useState(false);
   const [dismissedOpen, setDismissedOpen] = useState(false);
   const [agingOpen, setAgingOpen] = useState(false);
-  const [decidedOpen, setDecidedOpen] = useState(false);
+  const [decidedOpen, setDecidedOpen] = useState(true);
   const [expiredOpen, setExpiredOpen] = useState(false);
 
   // Date-range chips (PAP-16032 §4.2) — resolve to server-side activity bounds.

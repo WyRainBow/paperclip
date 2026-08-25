@@ -237,7 +237,7 @@ export type SummarySlotStatus = (typeof SUMMARY_SLOT_STATUSES)[number];
 export const ISSUE_COMMENT_AUTHOR_TYPES = ["user", "agent", "system"] as const;
 export type IssueCommentAuthorType = (typeof ISSUE_COMMENT_AUTHOR_TYPES)[number];
 
-export const ISSUE_COMMENT_PRESENTATION_KINDS = ["message", "system_notice"] as const;
+export const ISSUE_COMMENT_PRESENTATION_KINDS = ["message", "system_notice", "progress_note"] as const;
 export type IssueCommentPresentationKind = (typeof ISSUE_COMMENT_PRESENTATION_KINDS)[number];
 
 export const ISSUE_COMMENT_PRESENTATION_TONES = ["neutral", "info", "success", "warning", "danger"] as const;

@@ -5029,6 +5029,15 @@ export function issueRoutes(
     const hasStructuredFields = input.presentation !== undefined || input.metadata !== undefined;
     if (!hasStructuredFields) return true;
     if (req.actor.type === "board") return true;
+    // Agents may file progress notes about their own work; every other
+    // structured presentation/metadata shape stays board-only.
+    const presentation = input.presentation as { kind?: unknown } | null | undefined;
+    const isAgentProgressNote = req.actor.type === "agent"
+      && input.metadata === undefined
+      && presentation != null
+      && typeof presentation === "object"
+      && presentation.kind === "progress_note";
+    if (isAgentProgressNote) return true;
     res.status(403).json({
       error: "Only board users may set structured comment presentation or metadata",
       details: {

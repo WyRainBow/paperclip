@@ -193,6 +193,11 @@ export function DecisionResolver({ companyId, decisionId, originIssue, agentMap,
       resolveIssue={resolveIssue}
       cancelTreePreview={cancelTreePreview}
       originAgentName={agentMap?.get(decision.originAgentId)?.name ?? null}
+      decidedByAgentName={
+        decision.decidedByAgentId
+          ? agentMap?.get(decision.decidedByAgentId)?.name ?? decision.decidedByAgentId
+          : null
+      }
       originIssue={
         originIssue
           ? {

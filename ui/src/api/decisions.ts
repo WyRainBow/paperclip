@@ -42,6 +42,8 @@ export interface Decision {
   chosenOptionId: string | null;
   inputValues: Record<string, string> | null;
   decidedByUserId: string | null;
+  decidedByAgentId: string | null;
+  resolverPolicy: "board" | "agents";
   decidedAt: string | null;
   expiresAt: string;
   idempotencyKey: string | null;

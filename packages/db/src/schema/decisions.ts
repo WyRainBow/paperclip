@@ -53,6 +53,8 @@ export const decisions = pgTable(
     chosenOptionId: text("chosen_option_id"),
     inputValues: jsonb("input_values").$type<Record<string, string>>(),
     decidedByUserId: text("decided_by_user_id"),
+    decidedByAgentId: uuid("decided_by_agent_id").references(() => agents.id, { onDelete: "set null" }),
+    resolverPolicy: text("resolver_policy").notNull().default("board"),
     decidedAt: timestamp("decided_at", { withTimezone: true }),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     idempotencyKey: text("idempotency_key"),

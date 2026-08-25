@@ -17,6 +17,7 @@ import { isUuidLike, normalizeAgentApiKeyScope, type DeploymentMode } from "@pap
 import type { BetterAuthSessionResult } from "../auth/better-auth.js";
 import { logger } from "./logger.js";
 import { boardAuthService } from "../services/board-auth.js";
+import { ensureTerminalContributorRun } from "../services/terminal-contributor-runs.js";
 
 const CLOUD_TENANT_WRITE_DEBOUNCE_MS = 5_000;
 const CLOUD_TENANT_WRITE_DEBOUNCE_MAX = 1_000;
@@ -211,7 +212,7 @@ export function actorMiddleware(db: Db, opts: ActorMiddlewareOptions): RequestHa
         ? {
             type: "board",
             userId: "local-board",
-            userName: "Local Board",
+            userName: process.env.PAPERCLIP_BOARD_NAME?.trim() || "Local Board",
             userEmail: null,
             isInstanceAdmin: true,
             source: "local_implicit",
@@ -422,18 +423,30 @@ export function actorMiddleware(db: Db, opts: ActorMiddlewareOptions): RequestHa
       return;
     }
 
+    const keyScope = normalizeAgentApiKeyScope(key.scopeConfig);
+    let contributorRunId: string | undefined;
+    if (!runIdHeader && keyScope.kind === "terminal_contributor") {
+      contributorRunId = await ensureTerminalContributorRun(db, {
+        companyId: key.companyId,
+        agentId: key.agentId,
+        keyId: key.id,
+        keyName: key.name,
+        responsibleUserId,
+      });
+    }
+
     req.actor = {
       type: "agent",
       agentId: key.agentId,
       companyId: key.companyId,
       keyId: key.id,
-      keyScope: normalizeAgentApiKeyScope(key.scopeConfig),
+      keyScope,
       onBehalfOfUserId: responsibleUserId,
       onBehalfOfMemberships: await loadResponsibleUserMemberships(db, {
         companyId: key.companyId,
         userId: responsibleUserId,
       }),
-      runId: runIdHeader || undefined,
+      runId: contributorRunId ?? (runIdHeader || undefined),
       source: "agent_key",
     };
 

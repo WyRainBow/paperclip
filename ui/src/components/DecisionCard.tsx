@@ -4,6 +4,7 @@ import {
   ArrowRight,
   Ban,
   CheckCircle2,
+  ChevronDown,
   Clock,
   ExternalLink,
   Loader2,
@@ -52,6 +53,8 @@ export interface DecisionCardProps {
   /** Full sub-tree that a `cancel_issue_tree` option would cancel. */
   cancelTreePreview?: (targetIssueId: string) => DecisionIssueRef[] | null;
   originAgentName?: string | null;
+  /** Resolved name of the agent that decided, when an agent resolved it. */
+  decidedByAgentName?: string | null;
   originIssue?: DecisionIssueRef | null;
   runHref?: string | null;
   busy?: boolean;
@@ -231,6 +234,7 @@ export function DecisionCard({
   resolveIssue = () => null,
   cancelTreePreview,
   originAgentName,
+  decidedByAgentName,
   originIssue,
   runHref,
   busy = false,
@@ -242,6 +246,7 @@ export function DecisionCard({
   const [inputValues, setInputValues] = useState<Record<string, string>>({});
   const [confirmOptionId, setConfirmOptionId] = useState<string | null>(null);
   const [confirmText, setConfirmText] = useState("");
+  const [optionsExpanded, setOptionsExpanded] = useState(false);
 
   const open = decision.status === "open";
   const dismissed =
@@ -593,6 +598,69 @@ export function DecisionCard({
             <p className="rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
               This decision was withdrawn by the proposer before a response.
             </p>
+          )}
+          {decision.status === "decided" && !dismissed && (
+            <div className="space-y-2">
+              <button
+                type="button"
+                onClick={() => setOptionsExpanded((prev) => !prev)}
+                aria-expanded={optionsExpanded}
+                className="flex w-full items-center gap-2 rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-left text-xs transition-colors hover:bg-muted/50"
+              >
+                <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden />
+                <span className="font-medium text-foreground">
+                  Chosen:{" "}
+                  {decision.options.find((option) => option.id === decision.chosenOptionId)?.label ??
+                    decision.chosenOptionId}
+                </span>
+                {decision.decidedAt && (
+                  <span className="text-muted-foreground"> · {new Date(decision.decidedAt).toLocaleString()}</span>
+                )}
+                {decision.decidedByAgentId && decidedByAgentName && (
+                  <span className="text-muted-foreground"> · by {decidedByAgentName}</span>
+                )}
+                {!decision.decidedByAgentId && decision.decidedByUserId && (
+                  <span className="text-muted-foreground"> · by {decision.decidedByUserId}</span>
+                )}
+                <ChevronDown
+                  className={cn(
+                    "ml-auto h-4 w-4 shrink-0 text-muted-foreground transition-transform",
+                    optionsExpanded && "rotate-180",
+                  )}
+                  aria-hidden
+                />
+              </button>
+              {optionsExpanded && (
+                <ul className="space-y-1.5">
+                  {decision.options.map((option) => {
+                    const chosen = option.id === decision.chosenOptionId;
+                    return (
+                      <li
+                        key={option.id}
+                        className={cn(
+                          "rounded-sm border px-4 py-3",
+                          chosen
+                            ? "border-emerald-500/70 bg-emerald-500/5"
+                            : "border-border/50 bg-transparent opacity-70",
+                        )}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-sm font-medium text-foreground">{option.label}</span>
+                          {chosen && (
+                            <span className="shrink-0 rounded-full border border-emerald-500/60 bg-emerald-500/10 px-2 py-0.5 text-(length:--text-micro) font-medium text-emerald-800 dark:text-emerald-200">
+                              Chosen
+                            </span>
+                          )}
+                        </div>
+                        {option.description && (
+                          <div className="mt-1 text-sm leading-6 text-muted-foreground">{option.description}</div>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
           )}
           {decision.status === "decided" && dismissed && (
             <p className="rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">

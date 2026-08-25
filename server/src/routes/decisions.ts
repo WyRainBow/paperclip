@@ -28,6 +28,8 @@ const createSchema = z.object({
   expiresAt: z.coerce.date().optional(),
   idempotencyKey: z.string().trim().min(1).max(500).nullable().optional(),
   continuationPolicy: z.enum(["none", "wake_origin_agent"]).optional(),
+  resolverPolicy: z.enum(["board", "agents"]).optional(),
+  originIssueId: z.string().guid().nullable().optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
 }).strict();
 const bundleSchema = z.object({ title: z.string().trim().min(1).max(500), summary: z.string().max(100_000), decisions: z.array(createSchema).min(1).max(50) }).strict();
@@ -179,9 +181,27 @@ export function decisionRoutes(db: Db, options: DecisionServiceOptions) {
     res.json(await svc.outcome(decision.id));
   });
   router.post("/decisions/:id/decide", validate(decideSchema), async (req, res) => {
-    const userId = boardUserId(req);
     const decision = await getAccessibleResource(req, res, svc.get(req.params.id as string), "Decision not found");
     if (!decision) return;
+    if (req.actor.type === "agent" && req.actor.agentId && req.actor.companyId === decision.companyId) {
+      // Agent-resolvable decisions exist so mutually-made terminal decisions
+      // (claude/codex talking in the operator's shell) can be archived with
+      // the deciding agent's identity. Board-created governance decisions keep
+      // resolverPolicy "board" and never enter this branch.
+      if (decision.resolverPolicy !== "agents") {
+        res.status(403).json({ error: "Only the board may decide this decision", code: "board_resolver_only" });
+        return;
+      }
+      res.json(await svc.decide({
+        id: decision.id,
+        decidedByAgentId: req.actor.agentId,
+        decidedByRunId: req.actor.runId ?? null,
+        userActor: req.actor,
+        ...req.body,
+      }));
+      return;
+    }
+    const userId = boardUserId(req);
     res.json(await svc.decide({ id: decision.id, decidedByUserId: userId, userActor: req.actor, ...req.body }));
   });
   router.post("/decisions/:id/dismiss", validate(dismissSchema), async (req, res) => {
