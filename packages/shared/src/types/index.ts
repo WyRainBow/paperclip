@@ -82,6 +82,7 @@ export type {
   FeedbackTraceBundle,
 } from "./feedback.js";
 export type {
+  AgentOutputLanguage,
   InstanceExecutionMode,
   InstanceExperimentalSettings,
   InstanceExperimentalSettingsWithManaged,

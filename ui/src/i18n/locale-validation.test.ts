@@ -6,7 +6,7 @@ import { validateLocaleMessages } from "./locale-validation";
 
 describe("locale validation", () => {
   it("resolves English messages with key and default fallbacks", () => {
-    expect(t("app.noCompanies.title")).toBe(en.app.noCompanies.title);
+    expect(t("Create your first company")).toBe(en["Create your first company"]);
     expect(t("app.missing", { defaultValue: "Fallback" })).toBe("Fallback");
     expect(t("app.missing")).toBe("app.missing");
   });
@@ -18,21 +18,16 @@ describe("locale validation", () => {
     }
   });
 
-  it("rejects missing and extra nested keys", () => {
+  it("rejects missing and extra keys", () => {
     expect(
       validateLocaleMessages({
-        app: {
-          noCompanies: {
-            title: en.app.noCompanies.title,
-            description: en.app.noCompanies.description,
-            unexpected: "Unexpected",
-          },
-        },
+        "Create your first company": en["Create your first company"],
+        unexpected: "Unexpected",
       }),
     ).toEqual(
       expect.arrayContaining([
-        "app.noCompanies.newCompany is missing",
-        "app.noCompanies.unexpected is not defined in English",
+        expect.stringContaining("is missing"),
+        "unexpected is not defined in English",
       ]),
     );
   });
@@ -40,14 +35,9 @@ describe("locale validation", () => {
   it("rejects non-string leaves", () => {
     expect(
       validateLocaleMessages({
-        app: {
-          noCompanies: {
-            ...en.app.noCompanies,
-            title: ["Create your first company"],
-          },
-        },
+        "Create your first company": ["Create your first company"],
       }),
-    ).toEqual(expect.arrayContaining(["app.noCompanies.title must be a string"]));
+    ).toEqual(expect.arrayContaining(["Create your first company must be a string"]));
   });
 
   it("requires interpolation placeholders to match English", () => {

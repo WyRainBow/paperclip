@@ -32,6 +32,18 @@ export const DEFAULT_BACKUP_RETENTION: BackupRetentionPolicy = {
  */
 export type InstanceExecutionMode = "kubernetes" | "any";
 
+/**
+ * Preferred language for agent-authored user-facing content. `"en"`
+ * (default / absent) leaves agents' natural language untouched; `"zh-CN"`
+ * renders a wake-prompt directive instructing agents to write all
+ * user-facing output (comments, documents, interactions, titles) in
+ * Simplified Chinese while keeping code, commands, paths, and identifiers
+ * in their original form.
+ */
+export const AGENT_OUTPUT_LANGUAGES = ["en", "zh-CN"] as const;
+export type AgentOutputLanguage = (typeof AGENT_OUTPUT_LANGUAGES)[number];
+export const DEFAULT_AGENT_OUTPUT_LANGUAGE: AgentOutputLanguage = "en";
+
 export interface InstanceGeneralSettings {
   censorUsernameInLogs: boolean;
   keyboardShortcuts: boolean;
@@ -42,6 +54,11 @@ export interface InstanceGeneralSettings {
    * Kubernetes sandbox provider and denies local/ssh execution.
    */
   executionMode?: InstanceExecutionMode;
+  /**
+   * Preferred language for agent-authored user-facing content. Absent/`"en"`
+   * keeps agents' natural language; other values add a wake-prompt directive.
+   */
+  agentOutputLanguage?: AgentOutputLanguage;
 }
 
 export interface InstanceExperimentalSettings {

@@ -799,6 +799,7 @@ export type {
   AgentSkillEntry,
   AgentSkillSnapshot,
   AgentSkillSyncRequest,
+  AgentOutputLanguage,
   InstanceExecutionMode,
   InstanceExperimentalSettings,
   InstanceExperimentalSettingsWithManaged,
@@ -1597,6 +1598,8 @@ export {
   MIN_ISSUE_GRAPH_LIVENESS_AUTO_RECOVERY_LOOKBACK_HOURS,
   MAX_ISSUE_GRAPH_LIVENESS_AUTO_RECOVERY_LOOKBACK_HOURS,
   PAPERCLIP_CLOUD_MANAGED_BY,
+  AGENT_OUTPUT_LANGUAGES,
+  DEFAULT_AGENT_OUTPUT_LANGUAGE,
 } from "./types/instance.js";
 
 export type {
