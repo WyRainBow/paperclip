@@ -11,9 +11,11 @@ import type { DecisionInput } from "./types/decision.js";
  * team's prose. They are a client-side default instead: prefilled at proposal
  * time, freely reworded, never a reason a decision cannot be created.
  *
- * The proposer's rationale and the decider's rationale are deliberately one
- * field, not two — two invites a decision whose stated reason contradicts the
- * reason it was recommended for.
+ * The proposer's pitch and the decider's rationale are two slots on purpose
+ * (user 2026-08-26, overriding the earlier one-field design): the pitch rides
+ * on the recommended option (recommendationReason, written at proposal time)
+ * and answers "why was this recommended"; the input below answers "why did it
+ * win" and stays required.
  */
 export const DECISION_BODY_SECTIONS = ["背景", "判断标准", "方案"] as const;
 
@@ -24,7 +26,7 @@ export const DECISION_BODY_SECTIONS = ["背景", "判断标准", "方案"] as co
 export const DECISION_TEMPLATE_INPUTS: DecisionInput[] = [
   {
     id: "rationale",
-    label: "裁决理由（必填，会连同选项一起写进决策历史）",
+    label: "最后裁决理由（必填、会连同选项一起写进决策历史）",
     placeholder: "为什么选这个。以后有人翻这条记录，看的就是这段。",
     required: true,
     maxLength: 2000,

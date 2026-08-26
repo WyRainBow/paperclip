@@ -159,6 +159,13 @@ function DecisionRow({
               </p>
             )}
 
+            {recommended && (recommended.recommendationReason ?? recommended.description)?.trim() && (
+              <p className="mt-1 text-(length:--text-micro) text-muted-foreground">
+                <span className="font-medium text-foreground">推荐理由：</span>
+                {recommended.recommendationReason ?? recommended.description}
+              </p>
+            )}
+
             {rationale && (
               <div className="mt-2 border-l-2 border-border pl-3 text-sm text-muted-foreground">
                 <MarkdownBody>{rationale}</MarkdownBody>

@@ -502,6 +502,21 @@ export function DecisionCard({
         </div>
       )}
 
+      {/* Recommendation pitch (open only) — the proposer's reason travels with
+          the recommendation, visually separate from the decider's final
+          rationale input below. Falls back to the option description for
+          decisions proposed before the structured field existed. */}
+      {open && recommendedOption && (recommendedOption.recommendationReason ?? recommendedOption.description)?.trim() && (
+        <div className="mt-3 rounded-lg border border-border bg-muted/30 px-3 py-2">
+          <p className="text-(length:--text-micro) font-medium text-muted-foreground">
+            推荐理由 · {recommendedBy?.name ?? "提案 agent"}
+          </p>
+          <p className="mt-1 text-sm leading-6 text-foreground/90">
+            {recommendedOption.recommendationReason ?? recommendedOption.description}
+          </p>
+        </div>
+      )}
+
       {/* Inputs (open only) */}
       {open && (decision.inputs ?? []).length > 0 && (
         <div className="mt-3 space-y-2">

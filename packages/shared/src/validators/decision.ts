@@ -103,6 +103,7 @@ export const decisionOptionSchema = z.object({
   // label so the recommendation is queryable (adoption rate per agent) and
   // cannot be faked — the create path rejects any id but the proposer's own.
   recommendedByAgentId: z.string().guid().nullable().optional(),
+  recommendationReason: z.string().max(2_000).nullable().optional(),
   effects: z.array(decisionEffectSchema).max(10),
 }).superRefine((option, ctx) => {
   if (option.effects.some((effect) => effect.type === "cancel_issue_tree") && option.style !== "destructive") {
