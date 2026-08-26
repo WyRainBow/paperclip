@@ -276,5 +276,5 @@
   "Create your first folder": "Create your first folder",
   "Dismiss folder suggestion": "Dismiss folder suggestion",
   "{{items}} folders": "{{items}} folders",
-  "Not attached to any Paperclip-run agent. Attaching is for agents Paperclip runs itself (adapter skill sync); terminal agents read this skill directly over the API/CLI and never need attaching.": "Not attached to any Paperclip-run agent. Attaching is for agents Paperclip runs itself (adapter skill sync); terminal agents read this skill directly over the API/CLI and never need attaching."
+  "Not attached to any Paperclip-run Agent. Attaching is for Agents Paperclip runs itself (adapter skill sync); terminal Agents read this skill directly over the API/CLI and never need attaching.": "Not attached to any Paperclip-run agent. Attaching is for agents Paperclip runs itself (adapter skill sync); terminal agents read this skill directly over the API/CLI and never need attaching."
 }

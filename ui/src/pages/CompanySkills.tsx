@@ -3389,7 +3389,7 @@ export function SkillDetailPage({
               />
               {detail.usedByAgents.length === 0 ? (
                 <p className="text-xs text-muted-foreground">
-                  {t("Not attached to any Paperclip-run agent. Attaching is for agents Paperclip runs itself (adapter skill sync); terminal agents read this skill directly over the API/CLI and never need attaching.")}
+                  {t("Not attached to any Paperclip-run Agent. Attaching is for Agents Paperclip runs itself (adapter skill sync); terminal Agents read this skill directly over the API/CLI and never need attaching.")}
                 </p>
               ) : (
                 <div className="space-y-0.5">
