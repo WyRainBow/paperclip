@@ -4417,12 +4417,14 @@ export function IssueDetail() {
   const pausedComposerHint = activePauseHold
     ? (
       issue.assigneeAgentId
-        ? `Sending this comment will wake ${agentMap.get(issue.assigneeAgentId)?.name ?? "the assignee"} for triage while the subtree remains paused.`
-        : "Assign an agent to wake them for triage while the subtree remains paused."
+        ? t("Sending this comment will wake {{name}} for triage while the subtree remains paused.", {
+          name: agentMap.get(issue.assigneeAgentId)?.name ?? t("the assignee"),
+        })
+        : t("Assign an agent to wake them for triage while the subtree remains paused.")
     )
     : null;
   const reopenComposerHint = closedIsolatedWorkspaceReopenPending
-    ? "This issue's isolated workspace was archived. Your next comment or resume reopens it and rebuilds the worktree."
+    ? t("This issue's isolated workspace was archived. Your next comment or resume reopens it and rebuilds the worktree.")
     : null;
   const composerHint = pausedComposerHint ?? reopenComposerHint;
   const queuedCommentReason: "hold" | "active_run" | "other" = activePauseHold ? "hold" : "active_run";
@@ -5011,7 +5013,7 @@ export function IssueDetail() {
             </div>
           ) : (
             <div className="text-xs">
-              This task is paused by ancestor{" "}
+              {t("This task is paused by ancestor ")}
               {activePauseHoldRoot?.identifier ? (
                 <Link to={createIssueDetailPath(activePauseHoldRoot.identifier)} className="underline">
                   {activePauseHoldRoot.identifier}
@@ -5019,7 +5021,7 @@ export function IssueDetail() {
               ) : (
                 activePauseHold.rootIssueId.slice(0, 8)
               )}
-              . Resume from the root task to deliver deferred work.
+              {t(". Resume from the root task to deliver deferred work.")}
             </div>
           )}
         </div>

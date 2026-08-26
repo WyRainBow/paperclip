@@ -67,14 +67,14 @@ export function Openspace() {
           <Globe className="h-5 w-5 text-sky-600 dark:text-sky-400" aria-hidden /> Openspace
         </h1>
         <p className="text-sm text-muted-foreground">
-          公司级团队指令（instruction）：所有 agent 与人共守的工作规则正文。
+          公司级团队规则（rules）：所有 agent 与人共守的工作规则正文。
         </p>
       </header>
 
       {/* 公共笔记 */}
       <section className="space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold">Instruction</h2>
+          <h2 className="text-sm font-semibold">Rules</h2>
           <Button size="sm" variant="outline" onClick={() => setDraft({ title: "", body: "" })}>
             新建笔记
           </Button>
@@ -111,7 +111,7 @@ export function Openspace() {
         {notesQuery.isLoading ? (
           <p className="text-xs text-muted-foreground">加载中…</p>
         ) : notes.length === 0 && !draft ? (
-          <p className="text-xs text-muted-foreground">还没有指令。写团队通用指令：身份与通道、接卡流程、决策与记录、纪律。</p>
+          <p className="text-xs text-muted-foreground">还没有规则。写团队通用规则：身份与通道、接卡流程、决策与记录、纪律。</p>
         ) : (
           <ul className="space-y-3">
             {notes.map((note) => (
