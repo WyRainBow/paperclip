@@ -89,6 +89,9 @@ interface IssueClaimOptions extends BaseClientOptions {
 
 interface IssueStartOptions extends BaseClientOptions {
   branch: string;
+  worktree?: string;
+  base?: string;
+  dependsOn?: string;
   note?: string;
   session?: string;
 }
@@ -315,6 +318,7 @@ export function registerIssueCommands(program: Command): void {
         "Session id to record on the card — which CLI/agent session filed it (navigation aid, not identity). Defaults to $CLAUDE_CODE_SESSION_ID / $CODEX_SESSION_ID",
       )
       .option("--allow-duplicate", "Create even when an active issue with the same title exists")
+      .option("--branch <name>", "Working branch name (optional at creation; use issue start to register it)")
       .action(async (opts: IssueCreateOptions) => {
         try {
           const ctx = resolveCommandContext(opts, { requireCompany: true });
@@ -500,6 +504,9 @@ export function registerIssueCommands(program: Command): void {
       .description("Start work on a claimed issue: record the working branch (and flip to in_progress if needed)")
       .argument("<issueId>", "Issue ID or identifier")
       .requiredOption("--branch <name>", "Working branch name")
+      .option("--worktree <path>", "Absolute path to the git worktree")
+      .option("--base <ref>", "Base commit/branch this branch was cut from")
+      .option("--depends-on <ids>", "Comma-separated issue ids this branch depends on")
       .option("--note <text>", "Extra start note text")
       .option(
         "--session <id>",
@@ -541,6 +548,9 @@ export function registerIssueCommands(program: Command): void {
           }
           const lines = [`开工：${issue.identifier}，工作分支：${opts.branch}`];
           if (drivingSession) lines.push(`主审会话：${drivingSession}`);
+          if (opts.worktree) lines.push(`工作树：${opts.worktree}`);
+          if (opts.base) lines.push(`基线：${opts.base}`);
+          if (opts.dependsOn) lines.push(`依赖：${opts.dependsOn}`);
           if (opts.note) lines.push(opts.note);
           await ctx.api.post(apiPath`/api/issues/${issue.id}/comments`, {
             body: lines.join("\n"),
