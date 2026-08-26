@@ -43,6 +43,7 @@ export const issues = pgTable(
     executionLockedAt: timestamp("execution_locked_at", { withTimezone: true }),
     createdByAgentId: uuid("created_by_agent_id").references(() => agents.id),
     createdByUserId: text("created_by_user_id"),
+    createdBySession: text("created_by_session"),
     responsibleUserId: text("responsible_user_id"),
     issueNumber: integer("issue_number"),
     identifier: text("identifier"),

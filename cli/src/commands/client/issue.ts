@@ -63,6 +63,8 @@ interface IssueCreateOptions extends BaseClientOptions {
   parentId?: string;
   requestDepth?: string;
   billingCode?: string;
+  session?: string;
+  allowDuplicate?: boolean;
 }
 
 interface IssueUpdateOptions extends BaseClientOptions {
@@ -307,6 +309,11 @@ export function registerIssueCommands(program: Command): void {
       .option("--parent-id <id>", "Parent issue ID")
       .option("--request-depth <n>", "Request depth integer")
       .option("--billing-code <code>", "Billing code")
+      .option(
+        "--session <id>",
+        "Session id to record on the card — which CLI/agent session filed it (navigation aid, not identity). Defaults to $CLAUDE_CODE_SESSION_ID / $CODEX_SESSION_ID",
+      )
+      .option("--allow-duplicate", "Create even when an active issue with the same title exists")
       .action(async (opts: IssueCreateOptions) => {
         try {
           const ctx = resolveCommandContext(opts, { requireCompany: true });
@@ -343,6 +350,38 @@ export function registerIssueCommands(program: Command): void {
               `project is required: every issue belongs to a project — pass --project <name>. This company has: ${describeProjects(projects)}`,
             );
           }
+          if (opts.description) {
+            const firstContentLine = opts.description.split("\n").find((line) => line.trim().length > 0);
+            if (firstContentLine !== undefined && !firstContentLine.startsWith(">")) {
+              throw new Error(
+                "description must open with a one-line `> quote` summary — only the title shows in lists, so the takeaway goes first",
+              );
+            }
+          }
+          if (!opts.allowDuplicate) {
+            const rows =
+              (await ctx.api.get<Issue[]>(apiPath`/api/companies/${ctx.companyId}/issues`)) ?? [];
+            const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
+            const strip = (s: string) => norm(s).replace(/[^\p{L}\p{N}]/gu, "");
+            const newNorm = norm(opts.title);
+            const newStrip = strip(opts.title);
+            const hits = rows.filter((row) => {
+              if (row.status === "done" || row.status === "cancelled" || row.hiddenAt) return false;
+              const title = row.title ?? "";
+              return norm(title) === newNorm || (newStrip.length >= 4 && strip(title) === newStrip);
+            });
+            if (hits.length > 0) {
+              const list = hits.map((h) => `${h.identifier} [${h.status}] ${h.title}`).join("\n  ");
+              throw new Error(
+                `an active issue with this title already exists:\n  ${list}\npass --allow-duplicate to create it anyway`,
+              );
+            }
+          }
+          const session =
+            opts.session?.trim() ||
+            process.env.CLAUDE_CODE_SESSION_ID?.trim() ||
+            process.env.CODEX_SESSION_ID?.trim() ||
+            undefined;
           const payload = createIssueSchema.parse({
             title: opts.title,
             description: opts.description,
@@ -354,6 +393,8 @@ export function registerIssueCommands(program: Command): void {
             parentId: opts.parentId,
             requestDepth: parseOptionalInt(opts.requestDepth),
             billingCode: opts.billingCode,
+            createdBySession: session,
+            ...(opts.allowDuplicate ? { allowDuplicate: true } : {}),
           });
 
           const created = await ctx.api.post<Issue>(apiPath`/api/companies/${ctx.companyId}/issues`, payload);

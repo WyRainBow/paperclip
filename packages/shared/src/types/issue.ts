@@ -807,6 +807,7 @@ export interface Issue {
   executionLockedAt: Date | null;
   createdByAgentId: string | null;
   createdByUserId: string | null;
+  createdBySession: string | null;
   responsibleUserId: string | null;
   issueNumber: number | null;
   identifier: string | null;

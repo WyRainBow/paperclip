@@ -3215,6 +3215,7 @@ const issueListSelect = {
   executionLockedAt: issues.executionLockedAt,
   createdByAgentId: issues.createdByAgentId,
   createdByUserId: issues.createdByUserId,
+  createdBySession: issues.createdBySession,
   responsibleUserId: issues.responsibleUserId,
   issueNumber: issues.issueNumber,
   identifier: issues.identifier,
