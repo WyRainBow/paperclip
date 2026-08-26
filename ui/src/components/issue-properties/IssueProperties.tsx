@@ -2603,9 +2603,10 @@ export function IssueProperties({
     </div>
   );
 
-  // Classic Task Interface ON: the legacy stacked pane, byte-for-byte.
-  if (!taskChatShellEnabled) return propertiesBody;
-
+  // Both interfaces wrap the same body in a Properties | Plan | Progress |
+  // Artifacts tab shell (tabs always render, empty states included). The
+  // classic mode previously returned the bare stack — the pane tabs are now
+  // mode-independent per MUL-16.
   // Flag ON: wrap the same body in a Properties | Plan | Artifacts tab shell
   // (v5 decision: singular "Plan", Docs merged into Artifacts). The Properties
   // tab is unchanged. Panel hosts portal the strip into the pane header bar;
