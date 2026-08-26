@@ -1,8 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Boxes, Globe, Plug, Puzzle, Save, Trash2, X } from "lucide-react";
+import { Globe, Puzzle, Save, Trash2, X } from "lucide-react";
 import { api } from "@/api/client";
-import { queryKeys } from "@/lib/queryKeys";
 import { useCompany } from "@/context/CompanyContext";
 import { useToastActions } from "@/context/ToastContext";
 import { Button } from "@/components/ui/button";
@@ -22,22 +21,6 @@ interface OpenspaceNote {
   updatedAt: string;
 }
 
-interface CompanySkillRow {
-  id: string;
-  key: string;
-  slug: string;
-  name: string;
-  description: string | null;
-  sourceType: string;
-}
-
-/** Skill origin buckets for the reference section (MUL-16 §5). */
-function skillOrigin(skill: CompanySkillRow): "openspace" | "plugin" | "company" {
-  if (skill.key.startsWith("plugin/")) return "plugin";
-  if (skill.key.startsWith("company/")) return "openspace";
-  return "company";
-}
-
 export function Openspace() {
   const { selectedCompanyId } = useCompany();
   const queryClient = useQueryClient();
@@ -48,11 +31,6 @@ export function Openspace() {
   const notesQuery = useQuery({
     queryKey: ["openspace", "notes", selectedCompanyId],
     queryFn: () => api.get<OpenspaceNote[]>(`/companies/${selectedCompanyId}/openspace/notes`),
-    enabled: Boolean(selectedCompanyId),
-  });
-  const skillsQuery = useQuery({
-    queryKey: ["company-skills", "list", selectedCompanyId ?? ""],
-    queryFn: () => api.get<CompanySkillRow[]>(`/companies/${selectedCompanyId}/skills`),
     enabled: Boolean(selectedCompanyId),
   });
 
@@ -82,13 +60,6 @@ export function Openspace() {
   });
 
   const notes = notesQuery.data ?? [];
-  const skills = skillsQuery.data ?? [];
-  const groups = {
-    openspace: skills.filter((s) => skillOrigin(s) === "openspace"),
-    plugin: skills.filter((s) => skillOrigin(s) === "plugin"),
-    company: skills.filter((s) => skillOrigin(s) === "company"),
-  };
-
   return (
     <div className="mx-auto w-full max-w-4xl space-y-8 px-6 py-8">
       <header className="space-y-1">
@@ -96,14 +67,14 @@ export function Openspace() {
           <Globe className="h-5 w-5 text-sky-600 dark:text-sky-400" aria-hidden /> Openspace
         </h1>
         <p className="text-sm text-muted-foreground">
-          公司级共享上下文：公共笔记 + 对技能与 wiki 的引用（不复制、不动现有 Tab）。
+          公司级团队指令（instruction）：所有 agent 与人共守的工作规则正文。
         </p>
       </header>
 
       {/* 公共笔记 */}
       <section className="space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold">公共笔记</h2>
+          <h2 className="text-sm font-semibold">Instruction</h2>
           <Button size="sm" variant="outline" onClick={() => setDraft({ title: "", body: "" })}>
             新建笔记
           </Button>
@@ -140,7 +111,7 @@ export function Openspace() {
         {notesQuery.isLoading ? (
           <p className="text-xs text-muted-foreground">加载中…</p>
         ) : notes.length === 0 && !draft ? (
-          <p className="text-xs text-muted-foreground">还没有公共笔记。放一些团队约定、常用指针、公共说明。</p>
+          <p className="text-xs text-muted-foreground">还没有指令。写团队通用指令：身份与通道、接卡流程、决策与记录、纪律。</p>
         ) : (
           <ul className="space-y-3">
             {notes.map((note) => (
@@ -187,49 +158,6 @@ export function Openspace() {
         )}
       </section>
 
-      {/* 技能引用（按来源分组，MUL-16 §5） */}
-      <section className="space-y-3">
-        <h2 className="text-sm font-semibold">技能引用（按来源）</h2>
-        <p className="text-xs text-muted-foreground">
-          只读引用：openspace 自建 / plugin 带入 / 其他公司库来源。管理与安装仍在 Skills 页。
-        </p>
-        <div className="grid gap-3 md:grid-cols-3">
-          {(
-            [
-              ["openspace", "Openspace 自建", Boxes, groups.openspace],
-              ["plugin", "Plugin 带入", Plug, groups.plugin],
-              ["company", "公司库其他", Globe, groups.company],
-            ] as const
-          ).map(([kind, label, Icon, list]) => (
-            <div key={kind} className="rounded-lg border border-border p-3">
-              <h3 className="flex items-center gap-1.5 text-xs font-semibold">
-                <Icon className="h-3.5 w-3.5 text-muted-foreground" aria-hidden /> {label}
-                <span className="ml-auto text-muted-foreground">{list.length}</span>
-              </h3>
-              <ul className="mt-2 space-y-1">
-                {list.length === 0 ? (
-                  <li className="text-(length:--text-micro) text-muted-foreground">无</li>
-                ) : (
-                  list.slice(0, 8).map((s) => (
-                    <li key={s.id} className="truncate text-xs" title={s.name + (s.description ? ` — ${s.description}` : "")}>
-                      · {s.name}
-                    </li>
-                  ))
-                )}
-              </ul>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* wiki 引用（软链） */}
-      <section className="space-y-2">
-        <h2 className="text-sm font-semibold">Wiki 引用</h2>
-        <p className="text-xs text-muted-foreground">
-          LLM Wiki（个人知识库机制）当前{skills.some((s) => s.key.includes("llm-wiki")) ? "已随插件提供技能入口" : "未安装插件"}；
-          安装 plugin-llm-wiki 后此处与 Wiki 页互通，内容不复制只引用。
-        </p>
-      </section>
     </div>
   );
 }

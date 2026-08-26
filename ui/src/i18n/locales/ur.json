@@ -225,5 +225,16 @@
   "{{count}} agent": "{{count}} agent",
   "{{count}} agents": "{{count}} agents",
   "{{count}} agent attached": "{{count}} agent attached",
-  "{{count}} agents attached": "{{count}} agents attached"
+  "{{count}} agents attached": "{{count}} agents attached",
+  "New folder": "New folder",
+  "New folder inside…": "New folder inside…",
+  "All sources": "All sources",
+  "Studio": "Studio",
+  "New": "New",
+  "Create new skill": "Create new skill",
+  "Browse catalog": "Browse catalog",
+  "Import from path or URL": "Import from path or URL",
+  "Import skills from project": "Import skills from project",
+  "Select": "Select",
+  "Scan project workspaces for skills": "Scan project workspaces for skills"
 }

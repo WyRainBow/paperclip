@@ -54,7 +54,7 @@
   "Todo": "待处理",
   "In Progress": "进行中",
   "In Review": "评审中",
-  "Done": "已完成",
+  "Done": "完成",
   "Critical": "紧急",
   "Project default": "跟随项目默认",
   "New isolated workspace": "新建隔离工作区",
@@ -227,5 +227,14 @@
   "{{count}} agent attached": "已挂 {{count}} 个 Agent",
   "{{count}} agents attached": "已挂 {{count}} 个 Agent",
   "New folder": "新建文件夹",
-  "New folder inside…": "在此新建文件夹…"
+  "New folder inside…": "在此新建文件夹…",
+  "All sources": "全部来源",
+  "Studio": "Studio",
+  "New": "新建",
+  "Create new skill": "新建技能",
+  "Browse catalog": "浏览目录",
+  "Import from path or URL": "从路径或 URL 导入",
+  "Import skills from project": "从项目导入技能",
+  "Select": "选择",
+  "Scan project workspaces for skills": "扫描项目工作区里的技能"
 }
