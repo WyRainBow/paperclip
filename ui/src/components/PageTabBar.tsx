@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useSidebar } from "../context/SidebarContext";
+import { t } from "@/i18n";
 
 export interface PageTabItem {
   value: string;
@@ -27,7 +28,7 @@ export function PageTabBar({ items, value, onValueChange, align = "center" }: Pa
       >
         {items.map((item) => (
           <option key={item.value} value={item.value}>
-            {typeof item.label === "string" ? item.label : item.value}
+            {typeof item.label === "string" ? t(item.label) : item.value}
           </option>
         ))}
       </select>
@@ -38,7 +39,7 @@ export function PageTabBar({ items, value, onValueChange, align = "center" }: Pa
     <TabsList variant="line" className={align === "start" ? "justify-start" : undefined}>
       {items.map((item) => (
         <TabsTrigger key={item.value} value={item.value}>
-          {item.label}
+          {typeof item.label === "string" ? t(item.label) : item.label}
         </TabsTrigger>
       ))}
     </TabsList>

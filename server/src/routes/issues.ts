@@ -8779,6 +8779,7 @@ export function issueRoutes(
           agentName: assigneeAgent?.name ?? null,
           teamName: company?.name ?? null,
           goals: goal?.description ?? goal?.title ?? null,
+          language: (await instanceSettings.get()).general.agentOutputLanguage ?? null,
         });
         await svc.addComment(
           issue.id,

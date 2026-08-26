@@ -774,6 +774,36 @@ describe("renderPaperclipWakePrompt", () => {
     });
   });
 
+  it("renders a Simplified Chinese output directive when agentOutputLanguage is zh-CN", () => {
+    const base = {
+      reason: "issue_assigned",
+      issue: {
+        id: "issue-1",
+        identifier: "MUL-1",
+        title: "输出语言",
+        description: null,
+        descriptionTruncated: false,
+        status: "in_progress",
+      },
+      commentWindow: { requestedCount: 0, includedCount: 0, missingCount: 0 },
+      comments: [],
+      fallbackFetchNeeded: false,
+    };
+
+    expect(renderPaperclipWakePrompt(base)).not.toContain("output language:");
+    expect(renderPaperclipWakePrompt({ ...base, agentOutputLanguage: "en" })).not.toContain("简体中文");
+
+    const zh = renderPaperclipWakePrompt({ ...base, agentOutputLanguage: "zh-CN" });
+    expect(zh).toContain("output language:");
+    expect(zh).toContain("Simplified Chinese (简体中文)");
+    // Resume deltas carry the directive too: the setting can change between wakes.
+    expect(renderPaperclipWakePrompt({ ...base, agentOutputLanguage: "zh-CN" }, { resumedSession: true })).toContain(
+      "Simplified Chinese (简体中文)",
+    );
+    // Unknown values normalize to English (no directive).
+    expect(renderPaperclipWakePrompt({ ...base, agentOutputLanguage: "klingon" })).not.toContain("output language:");
+  });
+
   it("suppresses the issue description when the prompt already carries the task-context markdown", () => {
     const payload = {
       reason: "issue_assigned",

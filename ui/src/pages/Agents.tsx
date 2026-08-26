@@ -9,6 +9,7 @@ import { instanceSettingsApi } from "../api/instanceSettings";
 import { useCompany } from "../context/CompanyContext";
 import { useDialogActions } from "../context/DialogContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
+import { useTranslation } from "@/i18n";
 import { useSidebar } from "../context/SidebarContext";
 import { queryKeys } from "../lib/queryKeys";
 import { isPlatformManagedEnvironment } from "../lib/managed-sandbox-environment";
@@ -189,6 +190,7 @@ function filterOrgTree(nodes: OrgNode[], tab: FilterTab, builtInAgentIds: Set<st
 }
 
 export function Agents() {
+  const { t } = useTranslation();
   const { selectedCompanyId } = useCompany();
   const { openNewAgent } = useDialogActions();
   const { setBreadcrumbs } = useBreadcrumbs();
@@ -318,7 +320,7 @@ export function Agents() {
   }, [agents, environmentsById, environmentCapabilities, instanceSettings?.defaultEnvironmentId]);
 
   useEffect(() => {
-    setBreadcrumbs([{ label: "Agents" }]);
+    setBreadcrumbs([{ label: t("Agents") }]);
   }, [setBreadcrumbs]);
 
   useEffect(() => {
@@ -815,6 +817,7 @@ function AgentMetaColumns({
   environment: EnvironmentDescriptor;
   showEnvironment: boolean;
 }) {
+  const { t } = useTranslation();
   const model = getConfiguredModel(agent);
   const adapterLabel = getAdapterLabel(agent.adapterType);
   return (
@@ -833,10 +836,10 @@ function AgentMetaColumns({
       {showEnvironment && (
         <div className="w-44 min-w-0 leading-tight">
           <div className="truncate text-xs text-muted-foreground" title={environment.title}>
-            {environment.label}
+            {t(environment.label)}
           </div>
           <div className="truncate text-(length:--text-micro) text-muted-foreground/70">
-            {environment.detail}
+            {t(environment.detail)}
           </div>
         </div>
       )}

@@ -677,6 +677,18 @@ type PaperclipWakeRecovery = {
   routingFallbackReason: string | null;
 };
 
+// Mirror of the shared `AgentOutputLanguage` union without a package edge:
+// normalize stays defensive, unknown values fall back to "en".
+type AgentOutputLanguage = "en" | "zh-CN";
+const AGENT_OUTPUT_LANGUAGES: readonly AgentOutputLanguage[] = ["en", "zh-CN"];
+
+function normalizeAgentOutputLanguage(value: unknown): AgentOutputLanguage {
+  const candidate = asString(value, "en").trim();
+  return AGENT_OUTPUT_LANGUAGES.includes(candidate as AgentOutputLanguage)
+    ? candidate as AgentOutputLanguage
+    : "en";
+}
+
 type PaperclipWakePayload = {
   reason: string | null;
   recovery: PaperclipWakeRecovery | null;
@@ -685,6 +697,9 @@ type PaperclipWakePayload = {
   // Experimental: write user-interaction content in ASD-STE100 Simplified
   // Technical English with brief decision context.
   simplifiedEnglishInteractions: boolean;
+  // Preferred language for agent-authored user-facing content; "en" leaves
+  // agents' natural language untouched.
+  agentOutputLanguage: string;
   dependencyBlockedInteraction: boolean;
   treeHoldInteraction: boolean;
   activeTreeHold: PaperclipWakeTreeHoldSummary | null;
@@ -1374,6 +1389,7 @@ export function normalizePaperclipWakePayload(value: unknown): PaperclipWakePayl
     issue: normalizePaperclipWakeIssue(payload.issue),
     checkedOutByHarness: asBoolean(payload.checkedOutByHarness, false),
     simplifiedEnglishInteractions: asBoolean(payload.simplifiedEnglishInteractions, false),
+    agentOutputLanguage: normalizeAgentOutputLanguage(payload.agentOutputLanguage),
     dependencyBlockedInteraction: asBoolean(payload.dependencyBlockedInteraction, false),
     treeHoldInteraction: asBoolean(payload.treeHoldInteraction, false),
     activeTreeHold,
@@ -1685,6 +1701,11 @@ export function renderPaperclipWakePrompt(
   if (normalized.simplifiedEnglishInteractions) {
     lines.push(
       "- interaction language (experimental): write every user interaction you post (request_confirmation, ask_user_questions, suggest_tasks, checkbox prompts and options, and any other content rendered inside an interaction block) in ASD-STE100 Simplified Technical English. In each interaction, briefly tell the user what information they need to make the decision and what happens for each choice. This applies only to interaction content — write your thinking, comments, documents, and other responses in your usual style.",
+    );
+  }
+  if (normalized.agentOutputLanguage === "zh-CN") {
+    lines.push(
+      "- output language: write all user-facing content you author in Simplified Chinese (简体中文) — issue comments, documents and plans, interaction blocks (request_confirmation, ask_user_questions, suggest_tasks, checkbox prompts and options), issue titles and summaries you create, and commit messages you write for human reviewers. Keep code, shell commands, file paths, API identifiers, log excerpts, and technical proper nouns in their original language. Your internal reasoning may stay in whatever language is most reliable; the deliverable text the board reads must be Simplified Chinese.",
     );
   }
   if (normalized.dependencyBlockedInteraction) {

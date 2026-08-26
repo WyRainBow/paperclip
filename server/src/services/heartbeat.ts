@@ -5645,6 +5645,9 @@ export async function buildPaperclipWakePayload(input: {
   // Experimental: agents write user-interaction content in ASD-STE100
   // Simplified Technical English (rendered as a prompt directive downstream).
   simplifiedEnglishInteractions?: boolean;
+  // Preferred language for agent-authored user-facing content (rendered as a
+  // prompt directive downstream). Absent/"en" leaves agents' natural language.
+  agentOutputLanguage?: string | null;
 }) {
   const executionStage = parseObject(input.contextSnapshot.executionStage);
   const commentIds = extractWakeCommentIds(input.contextSnapshot);
@@ -5930,6 +5933,7 @@ export async function buildPaperclipWakePayload(input: {
     checkboxSelection: Object.keys(checkboxSelection).length > 0 ? checkboxSelection : null,
     checkedOutByHarness: input.contextSnapshot[PAPERCLIP_HARNESS_CHECKOUT_KEY] === true,
     simplifiedEnglishInteractions: input.simplifiedEnglishInteractions === true,
+    agentOutputLanguage: readNonEmptyString(input.agentOutputLanguage) ?? "en",
     dependencyBlockedInteraction: input.contextSnapshot.dependencyBlockedInteraction === true,
     treeHoldInteraction: input.contextSnapshot.treeHoldInteraction === true,
     activeTreeHold: parseObject(input.contextSnapshot.activeTreeHold),
@@ -14239,6 +14243,7 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
           )
         : null;
     const experimentalInstanceSettings = await instanceSettings.getExperimental();
+    const generalInstanceSettings = (await instanceSettings.get()).general;
     const isolatedWorkspacesEnabled = experimentalInstanceSettings.enableIsolatedWorkspaces;
     const parsedIssueExecutionWorkspaceSettings = parseIssueExecutionWorkspaceSettings(
       issueContext?.executionWorkspaceSettings,
@@ -14442,6 +14447,7 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
         : null,
       exposeLowTrustRaw,
       simplifiedEnglishInteractions: experimentalInstanceSettings.enableSimplifiedEnglishInteractions === true,
+      agentOutputLanguage: generalInstanceSettings?.agentOutputLanguage ?? null,
     });
     if (paperclipWakePayload) {
       context[PAPERCLIP_WAKE_PAYLOAD_KEY] = paperclipWakePayload;
