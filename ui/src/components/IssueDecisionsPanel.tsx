@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { CheckCircle2, ChevronDown, CircleDashed, CircleSlash, Clock } from "lucide-react";
 import type { Agent } from "@paperclipai/shared";
 import { decisionsApi, type DecisionListItem } from "@/api/decisions";
+import { agentsApi } from "@/api/agents";
 import { MarkdownBody } from "@/components/MarkdownBody";
 import { AgentIcon, agentCustomIcon } from "@/components/AgentIconPicker";
 import { absoluteTimestamp, cn } from "@/lib/utils";
@@ -27,6 +28,20 @@ export function IssueDecisionsPanel({
     enabled: Boolean(companyId && issueId),
   });
 
+  // Terminated agents still get named on decision records: the active-only
+  // agentMap prop would turn a terminated recommender into a raw fallback.
+  const terminatedInclusiveAgents = useQuery({
+    queryKey: ["agents", companyId, "with-terminated"],
+    queryFn: () => agentsApi.list(companyId, { includeTerminated: true }),
+    enabled: Boolean(companyId),
+  });
+  const mergedAgentMap = useMemo(() => {
+    const map = new Map<string, Agent>();
+    for (const agent of terminatedInclusiveAgents.data ?? []) map.set(agent.id, agent);
+    for (const [id, agent] of agentMap ?? []) if (!map.has(id)) map.set(id, agent);
+    return map;
+  }, [terminatedInclusiveAgents.data, agentMap]);
+
   const decisions = decisionsQuery.data ?? [];
 
   if (decisionsQuery.isLoading) {
@@ -44,7 +59,7 @@ export function IssueDecisionsPanel({
   return (
     <ul className="space-y-3">
       {decisions.map((decision) => (
-        <DecisionRow key={decision.id} decision={decision} agentMap={agentMap} />
+        <DecisionRow key={decision.id} decision={decision} agentMap={mergedAgentMap} />
       ))}
     </ul>
   );

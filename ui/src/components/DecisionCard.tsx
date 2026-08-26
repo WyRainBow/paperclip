@@ -423,26 +423,35 @@ export function DecisionCard({
           to answer "which one, by whom, and what was recommended"; that one
           line is exactly what a reader scanning decision history wants. */}
       {isCollapsed && (chosenOption || recommendedOption) && (
-        <p className="mt-2 text-sm">
+        <div className="mt-2 space-y-1">
           {chosenOption && (
-            <>
-              <span className="text-muted-foreground">选了 </span>
-              <span className="font-medium text-foreground">{chosenOption.label}</span>
-              {decidedByAgentName && (
-                <span className="text-muted-foreground"> · 由 {decidedByAgentName} 裁决</span>
+            <p className="text-sm">
+              {decidedByAgentName ? (
+                <>
+                  <span className="text-muted-foreground">已由 </span>
+                  <span className="font-medium text-foreground">{decidedByAgentName}</span>
+                  <span className="text-muted-foreground"> 裁决：选了 </span>
+                </>
+              ) : (
+                <span className="text-muted-foreground">选了 </span>
               )}
-            </>
+              <span className="font-medium text-foreground">{chosenOption.label}</span>
+              {decision.decidedAt && (
+                <span className="tabular-nums text-muted-foreground"> · {absoluteTimestamp(decision.decidedAt)}</span>
+              )}
+            </p>
           )}
           {recommendedOption && (
-            <span className="text-muted-foreground">
-              {chosenOption ? " · " : ""}
+            <p className="text-(length:--text-micro) text-muted-foreground">
               {recommendedBy?.name ?? "提案 agent"} 推荐 {recommendedOption.label}
-              {chosenOption && chosenOption.id !== recommendedOption.id && (
-                <span className="text-amber-700 dark:text-amber-300">（未采纳）</span>
-              )}
-            </span>
+              {chosenOption
+                ? chosenOption.id === recommendedOption.id
+                  ? <span className="text-emerald-700 dark:text-emerald-300"> · 已采纳</span>
+                  : <span className="text-amber-700 dark:text-amber-300"> · 裁决未采纳</span>
+                : null}
+            </p>
           )}
-        </p>
+        </div>
       )}
 
       {/* Body */}

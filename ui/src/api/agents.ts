@@ -107,7 +107,8 @@ function agentPath(id: string, companyId?: string, suffix = "") {
 }
 
 export const agentsApi = {
-  list: (companyId: string) => api.get<Agent[]>(`/companies/${companyId}/agents`),
+  list: (companyId: string, options?: { includeTerminated?: boolean }) =>
+    api.get<Agent[]>(`/companies/${companyId}/agents${options?.includeTerminated ? "?includeTerminated=true" : ""}`),
   org: (companyId: string) => api.get<OrgNode[]>(`/companies/${companyId}/org`),
   listConfigurations: (companyId: string) =>
     api.get<Record<string, unknown>[]>(`/companies/${companyId}/agent-configurations`),

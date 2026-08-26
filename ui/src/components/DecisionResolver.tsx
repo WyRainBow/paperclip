@@ -3,6 +3,7 @@ import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/rea
 import { Loader2 } from "lucide-react";
 import { decisionEffectTargetIssueIds, type Agent, type AttentionSubject } from "@paperclipai/shared";
 import { decisionsApi, type DecisionOutcome } from "../api/decisions";
+import { agentsApi } from "../api/agents";
 import { agentCustomIcon } from "./AgentIconPicker";
 import { issuesApi } from "../api/issues";
 import { queryKeys } from "../lib/queryKeys";
@@ -134,6 +135,21 @@ export function DecisionResolver({ companyId, decisionId, originIssue, agentMap,
     return refs.every((ref): ref is DecisionIssueRef => ref !== null) ? refs : null;
   }, [decision?.targetSnapshots, resolveIssue]);
 
+  // Attribution must resolve terminated agents too: decision history names a
+  // proposer/decider whose agent may since have been terminated, and the
+  // active-only agentMap would render a raw UUID instead of the name.
+  const terminatedInclusiveAgents = useQuery({
+    queryKey: ["agents", companyId, "with-terminated"],
+    queryFn: () => agentsApi.list(companyId, { includeTerminated: true }),
+    enabled: Boolean(companyId),
+  });
+  const mergedAgentMap = useMemo(() => {
+    const map = new Map<string, Agent>();
+    for (const agent of terminatedInclusiveAgents.data ?? []) map.set(agent.id, agent);
+    for (const [id, agent] of agentMap ?? []) if (!map.has(id)) map.set(id, agent);
+    return map;
+  }, [terminatedInclusiveAgents.data, agentMap]);
+
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: queryKeys.decisions.detail(decisionId) });
     queryClient.invalidateQueries({ queryKey: queryKeys.decisions.list(companyId, "open") });
@@ -193,15 +209,15 @@ export function DecisionResolver({ companyId, decisionId, originIssue, agentMap,
       targetChanged={targetChanged}
       resolveIssue={resolveIssue}
       cancelTreePreview={cancelTreePreview}
-      originAgentName={agentMap?.get(decision.originAgentId)?.name ?? null}
+      originAgentName={mergedAgentMap.get(decision.originAgentId)?.name ?? null}
       resolveAgent={(agentId) => {
-        const agent = agentMap?.get(agentId);
+        const agent = mergedAgentMap.get(agentId);
         if (!agent) return null;
         return { name: agent.name, icon: agent.icon ?? null, customIconUrl: agentCustomIcon(agent) };
       }}
       decidedByAgentName={
         decision.decidedByAgentId
-          ? agentMap?.get(decision.decidedByAgentId)?.name ?? decision.decidedByAgentId
+          ? mergedAgentMap.get(decision.decidedByAgentId)?.name ?? decision.decidedByAgentId
           : null
       }
       originIssue={
