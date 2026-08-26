@@ -164,6 +164,23 @@ export function TeamWiki({ fixedSpace }: { fixedSpace?: Space } = {}) {
   const pages = pagesQuery.data ?? [];
   const meta = SPACE_META[space];
 
+  // Personal entry: tabs per tool (first path segment), so four global
+  // directive files don't stack into one long scroll (user 2026-08-26).
+  const tools = fixedSpace
+    ? [...new Set(pages.map((p) => p.path.split("/")[0]))].sort()
+    : [];
+  const [toolTab, setToolTab] = useState<string>("all");
+  const visiblePages = fixedSpace && toolTab !== "all"
+    ? pages.filter((p) => p.path.split("/")[0] === toolTab)
+    : pages;
+
+  // Team spaces: directory grouping — the path's first segment becomes the
+  // section header; root-level pages render above the sections.
+  const rootPages = visiblePages.filter((p) => !p.path.includes("/"));
+  const dirGroups = [...new Set(
+    visiblePages.filter((p) => p.path.includes("/")).map((p) => p.path.split("/")[0]),
+  )].sort();
+
   return (
     <div className="mx-auto w-full max-w-4xl space-y-6 px-6 py-8">
       <header className="space-y-1">
@@ -263,8 +280,27 @@ export function TeamWiki({ fixedSpace }: { fixedSpace?: Space } = {}) {
                 : "还没有页面。写给人看的文档：架构、接口、部署、排障，以及人要守的约定。"}
         </p>
       ) : (
+        <>
+        {fixedSpace ? (
+          <div role="tablist" className="flex flex-wrap gap-1 border-b border-border pb-2" data-testid="personal-tool-tabs">
+            {[{ id: "all", label: `全部 ${pages.length}` }].concat(
+              tools.map((t) => ({ id: t, label: `${t} ${pages.filter((p) => p.path.split("/")[0] === t).length}` })),
+            ).map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                role="tab"
+                aria-selected={toolTab === t.id}
+                onClick={() => setToolTab(t.id)}
+                className={`rounded-md px-3 py-1 text-sm transition-colors ${toolTab === t.id ? "bg-accent font-medium text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+        ) : null}
         <ul className="space-y-3">
-          {pages.map((page) => (
+          {(fixedSpace ? visiblePages : rootPages).map((page) => (
             <li key={page.id} className="rounded-lg border border-border p-4">
               {editing === page.id ? (
                 <PageEditor
@@ -327,7 +363,55 @@ export function TeamWiki({ fixedSpace }: { fixedSpace?: Space } = {}) {
               )}
             </li>
           ))}
+        {(fixedSpace ? [] : dirGroups.map((dir) => (
+          <li key={`dir-${dir}`} className="rounded-lg border border-border/60 bg-muted/10 p-3">
+            <details open>
+              <summary className="cursor-pointer select-none text-sm font-semibold text-foreground" data-testid="wiki-dir-group">
+                {dir}
+                <span className="ml-2 font-mono text-(length:--text-micro) text-muted-foreground">
+                  {visiblePages.filter((p) => p.path.split("/")[0] === dir).length} 页
+                </span>
+              </summary>
+              <ul className="mt-2 space-y-2">
+                {visiblePages.filter((p) => p.path.split("/")[0] === dir).map((page) => (
+                  <li key={page.id} className="rounded-lg border border-border bg-background p-4">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="truncate font-mono text-(length:--text-micro) text-muted-foreground">{page.path}</p>
+                        <h3 className="text-sm font-semibold">{page.title}</h3>
+                      </div>
+                      <div className="flex shrink-0 gap-1">
+                        <Button
+                          size="icon-xs"
+                          variant="ghost"
+                          aria-label="版本历史"
+                          title="版本历史"
+                          onClick={() => setHistoryFor((current) => (current === page.id ? null : page.id))}
+                        >
+                          <History className="h-3.5 w-3.5" aria-hidden />
+                        </Button>
+                        <Button size="icon-xs" variant="ghost" aria-label="编辑" onClick={() => setEditing(page.id)}>
+                          <Pencil className="h-3.5 w-3.5" aria-hidden />
+                        </Button>
+                      </div>
+                    </div>
+                    {historyFor === page.id ? (
+                      <PageVersions
+                        companyId={selectedCompanyId}
+                        space={space}
+                        pageId={page.id}
+                        agentNames={agentNames}
+                        onRestored={invalidatePages}
+                      />
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          </li>
+        )))}
         </ul>
+        </>
       )}
     </div>
   );
