@@ -101,6 +101,7 @@ function createIssue(overrides: Partial<Issue> = {}): Issue {
     executionLockedAt: null,
     createdByAgentId: null,
     createdByUserId: null,
+    createdBySession: null,
     issueNumber: null,
     identifier: "PAP-1",
     requestDepth: 0,

@@ -49,6 +49,7 @@ function createIssue(index: number, status: IssueStatus): Issue {
     responsibleUserId: null,
     createdByAgentId: null,
     createdByUserId: null,
+    createdBySession: null,
     issueNumber: index,
     requestDepth: 0,
     billingCode: null,

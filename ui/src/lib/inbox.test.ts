@@ -197,6 +197,7 @@ function makeIssue(id: string, isUnreadForMe: boolean): Issue {
     responsibleUserId: null,
     createdByAgentId: null,
     createdByUserId: null,
+    createdBySession: null,
     issueNumber: 1,
     identifier: `PAP-${id}`,
     requestDepth: 0,

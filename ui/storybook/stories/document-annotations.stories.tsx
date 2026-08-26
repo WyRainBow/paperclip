@@ -246,6 +246,7 @@ function makeIntegratedIssue(): Issue {
     executionLockedAt: null,
     createdByAgentId: null,
     createdByUserId: "user-1",
+    createdBySession: null,
     issueNumber: 9402,
     identifier: "PAP-9402",
     requestDepth: 0,

@@ -729,6 +729,7 @@ export function createIssue(overrides: Partial<Issue> = {}): Issue {
     executionLockedAt: recent(28),
     createdByAgentId: null,
     createdByUserId: "user-board",
+    createdBySession: null,
     issueNumber: 1641,
     identifier: "PAP-1641",
     requestDepth: 0,

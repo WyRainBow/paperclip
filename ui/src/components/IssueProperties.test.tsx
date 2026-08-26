@@ -243,6 +243,7 @@ function createIssue(overrides: Partial<Issue> = {}): Issue {
     executionLockedAt: null,
     createdByAgentId: null,
     createdByUserId: "user-1",
+    createdBySession: null,
     issueNumber: 1,
     identifier: "PAP-1",
     requestDepth: 0,
@@ -637,6 +638,7 @@ describe("IssueProperties", () => {
       issue: createIssue({
         assigneeAgentId: "agent-1",
         createdByUserId: "user-1",
+        createdBySession: null,
         responsibleUserId: "user-2",
       }),
       childIssues: [],
@@ -664,6 +666,7 @@ describe("IssueProperties", () => {
     const root = renderProperties(container, {
       issue: createIssue({
         createdByUserId: "user-1",
+        createdBySession: null,
         responsibleUserId: null,
       }),
       childIssues: [],
@@ -690,6 +693,7 @@ describe("IssueProperties", () => {
       issue: createIssue({
         createdByAgentId: "agent-1",
         createdByUserId: null,
+        createdBySession: null,
         responsibleUserId: null,
       }),
       childIssues: [],
@@ -717,6 +721,7 @@ describe("IssueProperties", () => {
       issue: createIssue({
         createdByAgentId: "agent-1",
         createdByUserId: null,
+        createdBySession: null,
         responsibleUserId: "user-2",
       }),
       childIssues: [],
@@ -741,6 +746,7 @@ describe("IssueProperties", () => {
       issue: createIssue({
         createdByAgentId: null,
         createdByUserId: null,
+        createdBySession: null,
         responsibleUserId: "user-2",
       }),
       childIssues: [],

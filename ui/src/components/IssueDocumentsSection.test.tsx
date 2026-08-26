@@ -258,6 +258,7 @@ function createIssue(): Issue {
     responsibleUserId: null,
     createdByAgentId: null,
     createdByUserId: "user-1",
+    createdBySession: null,
     issueNumber: 807,
     requestDepth: 0,
     billingCode: null,

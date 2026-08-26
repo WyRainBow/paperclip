@@ -339,6 +339,7 @@ function createIssue(overrides: Partial<Issue> = {}): Issue {
     responsibleUserId: null,
     createdByAgentId: null,
     createdByUserId: null,
+    createdBySession: null,
     issueNumber: 1000,
     originKind: "routine_execution",
     originId: "routine-1",
