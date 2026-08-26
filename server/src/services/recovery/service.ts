@@ -4602,9 +4602,9 @@ export function recoveryService(db: Db, deps: { enqueueWakeup: RecoveryWakeup })
             notice: {
               body:
                 "Paperclip automatically retried dispatch for this assigned `todo` issue after a lost wake/run, " +
-                "but it still has no live execution path. " +
+                "，但仍没有活的执行路径。" +
                 "Moving it to `blocked` so it is visible for intervention.",
-              title: "No live execution path",
+              title: "没有活的执行路径",
               tone: "danger",
             },
           });
@@ -4710,7 +4710,7 @@ export function recoveryService(db: Db, deps: { enqueueWakeup: RecoveryWakeup })
               latestRun: successfulRun,
               comment:
                 "Paperclip automatically retried continuation for this assigned `in_progress` issue and the retry " +
-                "made progress, but it still has no live execution path. Moving it to `blocked` so it is visible for intervention.",
+                "有进展但仍没有活的执行路径。已移至 `blocked` 以便人工介入。",
             });
             if (updated) {
               result.escalated += 1;
@@ -4808,9 +4808,9 @@ export function recoveryService(db: Db, deps: { enqueueWakeup: RecoveryWakeup })
               notice: {
                 body:
                   "Paperclip automatically retried continuation for this assigned `in_progress` issue after its live " +
-                  `execution disappeared, but it still has no live execution path${attemptCopy}. ` +
+                  `执行路径消失，但仍没有活的执行路径${attemptCopy}。` +
                   "Moving it to `blocked` so it is visible for intervention.",
-                title: "No live execution path",
+                title: "没有活的执行路径",
                 tone: "danger",
               },
             });

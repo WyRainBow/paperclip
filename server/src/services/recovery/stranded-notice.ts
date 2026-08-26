@@ -39,13 +39,13 @@ export function buildImmediateExecutionPathRecoveryNoticeSeed(input: {
   status: "todo" | "in_progress";
 }): StrandedRecoveryNoticeSeed {
   const retryDescription = input.status === "todo"
-    ? "Paperclip automatically retried dispatch for this assigned `todo` issue during terminal run recovery"
-    : "Paperclip automatically retried continuation for this assigned `in_progress` issue during terminal run recovery";
+    ? "Paperclip 在终端运行恢复期间自动重派了这张指派中的 `todo` 卡"
+    : "Paperclip 在终端运行恢复期间自动重试了这张进行中（`in_progress`）卡的续跑";
   return {
     body:
-      `${retryDescription}, but it still has no live execution path. ` +
-      "Moving it to `blocked` so it is visible for intervention.",
-    title: "No live execution path",
+      `${retryDescription}，但仍没有活的执行路径。` +
+      "已移至 `blocked` 以便人工介入。",
+    title: "没有活的执行路径",
     tone: "danger",
   };
 }
