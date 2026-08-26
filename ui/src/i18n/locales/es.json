@@ -305,5 +305,6 @@
   "Expired": "Expired",
   "Expires in {{n}}m": "Expires in {{n}}m",
   "Expires in {{n}}h": "Expires in {{n}}h",
-  "Expires in {{n}}d": "Expires in {{n}}d"
+  "Expires in {{n}}d": "Expires in {{n}}d",
+  "Team Wiki": "Team Wiki"
 }

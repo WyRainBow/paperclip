@@ -24,6 +24,7 @@ import {
   GanttChartSquare,
   LayoutGrid,
   Globe,
+  BookOpen,
   Scale,
 } from "lucide-react";
 import { useState } from "react";
@@ -249,6 +250,7 @@ export function Sidebar() {
           <SidebarNavItem to="/artifacts" label={t("Artifacts")} icon={Package} />
           <SidebarNavItem to="/skills" label={t("Skills")} icon={Boxes} />
           <SidebarNavItem to="/team-rules" label={t("Team Rules")} icon={Scale} />
+          <SidebarNavItem to="/team-wiki" label={t("Team Wiki")} icon={BookOpen} />
           {showWorkspacesLink ? (
             <SidebarNavItem to="/workspaces" label={t("Workspaces")} icon={GitBranch} />
           ) : null}

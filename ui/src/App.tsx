@@ -70,6 +70,7 @@ import { GatewayDetail } from "./pages/apps/gateways/GatewayDetail";
 import { CompanyInvites } from "./pages/CompanyInvites";
 import { CompanySkills } from "./pages/CompanySkills";
 import { TeamRules } from "./pages/TeamRules";
+import { TeamWiki } from "./pages/TeamWiki";
 import { SkillStudio } from "./pages/SkillStudio";
 import { Secrets } from "./pages/Secrets";
 import { CompanyImport } from "./pages/CompanyImport";
@@ -189,6 +190,10 @@ function boardRoutes() {
       <Route path="skills/:skillId/studio" element={<LegacySkillStudioRedirect />} />
       <Route path="skills/*" element={<CompanySkills />} />
       <Route path="team-rules" element={<TeamRules />} />
+      {/* Bare /team-wiki lands on the human-facing space; the space is a path
+          segment so a link to either one survives sharing and reload. */}
+      <Route path="team-wiki" element={<Navigate to="paperclip" replace />} />
+      <Route path="team-wiki/:space" element={<TeamWiki />} />
       <Route path="settings" element={<LegacySettingsRedirect />} />
       <Route path="settings/*" element={<LegacySettingsRedirect />} />
       <Route path="plugins/:pluginId" element={<PluginPage />} />

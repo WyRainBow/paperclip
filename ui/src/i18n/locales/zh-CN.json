@@ -305,5 +305,6 @@
   "Expired": "已过期",
   "Expires in {{n}}m": "{{n}} 分钟后过期",
   "Expires in {{n}}h": "{{n}} 小时后过期",
-  "Expires in {{n}}d": "{{n}} 天后过期"
+  "Expires in {{n}}d": "{{n}} 天后过期",
+  "Team Wiki": "Team Wiki"
 }
