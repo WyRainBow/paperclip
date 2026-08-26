@@ -152,7 +152,6 @@
   "Explain why this subtree control is being applied...": "Explain why this subtree control is being applied...",
   "Comment failed": "Comment failed",
   "Comment deleted": "Comment deleted",
-  "Openspace": "Openspace",
   "No company selected. Select a company from the switcher above.": "No company selected. Select a company from the switcher above.",
   "Appearance": "Appearance",
   "Hiring": "Hiring",
@@ -242,5 +241,6 @@
   "Sending this comment will wake {{name}} for triage while the subtree remains paused.": "Sending this comment will wake {{name}} for triage while the subtree remains paused.",
   "the assignee": "the assignee",
   "Assign an agent to wake them for triage while the subtree remains paused.": "Assign an agent to wake them for triage while the subtree remains paused.",
-  "This issue's isolated workspace was archived. Your next comment or resume reopens it and rebuilds the worktree.": "This issue's isolated workspace was archived. Your next comment or resume reopens it and rebuilds the worktree."
+  "This issue's isolated workspace was archived. Your next comment or resume reopens it and rebuilds the worktree.": "This issue's isolated workspace was archived. Your next comment or resume reopens it and rebuilds the worktree.",
+  "Team Rules": "Team Rules"
 }

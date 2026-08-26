@@ -279,7 +279,7 @@ type AgentDetailView = "dashboard" | "instructions" | "configuration" | "secrets
 
 export const AGENT_DETAIL_TABS: ReadonlyArray<{ value: AgentDetailView; label: string }> = [
   { value: "dashboard", label: "Dashboard" },
-  { value: "instructions", label: "Instructions" },
+  { value: "instructions", label: "Brief" },
   { value: "skills", label: "Skills" },
   { value: "configuration", label: "Configuration" },
   { value: "secrets", label: "Secrets" },
@@ -1067,7 +1067,7 @@ export function AgentDetail() {
         crumbs.push({ label: "Runs", href: `/agents/${canonicalAgentRef}/runs` });
         crumbs.push({ label: `Run ${urlRunId.slice(0, 8)}` });
       } else if (activeView === "instructions") {
-        crumbs.push({ label: "Instructions" });
+        crumbs.push({ label: "Brief" });
       } else if (activeView === "configuration") {
         crumbs.push({ label: "Configuration" });
       } else if (activeView === "secrets") {
@@ -2643,7 +2643,7 @@ export function PromptsTab({
         </div>
       )}
       <p className="text-xs text-muted-foreground">
-        Saved instructions affect the next run. Active runs keep the instructions they started with, and instruction changes may start a fresh adapter session.
+        Saved brief affects the next run. Active runs keep the brief they started with, and brief changes may start a fresh adapter session.
       </p>
 
       <Collapsible defaultOpen={currentMode === "external"}>
@@ -2662,7 +2662,7 @@ export function PromptsTab({
                       <HelpCircle className="h-3 w-3 text-muted-foreground cursor-help" />
                     </TooltipTrigger>
                     <TooltipContent side="right" sideOffset={4}>
-                      Managed: Paperclip stores and serves the instructions bundle. External: you provide a path on disk where the instructions live.
+                      Managed: Paperclip stores and serves the brief bundle. External: you provide a path on disk where the brief lives.
                     </TooltipContent>
                   </Tooltip>
                 </span>
@@ -2717,7 +2717,7 @@ export function PromptsTab({
                       <HelpCircle className="h-3 w-3 text-muted-foreground cursor-help" />
                     </TooltipTrigger>
                     <TooltipContent side="right" sideOffset={4}>
-                      The absolute directory on disk where the instructions bundle lives. In managed mode this is set by Paperclip automatically.
+                      The absolute directory on disk where the brief bundle lives. In managed mode this is set by Paperclip automatically.
                     </TooltipContent>
                   </Tooltip>
                 </span>
@@ -2766,7 +2766,7 @@ export function PromptsTab({
                       <HelpCircle className="h-3 w-3 text-muted-foreground cursor-help" />
                     </TooltipTrigger>
                     <TooltipContent side="right" sideOffset={4}>
-                      The main file the agent reads first when loading instructions. Defaults to AGENTS.md.
+                      The main file the agent reads first when loading its brief. Defaults to AGENTS.md.
                     </TooltipContent>
                   </Tooltip>
                 </span>

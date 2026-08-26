@@ -242,5 +242,6 @@
   "the assignee": "负责人",
   "Assign an agent to wake them for triage while the subtree remains paused.": "指派一个 Agent 才能唤醒它分诊，子树仍保持暂停。",
   "This issue's isolated workspace was archived. Your next comment or resume reopens it and rebuilds the worktree.": "这个任务的隔离工作区已归档。你下一条评论或恢复操作会重新打开它并重建工作树。",
-  "Team Rules": "团队规则"
+  "Team Rules": "团队规则",
+  "Brief": "角色简报"
 }
