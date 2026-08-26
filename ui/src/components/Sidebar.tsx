@@ -252,6 +252,7 @@ export function Sidebar() {
             />
           ) : null}
           <SidebarNavItem to="/artifacts" label={t("Artifacts")} icon={Package} />
+          <SidebarNavItem to="/skills" label={t("Skills")} icon={Boxes} />
           {showWorkspacesLink ? (
             <SidebarNavItem to="/workspaces" label={t("Workspaces")} icon={GitBranch} />
           ) : null}
@@ -279,7 +280,7 @@ export function Sidebar() {
         <SidebarSection label="TeamWorkSpace" collapsible={{ open: teamWorkspaceOpen, onOpenChange: setTeamWorkspaceOpen }}>
           <SidebarNavItem to="/team-rules" label={t("Team Rules")} icon={Scale} />
           <SidebarNavItem to="/team-wiki" label={t("Team Wiki")} icon={BookOpen} />
-          <SidebarNavItem to="/skills" label={t("Skills")} icon={Boxes} />
+          <SidebarNavItem to="/team-skills" label="TeamSkill" icon={Boxes} />
           <SidebarNavItem to="/hooks" label={t("Hooks")} icon={Webhook} />
         </SidebarSection>
 

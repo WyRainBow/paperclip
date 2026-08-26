@@ -355,11 +355,12 @@ describe("Sidebar", () => {
     const companySection = sections.find((section) => section.textContent?.startsWith("Company"));
     const teamSection = sections.find((section) => section.textContent?.startsWith("TeamWorkSpace"));
     // Skills/Team Rules/Team Wiki/Hooks live in the TeamWorkSpace group, not Work (MUL-39).
-    expect(teamSection?.textContent).toContain("Skills");
+    expect(teamSection?.textContent).toContain("TeamSkill");
     expect(teamSection?.textContent).toContain("Team Rules");
     expect(teamSection?.textContent).toContain("Team Wiki");
     expect(teamSection?.textContent).toContain("Hooks");
-    expect(workSection?.textContent).not.toContain("Skills");
+    expect(workSection?.textContent).toContain("Skills");
+    expect(teamSection?.textContent).not.toContain("Skills");
     expect(companySection?.textContent).not.toContain("Skills");
 
     flushSync(() => {

@@ -71,6 +71,7 @@ import { CompanyInvites } from "./pages/CompanyInvites";
 import { CompanySkills } from "./pages/CompanySkills";
 import { TeamRules } from "./pages/TeamRules";
 import { Hooks } from "./pages/Hooks";
+import { TeamSkills } from "./pages/TeamSkills";
 import { PersonalFiles } from "./pages/PersonalFiles";
 import { TeamWiki } from "./pages/TeamWiki";
 import { SkillStudio } from "./pages/SkillStudio";
@@ -194,6 +195,7 @@ function boardRoutes() {
       <Route path="skills/:skillId/studio" element={<LegacySkillStudioRedirect />} />
       <Route path="skills/*" element={<CompanySkills />} />
       <Route path="team-rules" element={<TeamRules />} />
+      <Route path="team-skills" element={<TeamSkills />} />
       <Route path="hooks" element={<Hooks />} />
       {/* Bare /team-wiki lands on the human-facing space; the space is a path
           segment so a link to either one survives sharing and reload. */}
