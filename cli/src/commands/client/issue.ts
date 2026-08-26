@@ -24,6 +24,7 @@ import {
   updateIssueWorkProductSchema,
   type Issue,
   type IssueComment,
+  type Project,
   upsertIssueDocumentSchema,
   upsertIssueFeedbackVoteSchema,
 } from "@paperclipai/shared";
@@ -56,6 +57,7 @@ interface IssueCreateOptions extends BaseClientOptions {
   status?: string;
   priority?: string;
   assigneeAgentId?: string;
+  project?: string;
   projectId?: string;
   goalId?: string;
   parentId?: string;
@@ -296,7 +298,11 @@ export function registerIssueCommands(program: Command): void {
       .option("--status <status>", "Issue status")
       .option("--priority <priority>", "Issue priority")
       .option("--assignee-agent-id <id>", "Assignee agent ID")
-      .option("--project-id <id>", "Project ID")
+      .option(
+        "--project <name|id>",
+        "Project name, shortname (urlKey), or ID. Required for a top-level issue; a sub-issue inherits its parent's project",
+      )
+      .option("--project-id <id>", "Project ID (raw UUID; prefer --project)")
       .option("--goal-id <id>", "Goal ID")
       .option("--parent-id <id>", "Parent issue ID")
       .option("--request-depth <n>", "Request depth integer")
@@ -304,13 +310,46 @@ export function registerIssueCommands(program: Command): void {
       .action(async (opts: IssueCreateOptions) => {
         try {
           const ctx = resolveCommandContext(opts, { requireCompany: true });
+          if (opts.project && opts.projectId) {
+            throw new Error("pass either --project or --project-id, not both");
+          }
+          let projectId = opts.projectId;
+          const listProjects = async () =>
+            (await ctx.api.get<Project[]>(apiPath`/api/companies/${ctx.companyId}/projects`)) ?? [];
+          const describeProjects = (projects: Project[]) =>
+            projects.length > 0
+              ? projects.map((p) => `${p.name} (${p.urlKey})`).join(", ")
+              : "no projects yet — create one with `project create`";
+          if (opts.project) {
+            const ref = opts.project.trim();
+            const projects = await listProjects();
+            const hit = projects.find(
+              (p) =>
+                p.id === ref ||
+                p.name.toLowerCase() === ref.toLowerCase() ||
+                p.urlKey.toLowerCase() === ref.toLowerCase(),
+            );
+            if (!hit) {
+              throw new Error(`project not found: ${ref}. This company has: ${describeProjects(projects)}`);
+            }
+            projectId = hit.id;
+          } else if (!projectId && opts.parentId) {
+            const parent = await ctx.api.get<Issue>(apiPath`/api/issues/${opts.parentId}`);
+            projectId = parent?.projectId ?? undefined;
+          }
+          if (!projectId) {
+            const projects = await listProjects();
+            throw new Error(
+              `project is required: every issue belongs to a project — pass --project <name>. This company has: ${describeProjects(projects)}`,
+            );
+          }
           const payload = createIssueSchema.parse({
             title: opts.title,
             description: opts.description,
             status: opts.status,
             priority: opts.priority,
             assigneeAgentId: opts.assigneeAgentId,
-            projectId: opts.projectId,
+            projectId,
             goalId: opts.goalId,
             parentId: opts.parentId,
             requestDepth: parseOptionalInt(opts.requestDepth),
