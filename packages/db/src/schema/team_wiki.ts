@@ -9,7 +9,7 @@ import { companies } from "./companies.js";
  * shape, different reader — so they are one table with a discriminator rather
  * than two identical tables (decision `mul20.team-wiki.space-modeling`).
  */
-export const TEAM_WIKI_SPACES = ["paperclip", "agent"] as const;
+export const TEAM_WIKI_SPACES = ["paperclip", "agent", "personal"] as const;
 export type TeamWikiSpace = (typeof TEAM_WIKI_SPACES)[number];
 
 /**

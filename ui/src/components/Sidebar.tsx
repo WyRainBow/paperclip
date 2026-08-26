@@ -285,7 +285,7 @@ export function Sidebar() {
         </SidebarSection>
 
         <SidebarSection label={t("Personal assets")} collapsible={{ open: personalAssetsOpen, onOpenChange: setPersonalAssetsOpen }}>
-          <SidebarNavItem to="/personal-assets" label={t("Personal files")} icon={UserRoundPen} end />
+          <SidebarNavItem to="/team-wiki/personal" label={t("Personal files")} icon={UserRoundPen} />
         </SidebarSection>
 
         {/* Classic mode restores the per-project collapsible below Work. */}

@@ -21,7 +21,7 @@ import {
 import { cn, relativeTime } from "@/lib/utils";
 
 /** Kept in step with the `team_wiki_pages_space_check` constraint. */
-const SPACES = ["paperclip", "agent"] as const;
+const SPACES = ["paperclip", "agent", "personal"] as const;
 type Space = (typeof SPACES)[number];
 
 const SPACE_META: Record<Space, { label: string; blurb: string }> = {
@@ -32,6 +32,9 @@ const SPACE_META: Record<Space, { label: string; blurb: string }> = {
   agent: {
     label: "Agent Wiki",
     blurb: "写给 Agent 看：可执行的步骤、判定条件、边界、反例。判据是「读完能直接行动」、不是「读着顺」。",
+  },  personal: {
+    label: "个人指令",
+    blurb: "个人层指令文件（全局 CLAUDE.md / AGENTS.md）：真身在文件系统，这里管登记与快照版本，回滚=导出后手动覆盖。",
   },
 };
 
@@ -247,7 +250,9 @@ export function TeamWiki() {
             ? `没有匹配「${query}」的页面。`
             : space === "agent"
               ? "还没有页面。写 Agent 真正会消费的内容：可执行步骤、判定条件、边界、反例。"
-              : "还没有页面。写给人看的文档：架构、接口、部署、排障，以及人要守的约定。"}
+              : space === "personal"
+                ? "还没有登记的个人文件。CLI 执行 paperclipai personal-file register / sync 落第一版。"
+                : "还没有页面。写给人看的文档：架构、接口、部署、排障，以及人要守的约定。"}
         </p>
       ) : (
         <ul className="space-y-3">
