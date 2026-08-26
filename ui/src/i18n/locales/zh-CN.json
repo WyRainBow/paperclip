@@ -152,7 +152,7 @@
   "Explain why this subtree control is being applied...": "说明为什么要对此子树执行该控制...",
   "Comment failed": "评论失败",
   "Comment deleted": "评论已删除",
-  "Unfiled": "未归类",
+  "Unfiled": "正文",
   "Bundled": "内置",
   "Plugin": "插件",
   "No company selected. Select a company from the switcher above.": "尚未选择公司。请在上方的切换器里选择一家。",
@@ -287,5 +287,9 @@
   "Execution": "执行",
   "Workspace": "工作区",
   "About": "关于",
-  "Add label": "添加标签"
+  "Add label": "添加标签",
+  "Discover, install, fork, share": "发现、安装、复刻、共享",
+  "Skills Store": "技能库",
+  "Categories": "分类",
+  "Team Skills": "团队技能"
 }
