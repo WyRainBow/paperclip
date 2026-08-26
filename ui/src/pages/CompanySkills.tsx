@@ -25,7 +25,7 @@ import { companySkillsApi } from "../api/companySkills";
 import { foldersApi } from "../api/folders";
 import { agentsApi } from "../api/agents";
 import { useCompany } from "../context/CompanyContext";
-import { t as t__, useTranslation } from "../i18n";
+import { t, useTranslation } from "../i18n";
 import { useBreadcrumbs, type Breadcrumb } from "../context/BreadcrumbContext";
 import { useToastActions } from "../context/ToastContext";
 import { queryKeys } from "../lib/queryKeys";
@@ -261,7 +261,7 @@ function sourceMeta(sourceBadge: CompanySkillSourceBadge, sourceLabel: string | 
   // surface a clean "plugin" provenance keyed off the skill key instead.
   if (skillKey?.startsWith("plugin/")) {
     const pluginName = skillKey.split("/")[1] ?? "plugin";
-    return { icon: Plug, label: t__("Plugin"), managedLabel: pluginName };
+    return { icon: Plug, label: t("Plugin"), managedLabel: pluginName };
   }
   const normalizedLabel = sourceLabel?.toLowerCase() ?? "";
   const isSkillsShManaged =
@@ -401,11 +401,11 @@ function SourceFilterMenu({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-48">
-        <DropdownMenuLabel>{t__("Source")}</DropdownMenuLabel>
+        <DropdownMenuLabel>{t("Source")}</DropdownMenuLabel>
         <DropdownMenuRadioGroup value={value} onValueChange={(next) => onChange(next as SourceFilter)}>
           {filters.map((filter) => (
             <DropdownMenuRadioItem key={filter} value={filter}>
-              <span>{t__(SOURCE_FILTER_LABELS[filter])}</span>
+              <span>{t(SOURCE_FILTER_LABELS[filter])}</span>
               <span className="ml-auto text-xs text-muted-foreground">{counts[filter] ?? 0}</span>
             </DropdownMenuRadioItem>
           ))}
@@ -946,8 +946,8 @@ function SkillCard({
         {/* Stats: installed agents · stars · forks — stars/forks only when > 0. */}
         <div className="flex items-center gap-2 text-(length:--text-micro) text-muted-foreground">
           <span>{card.agentCount === 1
-            ? t__("{{count}} agent", { count: card.agentCount })
-            : t__("{{count}} agents", { count: card.agentCount })}</span>
+            ? t("{{count}} agent", { count: card.agentCount })
+            : t("{{count}} agents", { count: card.agentCount })}</span>
           {card.starCount > 0 ? (
             <>
               <span aria-hidden="true">·</span>
@@ -964,7 +964,7 @@ function SkillCard({
         <div className="mt-2 flex flex-wrap items-center gap-1">
           {card.installed ? (
             <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-(length:--text-nano) text-emerald-700 dark:text-emerald-300">
-              {t__("Installed")}
+              {t("Installed")}
             </Badge>
           ) : null}
           {card.categories.slice(0, 2).map((category) => (
@@ -3169,8 +3169,8 @@ export function SkillDetailPage({
         <div className="flex items-center justify-between gap-3">
           <p className="text-sm text-muted-foreground">
             {attached.length === 1
-              ? t__("{{count}} agent attached", { count: attached.length })
-              : t__("{{count}} agents attached", { count: attached.length })}
+              ? t("{{count}} agent attached", { count: attached.length })
+              : t("{{count}} agents attached", { count: attached.length })}
             {selectedVersion ? ` · ${versionLabel(selectedVersion)}` : " · Latest"}
           </p>
           <AttachAgentsPopover
@@ -3388,7 +3388,9 @@ export function SkillDetailPage({
                 fullWidth
               />
               {detail.usedByAgents.length === 0 ? (
-                <p className="text-xs text-muted-foreground">No agents attached yet.</p>
+                <p className="text-xs text-muted-foreground">
+                  {t("Not attached to any Paperclip-run agent. Attaching is for agents Paperclip runs itself (adapter skill sync); terminal agents read this skill directly over the API/CLI and never need attaching.")}
+                </p>
               ) : (
                 <div className="space-y-0.5">
                   {/* Preview up to three attached agents, then summarise the rest. */}
@@ -5280,7 +5282,7 @@ export function CompanySkills() {
         onOpenChange={setMobileFoldersOpen}
         result={railSkillFolderResult}
         selection={folderSelection}
-        allLabel={t__("All skills")}
+        allLabel={t("All skills")}
         itemLabelPlural="Skills"
         onSelect={setFolderSelection}
         onCreate={() => openCreateFolder()}

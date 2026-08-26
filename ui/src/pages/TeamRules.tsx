@@ -65,10 +65,14 @@ function useAgentNames(companyId: string | null) {
   }, [agentsQuery.data]);
 }
 
-/** Byline for a note or revision: the agent's own name when we can resolve it. */
+/**
+ * Byline for a note or revision. An id with no matching agent means the author
+ * has since been removed from the company — say so rather than falling back to
+ * a bare "agent", which reads as if we simply didn't bother to look it up.
+ */
 function authorLabel(agentId: string | null, agentNames: Map<string, string>) {
   if (!agentId) return null;
-  return agentNames.get(agentId) ?? "agent";
+  return agentNames.get(agentId) ?? "已移除的 Agent";
 }
 
 export function TeamRules() {
