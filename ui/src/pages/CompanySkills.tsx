@@ -25,7 +25,7 @@ import { companySkillsApi } from "../api/companySkills";
 import { foldersApi } from "../api/folders";
 import { agentsApi } from "../api/agents";
 import { useCompany } from "../context/CompanyContext";
-import { t as t__ } from "../i18n";
+import { t as t__, useTranslation } from "../i18n";
 import { useBreadcrumbs, type Breadcrumb } from "../context/BreadcrumbContext";
 import { useToastActions } from "../context/ToastContext";
 import { queryKeys } from "../lib/queryKeys";
@@ -401,11 +401,11 @@ function SourceFilterMenu({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-48">
-        <DropdownMenuLabel>Source</DropdownMenuLabel>
+        <DropdownMenuLabel>{t__("Source")}</DropdownMenuLabel>
         <DropdownMenuRadioGroup value={value} onValueChange={(next) => onChange(next as SourceFilter)}>
           {filters.map((filter) => (
             <DropdownMenuRadioItem key={filter} value={filter}>
-              <span>{SOURCE_FILTER_LABELS[filter]}</span>
+              <span>{t__(SOURCE_FILTER_LABELS[filter])}</span>
               <span className="ml-auto text-xs text-muted-foreground">{counts[filter] ?? 0}</span>
             </DropdownMenuRadioItem>
           ))}
@@ -945,7 +945,9 @@ function SkillCard({
       <div className="mt-auto pt-3">
         {/* Stats: installed agents · stars · forks — stars/forks only when > 0. */}
         <div className="flex items-center gap-2 text-(length:--text-micro) text-muted-foreground">
-          <span>{card.agentCount} {card.agentCount === 1 ? "agent" : "agents"}</span>
+          <span>{card.agentCount === 1
+            ? t__("{{count}} agent", { count: card.agentCount })
+            : t__("{{count}} agents", { count: card.agentCount })}</span>
           {card.starCount > 0 ? (
             <>
               <span aria-hidden="true">·</span>
@@ -962,7 +964,7 @@ function SkillCard({
         <div className="mt-2 flex flex-wrap items-center gap-1">
           {card.installed ? (
             <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-(length:--text-nano) text-emerald-700 dark:text-emerald-300">
-              Installed
+              {t__("Installed")}
             </Badge>
           ) : null}
           {card.categories.slice(0, 2).map((category) => (
@@ -1123,6 +1125,7 @@ export function DiscoveryGrid({
   /** When set and no folders exist yet, show the dismissible all-unfiled nudge (ux-spec §6.3). */
   folderNudgeStorageKey?: string;
 }) {
+  const { t } = useTranslation();
   // Source filter (github / skills.sh / local / …) lives in the grid so it
   // narrows whatever the parent already filtered by tab/category/search (PAP-10907 E).
   const [sourceBadgeFilter, setSourceBadgeFilter] = useState<string>("all");
@@ -1208,15 +1211,15 @@ export function DiscoveryGrid({
             <input
               value={search}
               onChange={(event) => onSearchChange(event.target.value)}
-              placeholder="Search skills, authors, categories…"
+              placeholder={t("Search skills, authors, categories…")}
               className="h-full w-full bg-transparent text-base outline-none placeholder:text-muted-foreground sm:text-sm"
             />
           </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm">
-                <span className="text-muted-foreground">Sort</span>
-                <span className="ml-1.5">{DISCOVERY_SORT_LABELS[sort]}</span>
+                <span className="text-muted-foreground">{t("Sort")}</span>
+                <span className="ml-1.5">{t(DISCOVERY_SORT_LABELS[sort])}</span>
                 <ChevronDown className="ml-1 h-3.5 w-3.5" />
               </Button>
             </DropdownMenuTrigger>
@@ -1224,7 +1227,7 @@ export function DiscoveryGrid({
               <DropdownMenuRadioGroup value={sort} onValueChange={(value) => onSortChange(value as DiscoverySort)}>
                 {DISCOVERY_SORTS.map((option) => (
                   <DropdownMenuRadioItem key={option} value={option}>
-                    {DISCOVERY_SORT_LABELS[option]}
+                    {t(DISCOVERY_SORT_LABELS[option])}
                   </DropdownMenuRadioItem>
                 ))}
               </DropdownMenuRadioGroup>
@@ -1234,7 +1237,7 @@ export function DiscoveryGrid({
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="sm">
-                  <span className="text-muted-foreground">Source</span>
+                  <span className="text-muted-foreground">{t("Source")}</span>
                   <span className="ml-1.5 capitalize">
                     {sourceBadgeFilter === "all" ? "All" : sourceMeta(sourceBadgeFilter as CompanySkillSourceBadge, null).label}
                   </span>
@@ -1301,16 +1304,14 @@ export function DiscoveryGrid({
               <FolderChip
                 result={folderResult}
                 selection={folderSelection}
-                allLabel="All skills"
+                allLabel={t("All skills")}
                 onClick={onOpenMobileFolders ?? (() => undefined)}
               />
             </div>
           ) : null}
           {onCreateFolder && !showFolderRail ? (
             <Button variant="outline" size="sm" onClick={onCreateFolder}>
-              <Plus className="mr-1 h-3.5 w-3.5" />
-              New folder
-            </Button>
+              <Plus className="mr-1 h-3.5 w-3.5" />{t("New folder")}</Button>
           ) : null}
           {onToggleSelectMode ? (
             <Button variant="ghost" size="sm" onClick={onToggleSelectMode}>
@@ -1351,19 +1352,19 @@ export function DiscoveryGrid({
           <Tabs value={tab} onValueChange={(value) => onTabChange(value as DiscoveryTab)}>
             <TabsList variant="line" className="p-0">
               <TabsTrigger value="all" className="px-3">
-                <span>All</span>
+                <span>{t("All")}</span>
                 <span className="ml-1.5 text-(length:--text-micro) text-muted-foreground">{tabCounts.all}</span>
               </TabsTrigger>
               <TabsTrigger value="installed" className="px-3">
-                <span>Installed</span>
+                <span>{t("Installed")}</span>
                 <span className="ml-1.5 text-(length:--text-micro) text-muted-foreground">{tabCounts.installed}</span>
               </TabsTrigger>
               <TabsTrigger value="catalog" className="px-3">
-                <span>Catalog</span>
+                <span>{t("Catalog")}</span>
                 <span className="ml-1.5 text-(length:--text-micro) text-muted-foreground">{tabCounts.catalog}</span>
               </TabsTrigger>
               <TabsTrigger value="bundled" className="px-3">
-                <span>Bundled</span>
+                <span>{t("Bundled")}</span>
                 <span className="ml-1.5 text-(length:--text-micro) text-muted-foreground">{tabCounts.bundled}</span>
               </TabsTrigger>
             </TabsList>
@@ -1454,7 +1455,9 @@ export function DiscoveryGrid({
           ) : (
             <>
               <p className="mb-3 text-xs text-muted-foreground">
-                {sourceFilteredCards.length} {sourceFilteredCards.length === 1 ? "skill" : "skills"}
+                {sourceFilteredCards.length === 1
+                  ? t("{{count}} skill", { count: sourceFilteredCards.length })
+                  : t("{{count}} skills", { count: sourceFilteredCards.length })}
                 {activeCategory ? <span className="capitalize"> · {activeCategory}</span> : null}
               </p>
               <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(19rem,1fr))]">
@@ -3165,7 +3168,9 @@ export function SkillDetailPage({
       <div className="space-y-3">
         <div className="flex items-center justify-between gap-3">
           <p className="text-sm text-muted-foreground">
-            {attached.length} {attached.length === 1 ? "agent" : "agents"} attached
+            {attached.length === 1
+              ? t__("{{count}} agent attached", { count: attached.length })
+              : t__("{{count}} agents attached", { count: attached.length })}
             {selectedVersion ? ` · ${versionLabel(selectedVersion)}` : " · Latest"}
           </p>
           <AttachAgentsPopover
@@ -5275,7 +5280,7 @@ export function CompanySkills() {
         onOpenChange={setMobileFoldersOpen}
         result={railSkillFolderResult}
         selection={folderSelection}
-        allLabel="All skills"
+        allLabel={t__("All skills")}
         itemLabelPlural="Skills"
         onSelect={setFolderSelection}
         onCreate={() => openCreateFolder()}
