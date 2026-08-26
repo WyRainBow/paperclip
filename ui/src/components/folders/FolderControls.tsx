@@ -1,3 +1,4 @@
+import { t } from "../../i18n";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   Check,
@@ -120,7 +121,7 @@ function selectionLabel({
   allLabel: string;
 }) {
   if (selection === "all") return allLabel;
-  if (selection === "unfiled") return "Unfiled";
+  if (selection === "unfiled") return t("Unfiled");
   return folders.find((folder) => folder.id === selection)?.name ?? allLabel;
 }
 
@@ -257,7 +258,7 @@ export function FolderRail({
           <div className="px-2 pb-1 pt-3 text-(length:--text-micro) font-medium uppercase tracking-wide text-muted-foreground">
             System
           </div>
-          {renderVirtualRow("unfiled", "Unfiled", result?.unfiledCount ?? 0, <FolderSwatch color={null} className="mt-0.5" />)}
+          {renderVirtualRow("unfiled", t("Unfiled"), result?.unfiledCount ?? 0, <FolderSwatch color={null} className="mt-0.5" />)}
         </div>
       )}
     </nav>
@@ -470,14 +471,14 @@ export function MobileFolderSheet({
               </div>
               {model.company.map((node) => renderBranch(node))}
               {model.projects ? renderBranch(model.projects, "Projects") : null}
-              {model.bundled ? renderBranch(model.bundled, "Bundled") : null}
+              {model.bundled ? renderBranch(model.bundled, t("Bundled")) : null}
             </>
           ) : (
             model.roots.map((node) => renderBranch(node, reservedRootLabel(node.folder)))
           )}
           <MobileFolderRow
             id="unfiled"
-            label="Unfiled"
+            label={t("Unfiled")}
             count={result?.unfiledCount ?? 0}
             selected={selection === "unfiled"}
             onSelect={select}

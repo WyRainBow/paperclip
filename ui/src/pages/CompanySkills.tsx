@@ -25,6 +25,7 @@ import { companySkillsApi } from "../api/companySkills";
 import { foldersApi } from "../api/folders";
 import { agentsApi } from "../api/agents";
 import { useCompany } from "../context/CompanyContext";
+import { t as t__ } from "../i18n";
 import { useBreadcrumbs, type Breadcrumb } from "../context/BreadcrumbContext";
 import { useToastActions } from "../context/ToastContext";
 import { queryKeys } from "../lib/queryKeys";
@@ -162,6 +163,7 @@ import {
   History,
   X,
   XOctagon,
+  Plug,
 } from "lucide-react";
 import { GithubIcon } from "../components/icons/github-icon";
 import type { FolderListItem, FolderListResult } from "@paperclipai/shared";
@@ -254,7 +256,13 @@ function buildTree(entries: CompanySkillFileInventoryEntry[]) {
   return root.children;
 }
 
-function sourceMeta(sourceBadge: CompanySkillSourceBadge, sourceLabel: string | null) {
+function sourceMeta(sourceBadge: CompanySkillSourceBadge, sourceLabel: string | null, skillKey?: string | null) {
+  // Plugin-shipped skills carry raw install paths as their source label;
+  // surface a clean "plugin" provenance keyed off the skill key instead.
+  if (skillKey?.startsWith("plugin/")) {
+    const pluginName = skillKey.split("/")[1] ?? "plugin";
+    return { icon: Plug, label: t__("Plugin"), managedLabel: pluginName };
+  }
   const normalizedLabel = sourceLabel?.toLowerCase() ?? "";
   const isSkillsShManaged =
     normalizedLabel.includes("skills.sh") || normalizedLabel.includes("vercel-labs/skills");
@@ -875,7 +883,7 @@ function SkillCard({
         </div>
         {/* Where the skill came from (PAP-10907 E); native title gives a hover hint. */}
         {(() => {
-          const meta = sourceMeta(card.sourceBadge ?? "catalog", card.sourceLabel ?? null);
+          const meta = sourceMeta(card.sourceBadge ?? "catalog", card.sourceLabel ?? null, card.key);
           const SourceIcon = meta.icon;
           return (
             <span className="shrink-0 text-muted-foreground" title={`From ${meta.label}`} aria-label={`From ${meta.label}`}>
@@ -2419,7 +2427,7 @@ function SkillList({
       {filteredSkills.map((skill) => {
         const expanded = expandedSkillId === skill.id;
         const tree = buildTree(skill.fileInventory);
-        const source = sourceMeta(skill.sourceBadge, skill.sourceLabel);
+        const source = sourceMeta(skill.sourceBadge, skill.sourceLabel, skill.key);
         const SourceIcon = source.icon;
 
         return (
@@ -2915,7 +2923,7 @@ export function SkillDetailPage({
 
   const skill = detail;
   const resolvedStudioHref = studioHref ?? skillStudioRoute(skill.id);
-  const source = sourceMeta(skill.sourceBadge, skill.sourceLabel);
+  const source = sourceMeta(skill.sourceBadge, skill.sourceLabel, skill.key);
   const SourceIcon = source.icon;
   const body = file?.markdown ? stripFrontmatter(file.content) : file?.content ?? "";
   const currentPin = shortRef(skill.sourceRef);

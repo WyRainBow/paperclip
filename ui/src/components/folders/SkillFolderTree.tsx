@@ -1,3 +1,4 @@
+import { t } from "../../i18n";
 import {
   useCallback,
   useEffect,
@@ -381,7 +382,7 @@ export function SkillFolderRail({
               expanded={expanded}
               renamingId={renamingId}
               renameDraft={renameDraft}
-              rootLabel="Bundled"
+              rootLabel={t("Bundled")}
               rootIcon={<Boxes className="h-3.5 w-3.5" />}
               onToggle={toggle}
               onSelect={onSelect}
