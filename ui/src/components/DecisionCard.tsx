@@ -318,6 +318,12 @@ export function DecisionCard({
   const [collapsed, setCollapsed] = useState(!open);
   const isCollapsed = !open && collapsed;
   const collapsedBody = useMemo(() => firstBodySection(decision.body ?? ""), [decision.body]);
+  const chosenOption = decision.options.find((option) => option.id === decision.chosenOptionId) ?? null;
+  const recommendedOption = decision.options.find((option) => option.recommendedByAgentId) ?? null;
+  const recommendedBy =
+    recommendedOption?.recommendedByAgentId
+      ? resolveAgent?.(recommendedOption.recommendedByAgentId) ?? null
+      : null;
 
   const requiredUnmet = (decision.inputs ?? []).some(
     (field) => field.required && !(inputValues[field.id] ?? "").trim(),
@@ -412,6 +418,32 @@ export function DecisionCard({
           </>
         )}
       </p>
+
+      {/* Verdict summary — a settled card collapsed to its background still has
+          to answer "which one, by whom, and what was recommended"; that one
+          line is exactly what a reader scanning decision history wants. */}
+      {isCollapsed && (chosenOption || recommendedOption) && (
+        <p className="mt-2 text-sm">
+          {chosenOption && (
+            <>
+              <span className="text-muted-foreground">选了 </span>
+              <span className="font-medium text-foreground">{chosenOption.label}</span>
+              {decidedByAgentName && (
+                <span className="text-muted-foreground"> · 由 {decidedByAgentName} 裁决</span>
+              )}
+            </>
+          )}
+          {recommendedOption && (
+            <span className="text-muted-foreground">
+              {chosenOption ? " · " : ""}
+              {recommendedBy?.name ?? "提案 agent"} 推荐 {recommendedOption.label}
+              {chosenOption && chosenOption.id !== recommendedOption.id && (
+                <span className="text-amber-700 dark:text-amber-300">（未采纳）</span>
+              )}
+            </span>
+          )}
+        </p>
+      )}
 
       {/* Body */}
       {decision.body?.trim() && (
