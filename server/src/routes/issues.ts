@@ -9419,6 +9419,9 @@ export function issueRoutes(
       onBehalfOfUserId: _requestedOnBehalfOfUserId,
       ...updateFields
     } = req.body;
+    if (updateFields.drivingSession !== undefined) {
+      updateFields.drivingSessionAt = new Date();
+    }
     const reviewPolicyChangeRequested =
       req.body.reviewPolicy !== undefined
       && req.body.reviewPolicy !== existing.reviewPolicy;

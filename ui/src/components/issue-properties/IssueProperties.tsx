@@ -8,6 +8,7 @@ import { Link } from "@/lib/router";
 import {
   deriveOriginatingActor,
   isArtifactReviewDocumentKey,
+  type Agent,
   type Issue,
   type IssueLabel,
 } from "@paperclipai/shared";
@@ -98,8 +99,9 @@ import {
   thinkingEffortValueFor,
   toDateTimeLocalValue,
 } from "./helpers";
+import { agentCustomIcon } from "@/components/AgentIconPicker";
 import { PropertyPicker } from "./property-picker";
-import { PropertyChip, PropertyRow, PropertySection } from "./primitives";
+import { PropertyChip, PropertyRow, PropertySection, PullRequestValue, SessionIdentity } from "./primitives";
 import { issueReviewPolicyBadge } from "../../lib/review-policy";
 import { IssueCasesPanel } from "../IssueCasesPanel";
 import { ExpandRelationListButton, RemovableIssueReferencePill } from "./relation-controls";
@@ -336,6 +338,20 @@ export function IssueProperties({
     queryFn: () => agentsApi.list(companyId!),
     enabled: !!companyId,
   });
+
+  // Attribution resolves terminated agents too: the card's creator or driver
+  // may be an agent that has since been terminated (same rule as decisions).
+  const { data: withTerminatedAgents } = useQuery({
+    queryKey: ["agents", companyId, "with-terminated"],
+    queryFn: () => agentsApi.list(companyId, { includeTerminated: true }),
+    enabled: Boolean(companyId),
+  });
+  const agentById = (() => {
+    const map = new Map<string, Agent>();
+    for (const agent of withTerminatedAgents ?? []) map.set(agent.id, agent);
+    for (const agent of agents ?? []) map.set(agent.id, agent);
+    return map;
+  })();
   const { data: companyMembers } = useQuery({
     queryKey: queryKeys.access.companyUserDirectory(companyId!),
     queryFn: () => accessApi.listUserDirectory(companyId!),
@@ -434,6 +450,10 @@ export function IssueProperties({
       : [...ids, labelId];
     onUpdate({ labelIds: next });
   };
+
+  const createdByAgent = agentById.get(issue.createdByAgentId ?? "") ?? null;
+  // Only pull requests; other work product types have their own surfaces.
+  const pullRequests = (issue.workProducts ?? []).filter((product) => product.type === "pull_request");
 
   const agentName = (id: string | null) => {
     if (!id || !agents) return null;
@@ -2190,6 +2210,59 @@ export function IssueProperties({
           {projectContent}
         </PropertyPicker>
       </PropertySection>
+
+      {/* Session — who opened this card, and who is driving it now. Two rows
+          rather than one: the first is written once and never changes, the
+          second follows whoever picks the work up. */}
+      <PropertySection title={t("Session")}>
+        <PropertyRow label={t("Opened by")}>
+          <SessionIdentity
+            agentId={issue.createdByAgentId ?? null}
+            agentName={createdByAgent?.name ?? null}
+            agentIcon={createdByAgent?.icon ?? null}
+            agentCustomIconUrl={createdByAgent ? agentCustomIcon(createdByAgent) : null}
+            userId={issue.createdByUserId ?? null}
+            sessionId={issue.createdBySession ?? null}
+            /* Whoever opened the card owns it, so the ownership tag belongs on
+               this row rather than repeated as its own property. */
+            tag={t("Owner")}
+          />
+        </PropertyRow>
+        <PropertyRow label={t("Driving")}>
+          {issue.drivingSession ? (
+            <SessionIdentity
+              agentId={issue.drivingAgentId ?? null}
+              agentName={(agentById.get(issue.drivingAgentId ?? "") ?? null)?.name ?? null}
+              agentIcon={(agentById.get(issue.drivingAgentId ?? "") ?? null)?.icon ?? null}
+              agentCustomIconUrl={(() => {
+                const driver = agentById.get(issue.drivingAgentId ?? "") ?? null;
+                return driver ? agentCustomIcon(driver) : null;
+              })()}
+              userId={null}
+              sessionId={issue.drivingSession}
+              live={Boolean(
+                issue.drivingSessionAt
+                  && Date.now() - new Date(issue.drivingSessionAt).getTime() < 2 * 60 * 60 * 1000,
+              )}
+            />
+          ) : (
+            <span className="text-sm text-muted-foreground">{t("Unclaimed")}</span>
+          )}
+        </PropertyRow>
+      </PropertySection>
+
+      {/* Pull request — display-only, from work products already stored on the
+          issue. Omitted entirely when there is none: an empty row would imply
+          this card should have code attached to it. */}
+      {pullRequests.length > 0 && (
+        <PropertySection title={t("Pull request")}>
+          {pullRequests.map((pr) => (
+            <PropertyRow key={pr.id} label={pr.provider} wrap>
+              <PullRequestValue workProduct={pr} />
+            </PropertyRow>
+          ))}
+        </PropertySection>
+      )}
 
       <PropertySection title={t("Relationships")}>
         <PropertyPicker

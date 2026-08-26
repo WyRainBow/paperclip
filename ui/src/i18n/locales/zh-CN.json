@@ -347,5 +347,13 @@
   "Execution or project workspace used for the task.": "任务使用的执行或项目工作区。",
   "Parent task identifier and title.": "父任务编号与标题。",
   "Task labels and tags.": "任务的标签与标记。",
-  "Latest visible activity time.": "最近可见活动时间。"
+  "Latest visible activity time.": "最近可见活动时间。",
+  "Session": "会话",
+  "Opened by": "建卡",
+  "Driving": "开工主审",
+  "Unclaimed": "未认领",
+  "Owner": "负责人",
+  "Running": "进行中",
+  "Unknown": "未知",
+  "Pull request": "Pull request"
 }

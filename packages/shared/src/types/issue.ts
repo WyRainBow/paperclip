@@ -808,6 +808,9 @@ export interface Issue {
   createdByAgentId: string | null;
   createdByUserId: string | null;
   createdBySession: string | null;
+  drivingSession: string | null;
+  drivingAgentId: string | null;
+  drivingSessionAt: Date | null;
   responsibleUserId: string | null;
   issueNumber: number | null;
   identifier: string | null;

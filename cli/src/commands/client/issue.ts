@@ -90,6 +90,7 @@ interface IssueClaimOptions extends BaseClientOptions {
 interface IssueStartOptions extends BaseClientOptions {
   branch: string;
   note?: string;
+  session?: string;
 }
 
 interface IssueProgressOptions extends BaseClientOptions {
@@ -500,6 +501,10 @@ export function registerIssueCommands(program: Command): void {
       .argument("<issueId>", "Issue ID or identifier")
       .requiredOption("--branch <name>", "Working branch name")
       .option("--note <text>", "Extra start note text")
+      .option(
+        "--session <id>",
+        "Driving session to record on the card — who is working it now (one slot, overwritten per start). Defaults to $CLAUDE_CODE_SESSION_ID / $CODEX_SESSION_ID",
+      )
       .action(async (issueId: string, opts: IssueStartOptions) => {
         try {
           const ctx = resolveCommandContext(opts);
@@ -522,13 +527,26 @@ export function registerIssueCommands(program: Command): void {
               });
             }
           }
+          const drivingSession =
+            opts.session?.trim() ||
+            process.env.CLAUDE_CODE_SESSION_ID?.trim() ||
+            process.env.CODEX_SESSION_ID?.trim() ||
+            null;
+          const drivingPatch: Record<string, unknown> = {};
+          if (drivingSession) {
+            drivingPatch.drivingSession = drivingSession;
+            const me = await ctx.api.get<{ id: string } | null>(apiPath`/api/agents/me`).catch(() => null);
+            if (me?.id) drivingPatch.drivingAgentId = me.id;
+            updated = await ctx.api.patch<Issue>(apiPath`/api/issues/${issue.id}`, drivingPatch);
+          }
           const lines = [`开工：${issue.identifier}，工作分支：${opts.branch}`];
+          if (drivingSession) lines.push(`主审会话：${drivingSession}`);
           if (opts.note) lines.push(opts.note);
           await ctx.api.post(apiPath`/api/issues/${issue.id}/comments`, {
             body: lines.join("\n"),
             presentation: { kind: "progress_note", tone: "info" },
           });
-          printOutput({ identifier: issue.identifier, status: updated?.status ?? "in_progress", branch: opts.branch }, { json: ctx.json });
+          printOutput({ identifier: issue.identifier, status: updated?.status ?? "in_progress", branch: opts.branch, drivingSession }, { json: ctx.json });
         } catch (err) {
           handleCommandError(err);
         }

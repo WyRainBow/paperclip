@@ -347,5 +347,13 @@
   "Execution or project workspace used for the task.": "Execution or project workspace used for the task.",
   "Parent task identifier and title.": "Parent task identifier and title.",
   "Task labels and tags.": "Task labels and tags.",
-  "Latest visible activity time.": "Latest visible activity time."
+  "Latest visible activity time.": "Latest visible activity time.",
+  "Session": "Session",
+  "Opened by": "Opened by",
+  "Driving": "Driving",
+  "Unclaimed": "Unclaimed",
+  "Owner": "Owner",
+  "Running": "Running",
+  "Unknown": "Unknown",
+  "Pull request": "Pull request"
 }

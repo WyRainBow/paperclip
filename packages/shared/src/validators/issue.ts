@@ -611,6 +611,10 @@ export const updateIssueSchema = objectWithoutDefaults(
   resume: z.boolean().optional(),
   interrupt: z.boolean().optional(),
   hiddenAt: z.string().datetime().nullable().optional(),
+  // MUL-35 driving slot: one per issue, overwritten on start/handoff.
+  // Server stamps drivingSessionAt; clients never send it.
+  drivingSession: z.string().trim().max(200).nullable().optional(),
+  drivingAgentId: z.string().guid().nullable().optional(),
 });
 
 export type UpdateIssue = z.infer<typeof updateIssueSchema>;
