@@ -276,5 +276,16 @@
   "Create your first folder": "新建第一个文件夹",
   "Dismiss folder suggestion": "关闭文件夹提示",
   "{{items}} folders": "{{items}}文件夹",
-  "Not attached to any Paperclip-run Agent. Attaching is for Agents Paperclip runs itself (adapter skill sync); terminal Agents read this skill directly over the API/CLI and never need attaching.": "尚未挂载到任何 Paperclip 托管运行的 Agent。挂载只面向 Paperclip 自己拉起的 Agent（适配器技能同步）；终端 Agent 直接经 API/CLI 读取本技能，无需挂载。"
+  "Not attached to any Paperclip-run Agent. Attaching is for Agents Paperclip runs itself (adapter skill sync); terminal Agents read this skill directly over the API/CLI and never need attaching.": "尚未挂载到任何 Paperclip 托管运行的 Agent。挂载只面向 Paperclip 自己拉起的 Agent（适配器技能同步）；终端 Agent 直接经 API/CLI 读取本技能，无需挂载。",
+  "Triage": "分诊",
+  "Priority": "优先级",
+  "Labels": "标签",
+  "Relationships": "关联",
+  "Parent": "父任务",
+  "Approvals": "审批",
+  "Monitor": "监控",
+  "Execution": "执行",
+  "Workspace": "工作区",
+  "About": "关于",
+  "Add label": "添加标签"
 }
