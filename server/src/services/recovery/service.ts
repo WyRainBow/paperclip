@@ -4112,6 +4112,29 @@ export function recoveryService(db: Db, deps: { enqueueWakeup: RecoveryWakeup })
         result.skipped += 1;
         continue;
       }
+      // getLatestIssueRun filters by contextSnapshot.issueId, which terminal
+      // sessions don't carry — so also skip outright when the assignee has a
+      // live terminal session (running, touched within the 2h reuse window).
+      if (agentId) {
+        const liveTerminal = await db
+          .select({ id: heartbeatRuns.id })
+          .from(heartbeatRuns)
+          .where(
+            and(
+              eq(heartbeatRuns.companyId, issue.companyId),
+              eq(heartbeatRuns.agentId, agentId),
+              eq(heartbeatRuns.invocationSource, "terminal_contributor"),
+              eq(heartbeatRuns.status, "running"),
+              gte(heartbeatRuns.updatedAt, new Date(Date.now() - 2 * 60 * 60 * 1000)),
+            ),
+          )
+          .limit(1)
+          .then((rows) => rows[0] ?? null);
+        if (liveTerminal) {
+          result.skipped += 1;
+          continue;
+        }
+      }
 
       const agent = await getAgent(agentId);
       const agentInvokable = agent && agent.companyId === issue.companyId
