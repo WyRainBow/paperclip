@@ -19,7 +19,7 @@ import type {
   DecisionTargetSnapshot,
 } from "../api/decisions";
 import { t } from "../i18n";
-import { absoluteTimestamp, cn } from "../lib/utils";
+import { absoluteTimestamp, chineseTimestamp, cn } from "../lib/utils";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
@@ -393,6 +393,9 @@ export function DecisionCard({
               {issueLabel(originIssue, originIssue.id)}
             </a>
           </>
+        )}
+        {decision.createdAt && (
+          <span className="tabular-nums"> · {chineseTimestamp(decision.createdAt)}</span>
         )}
         {targetRefs.length > 0 && (
           <>

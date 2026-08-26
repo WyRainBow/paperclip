@@ -102,6 +102,14 @@ export function absoluteTimestamp(date: Date | string): string {
     + `${pad(value.getHours())}:${pad(value.getMinutes())}:${pad(value.getSeconds())}`;
 }
 
+export function chineseTimestamp(date: Date | string): string {
+  const value = new Date(date);
+  if (!Number.isFinite(value.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${value.getFullYear()}年${value.getMonth() + 1}月${value.getDate()}日 `
+    + `${pad(value.getHours())}:${pad(value.getMinutes())}:${pad(value.getSeconds())}`;
+}
+
 export function formatTokens(n: number): string {
   if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(1)}B`;
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;

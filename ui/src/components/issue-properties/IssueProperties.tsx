@@ -56,7 +56,7 @@ import { PriorityIcon } from "../PriorityIcon";
 import { SHOW_TASK_PRIORITY_UI } from "../../lib/ui-flags";
 import { Identity } from "../Identity";
 import { IssueReferencePill } from "../IssueReferencePill";
-import { formatDate, formatDateTime, cn, projectUrl } from "../../lib/utils";
+import { chineseTimestamp, formatDate, formatDateTime, cn, projectUrl } from "../../lib/utils";
 import type { IssueExternalObjectGroup } from "../../hooks/useIssueExternalObjects";
 import { timeAgo } from "../../lib/timeAgo";
 import { invalidateInboxIssueQueries } from "../../lib/inboxArchiveCache";
@@ -2598,15 +2598,15 @@ export function IssueProperties({
           </PropertyRow>
         )}
         {issue.completedAt && (
-          <PropertyRow label="Completed">
-            <span className="text-sm">{formatDateTime(issue.completedAt)}</span>
+          <PropertyRow label="完成时间">
+            <span className="text-sm">{chineseTimestamp(issue.completedAt)}</span>
           </PropertyRow>
         )}
-        <PropertyRow label="Created">
-          <span className="text-sm">{formatDateTime(issue.createdAt)}</span>
+        <PropertyRow label="创建时间">
+          <span className="text-sm">{chineseTimestamp(issue.createdAt)}</span>
         </PropertyRow>
-        <PropertyRow label="Updated">
-          <span className="text-sm">{timeAgo(issue.updatedAt)}</span>
+        <PropertyRow label="更新时间">
+          <span className="text-sm">{chineseTimestamp(issue.updatedAt)}</span>
         </PropertyRow>
         {issue.archivedAt && issue.archivedByActorType === "agent" && issue.archivedByAgentId ? (
           (() => {
