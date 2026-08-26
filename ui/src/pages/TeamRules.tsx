@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { History, Pencil, RotateCcw, Save, Scale, Trash2, X } from "lucide-react";
 import { api } from "@/api/client";
@@ -7,7 +7,11 @@ import { useToastActions } from "@/context/ToastContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { MarkdownBody } from "@/components/MarkdownBody";
+import { buildLineDiff, type DiffRow } from "@/lib/line-diff";
+import { cn, relativeTime } from "@/lib/utils";
 
 interface TeamRuleNote {
   id: string;
@@ -194,10 +198,28 @@ export function TeamRules() {
   );
 }
 
+function versionLabel(version: TeamRuleNoteVersion) {
+  return version.label ? `v${version.revisionNumber} · ${version.label}` : `v${version.revisionNumber}`;
+}
+
+/**
+ * Pick the pair a "view diff" click should open: the clicked revision on the
+ * right, its immediate predecessor on the left. With no target, default to the
+ * newest change — the pair a reader almost always wants first.
+ */
+function diffSelection(versions: TeamRuleNoteVersion[], targetId?: string | null) {
+  const right = targetId ? versions.find((v) => v.id === targetId) ?? null : versions[0] ?? null;
+  if (!right) return { leftId: null, rightId: null };
+  const left = versions.find((v) => v.revisionNumber < right.revisionNumber) ?? null;
+  return { leftId: left?.id ?? null, rightId: right.id };
+}
+
 function NoteVersions({ companyId, noteId }: { companyId: string | null; noteId: string }) {
   const queryClient = useQueryClient();
   const { pushToast } = useToastActions();
-  const [expanded, setExpanded] = useState<number | null>(null);
+  const [diffOpen, setDiffOpen] = useState(false);
+  const [leftId, setLeftId] = useState<string | null>(null);
+  const [rightId, setRightId] = useState<string | null>(null);
 
   const versionsQuery = useQuery({
     queryKey: versionsKey(companyId, noteId),
@@ -216,62 +238,201 @@ function NoteVersions({ companyId, noteId }: { companyId: string | null; noteId:
     onError: (error: Error) => pushToast({ title: "回滚失败", body: error.message, tone: "error" }),
   });
 
-  const versions = versionsQuery.data ?? [];
+  // The API already returns newest-first; sorting here keeps the component
+  // correct if that ever changes, since every index below assumes it.
+  const versions = useMemo(
+    () => [...(versionsQuery.data ?? [])].sort((a, b) => b.revisionNumber - a.revisionNumber),
+    [versionsQuery.data],
+  );
+
+  function openDiff(targetId?: string) {
+    const selection = diffSelection(versions, targetId);
+    setLeftId(selection.leftId);
+    setRightId(selection.rightId);
+    setDiffOpen(true);
+  }
+
   return (
     <div className="mt-3 border-t border-border pt-3">
-      <p className="text-xs font-medium text-muted-foreground">
-        {versionsQuery.isLoading ? "加载版本…" : `${versions.length} 个版本`}
-      </p>
-      <ul className="mt-2 space-y-1">
-        {versions.map((version, index) => (
-          <li key={version.id} className="text-xs">
-            <div className="flex items-center justify-between gap-2 py-1">
-              <button
-                type="button"
-                className="flex min-w-0 items-baseline gap-2 text-left hover:underline"
-                onClick={() =>
-                  setExpanded((current) => (current === version.revisionNumber ? null : version.revisionNumber))
-                }
-              >
-                <span className="font-medium">v{version.revisionNumber}</span>
-                {version.label ? <span className="text-muted-foreground">· {version.label}</span> : null}
-                {index === 0 ? <span className="text-muted-foreground">· 当前</span> : null}
-                <span className="truncate text-muted-foreground">
-                  {new Date(version.createdAt).toLocaleString()}
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs text-muted-foreground">
+          {versionsQuery.isLoading ? "加载版本…" : `${versions.length} 个版本`}
+        </p>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => openDiff()}
+          disabled={versions.length < 2}
+        >
+          <History className="mr-1.5 h-3.5 w-3.5" aria-hidden /> 对比
+        </Button>
+      </div>
+      <div className="mt-2 border-t border-border">
+        {versions.length === 0 && !versionsQuery.isLoading ? (
+          <p className="py-4 text-xs text-muted-foreground">还没有保存过版本。</p>
+        ) : (
+          versions.map((version, index) => (
+            <div
+              key={version.id}
+              className="flex items-center justify-between gap-2 border-b border-border py-2.5 text-sm last:border-b-0"
+            >
+              <div className="min-w-0">
+                <div className="text-xs font-medium">
+                  {versionLabel(version)}
+                  {index === 0 ? <span className="ml-2 text-muted-foreground">当前</span> : null}
+                </div>
+                <div className="mt-0.5 text-(length:--text-micro) text-muted-foreground">
+                  {relativeTime(version.createdAt)}
                   {version.authorAgentId ? " · agent" : ""}
-                </span>
-              </button>
-              {/* The newest revision is already the live text, so restoring it
-                  would only append an identical version. */}
-              {index === 0 ? null : (
-                <Button
-                  size="icon-xs"
-                  variant="ghost"
-                  aria-label={`回滚到 v${version.revisionNumber}`}
-                  title={`回滚到 v${version.revisionNumber}`}
-                  disabled={restore.isPending}
-                  onClick={() => {
-                    if (window.confirm(`把这条规则回滚到 v${version.revisionNumber}？当前内容会另存为新版本。`)) {
-                      restore.mutate(version.revisionNumber);
-                    }
-                  }}
-                >
-                  <RotateCcw className="h-3.5 w-3.5" aria-hidden />
-                </Button>
-              )}
-            </div>
-            {expanded === version.revisionNumber ? (
-              <div className="mb-2 rounded-md bg-muted/40 px-3 py-2 text-sm">
-                <p className="text-xs font-medium">{version.title}</p>
-                <div className="mt-1 text-muted-foreground">
-                  <MarkdownBody>{version.body || "_（空）_"}</MarkdownBody>
                 </div>
               </div>
-            ) : null}
-          </li>
-        ))}
-      </ul>
+              <div className="flex shrink-0 items-center gap-1">
+                {/* The newest revision already is the live text, so restoring it
+                    would only append an identical version. */}
+                {index === 0 ? null : (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-xs"
+                    aria-label={`回滚到 v${version.revisionNumber}`}
+                    title={`回滚到 v${version.revisionNumber}`}
+                    disabled={restore.isPending}
+                    onClick={() => {
+                      if (window.confirm(`把这条规则回滚到 v${version.revisionNumber}？当前内容会另存为新版本。`)) {
+                        restore.mutate(version.revisionNumber);
+                      }
+                    }}
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" aria-hidden />
+                  </Button>
+                )}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={versions.length < 2}
+                  onClick={() => openDiff(version.id)}
+                >
+                  查看差异
+                </Button>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+      <VersionDiffDialog
+        open={diffOpen}
+        onOpenChange={setDiffOpen}
+        versions={versions}
+        leftId={leftId}
+        rightId={rightId}
+        onLeftChange={setLeftId}
+        onRightChange={setRightId}
+      />
     </div>
+  );
+}
+
+function VersionDiffDialog({
+  open,
+  onOpenChange,
+  versions,
+  leftId,
+  rightId,
+  onLeftChange,
+  onRightChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  versions: TeamRuleNoteVersion[];
+  leftId: string | null;
+  rightId: string | null;
+  onLeftChange: (id: string | null) => void;
+  onRightChange: (id: string | null) => void;
+}) {
+  const left = versions.find((v) => v.id === leftId) ?? null;
+  const right = versions.find((v) => v.id === rightId) ?? null;
+  const diffRows = useMemo(
+    () => buildLineDiff(left?.body ?? "", right?.body ?? ""),
+    [left?.body, right?.body],
+  );
+
+  const lineClassesByKind: Record<DiffRow["kind"], string> = {
+    context: "bg-transparent",
+    removed: "bg-red-500/10 text-red-900 dark:text-red-100",
+    added: "bg-green-500/10 text-green-900 dark:text-green-100",
+  };
+  const markerByKind: Record<DiffRow["kind"], string> = {
+    context: " ",
+    removed: "-",
+    added: "+",
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="flex max-h-(--sz-85vh) w-full !max-w-(--pct-90) flex-col overflow-hidden">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <DialogHeader className="shrink-0">
+            <DialogTitle>差异 · 团队规则</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-wrap items-center gap-3 text-xs">
+            <label className="flex items-center gap-2">
+              <Badge variant="outline" className="border-red-500/30 bg-red-500/10 uppercase tracking-wider text-red-400">旧</Badge>
+              <select
+                value={leftId ?? ""}
+                onChange={(event) => onLeftChange(event.target.value || null)}
+                className="h-8 w-44 rounded-md border border-border bg-background px-2 text-xs"
+              >
+                <option value="">空</option>
+                {versions.map((version) => (
+                  <option key={version.id} value={version.id}>{versionLabel(version)}</option>
+                ))}
+              </select>
+            </label>
+            <label className="flex items-center gap-2">
+              <Badge variant="outline" className="border-green-500/30 bg-green-500/10 uppercase tracking-wider text-green-400">新</Badge>
+              <select
+                value={rightId ?? ""}
+                onChange={(event) => onRightChange(event.target.value || null)}
+                className="h-8 w-44 rounded-md border border-border bg-background px-2 text-xs"
+              >
+                {versions.map((version) => (
+                  <option key={version.id} value={version.id}>{versionLabel(version)}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </div>
+        <div className="min-h-0 flex-1 overflow-auto rounded-md border border-border text-xs">
+          {!right ? (
+            <div className="p-6 text-center text-sm text-muted-foreground">选一个版本来对比。</div>
+          ) : left?.id === right.id ? (
+            <div className="p-6 text-center text-sm text-muted-foreground">两边是同一个版本。</div>
+          ) : (
+            <div className="font-mono text-xs leading-6">
+              <div className="grid grid-cols-(--gtc-1) border-b border-border/60 bg-muted/30 px-3 py-2 text-(length:--text-micro) uppercase tracking-wide text-muted-foreground">
+                <span>旧</span>
+                <span>新</span>
+                <span />
+                <span>{right.title}</span>
+              </div>
+              {diffRows.map((row, index) => (
+                <div
+                  key={`${row.kind}-${index}-${row.oldLineNumber ?? "x"}-${row.newLineNumber ?? "x"}`}
+                  className={cn("grid grid-cols-(--gtc-1) gap-0 border-b border-border/30 px-3", lineClassesByKind[row.kind])}
+                >
+                  <span className="select-none border-r border-border/30 pr-3 text-right text-muted-foreground">{row.oldLineNumber ?? ""}</span>
+                  <span className="select-none border-r border-border/30 px-3 text-right text-muted-foreground">{row.newLineNumber ?? ""}</span>
+                  <span className="select-none px-3 text-center text-muted-foreground">{markerByKind[row.kind]}</span>
+                  <pre className="overflow-x-auto whitespace-pre-wrap break-words px-3 py-0 text-inherit">{row.text.length > 0 ? row.text : " "}</pre>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
