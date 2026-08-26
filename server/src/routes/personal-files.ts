@@ -29,11 +29,16 @@ export function personalFileRoutes(db: Db): Router {
   r.get("/companies/:companyId/personal-files", async (req: Request, res: Response) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
-    const userId = (req.query.userId as string | undefined) ?? actorUserId(req);
+    // Company-wide by default: the register is small and the page is
+    // board-gated; filtering by the browsing session's user id hid files
+    // registered under a different actor (local-board CLI vs logged-in UI).
+    const userId = typeof req.query.userId === "string" && req.query.userId ? req.query.userId : null;
     const rows = await db
       .select()
       .from(personalFiles)
-      .where(and(eq(personalFiles.companyId, companyId), eq(personalFiles.userId, userId)))
+      .where(userId
+        ? and(eq(personalFiles.companyId, companyId), eq(personalFiles.userId, userId))
+        : eq(personalFiles.companyId, companyId))
       .orderBy(asc(personalFiles.path));
     res.json(rows);
   });
