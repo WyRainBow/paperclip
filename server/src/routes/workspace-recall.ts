@@ -33,11 +33,50 @@ export function workspaceRecallRoutes(db: Db): Router {
     assertCompanyAccess(req, companyId);
 
     const query = typeof req.query.q === "string" ? req.query.q.trim() : "";
-    if (!query) throw badRequest("q is required");
+    const mode = typeof req.query.mode === "string" ? req.query.mode : "search";
+    // Directory mode: return a compact asset map (titles + paths only) for
+    // the SessionStart injection hook; no body search needed.
     const budgetRaw = Number.parseInt(String(req.query.budget ?? ""), 10);
     const budget = Number.isInteger(budgetRaw)
       ? Math.min(Math.max(budgetRaw, 200), MAX_BUDGET_CHARS)
       : DEFAULT_BUDGET_CHARS;
+
+    if (mode === "directory") {
+      const wikiPages = await db
+        .select({ space: teamWikiPages.space, path: teamWikiPages.path, title: teamWikiPages.title })
+        .from(teamWikiPages)
+        .where(eq(teamWikiPages.companyId, companyId))
+        .limit(100);
+      const ruleNotes = await db
+        .select({ title: teamRuleNotes.title })
+        .from(teamRuleNotes)
+        .where(eq(teamRuleNotes.companyId, companyId))
+        .limit(20);
+
+      const lines: string[] = [];
+      lines.push("=== TeamWorkSpace 资产目录 ===");
+      if (ruleNotes.length > 0) {
+        lines.push("Team Rules:");
+        for (const note of ruleNotes) lines.push(`  - ${note.title}`);
+      }
+      for (const space of ["paperclip", "agent", "personal"]) {
+        const pages = wikiPages.filter((p) => p.space === space);
+        if (pages.length > 0) {
+          lines.push(`Team Wiki / ${space}:`);
+          for (const p of pages) lines.push(`  ${p.path} — ${p.title}`);
+        }
+      }
+      lines.push("");
+      lines.push("查询正文：paperclipai workspace recall --query <关键词> [--budget N]");
+
+      const mapText = lines.join("\n");
+      const truncated = mapText.length > budget ? mapText.slice(0, budget) + "…(截断)" : mapText;
+      res.json({ mode: "directory", text: truncated, budgetChars: budget, usedChars: truncated.length });
+      return;
+    }
+
+    if (!query) throw badRequest("q is required");
+
 
     const hits: RecallHit[] = [];
 
