@@ -26,6 +26,7 @@ import {
   Globe,
   BookOpen,
   Scale,
+  Webhook,
 } from "lucide-react";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -58,6 +59,7 @@ export function Sidebar() {
   // Every labeled section is collapsible (session-scoped, default open) —
   // one policy across static nav groups and the data-driven sections.
   const [workOpen, setWorkOpen] = useState(true);
+  const [teamWorkspaceOpen, setTeamWorkspaceOpen] = useState(true);
   const [companyOpen, setCompanyOpen] = useState(true);
   const { selectedCompanyId, selectedCompany } = useCompany();
   const { isMobile, collapsed, collapseLocked, peeking, toggleCollapsed, setCollapsed } = useSidebar();
@@ -248,9 +250,6 @@ export function Sidebar() {
             />
           ) : null}
           <SidebarNavItem to="/artifacts" label={t("Artifacts")} icon={Package} />
-          <SidebarNavItem to="/skills" label={t("Skills")} icon={Boxes} />
-          <SidebarNavItem to="/team-rules" label={t("Team Rules")} icon={Scale} />
-          <SidebarNavItem to="/team-wiki" label={t("Team Wiki")} icon={BookOpen} />
           {showWorkspacesLink ? (
             <SidebarNavItem to="/workspaces" label={t("Workspaces")} icon={GitBranch} />
           ) : null}
@@ -273,6 +272,13 @@ export function Sidebar() {
             className="flex flex-col gap-0.5"
             itemClassName="text-(length:--text-compact) font-medium"
           />
+        </SidebarSection>
+
+        <SidebarSection label="TeamWorkSpace" collapsible={{ open: teamWorkspaceOpen, onOpenChange: setTeamWorkspaceOpen }}>
+          <SidebarNavItem to="/team-rules" label={t("Team Rules")} icon={Scale} />
+          <SidebarNavItem to="/team-wiki" label={t("Team Wiki")} icon={BookOpen} />
+          <SidebarNavItem to="/skills" label={t("Skills")} icon={Boxes} />
+          <SidebarNavItem to="/hooks" label={t("Hooks")} icon={Webhook} />
         </SidebarSection>
 
         {/* Classic mode restores the per-project collapsible below Work. */}

@@ -355,5 +355,7 @@
   "Owner": "Owner",
   "Running": "Running",
   "Unknown": "Unknown",
-  "Pull request": "Pull request"
+  "Pull request": "Pull request",
+  "Hooks": "Hooks",
+  "Personal files": "Personal files"
 }
