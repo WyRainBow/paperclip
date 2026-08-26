@@ -236,19 +236,12 @@ export function IssueProperties({
   const paneTabStandaloneDocuments = (paneTabDocuments ?? []).filter(
     (doc) => !isArtifactReviewDocumentKey(doc.key),
   );
-  const hasPlanTab =
-    Boolean(paneTabPlanDocument)
-    || (paneTabAcceptedPlans?.length ?? 0) > 0
-    || paneTabStandaloneDocuments.length > 0
-    || issue.workMode === "planning";
+  const hasPlanTab = true;
   // Artifacts covers the same three sources the tab body composes: work
   // products, documents (redundant with the Plan tab, intentionally), and
   // agent-created attachments. User comment uploads stay thread-only and
   // no longer summon the tab.
-  const hasArtifactsTab =
-    (paneTabWorkProducts?.length ?? 0) > 0
-    || paneTabStandaloneDocuments.length > 0
-    || selectAgentArtifactAttachments(paneTabAttachments, paneTabWorkProducts).length > 0;
+  const hasArtifactsTab = true;
   // Progress ledger: agent progress notes (terminal contributors file them as
   // they work) earn their own pane tab once the first note lands. Runs in both
   // the chat shell and the classic task interface — progress is pane content,
@@ -257,7 +250,7 @@ export function IssueProperties({
     queryKey: [...queryKeys.issues.comments(issue.id), "progress-ledger"],
     queryFn: () => issuesApi.listComments(issue.id, { order: "desc", limit: 200 }),
   });
-  const hasProgressTab = Array.isArray(paneTabComments) && paneTabComments.some(isProgressNoteComment);
+  const hasProgressTab = true;
   const [paneTab, setPaneTab] = useState("properties");
   // Once a plan document exists, surface it: switch the pane to the Plan tab so
   // the write-up is exposed alongside the plan-approval card, instead of leaving
@@ -2612,19 +2605,6 @@ export function IssueProperties({
 
   // Classic Task Interface ON: the legacy stacked pane, byte-for-byte.
   if (!taskChatShellEnabled) return propertiesBody;
-
-  // Chat-style with nothing to switch between: no tab strip — the header bar
-  // shows a plain title and the pane body is just the properties stack.
-  if (!hasPlanTab && !hasArtifactsTab && !hasProgressTab) {
-    return (
-      <>
-        {paneHeaderSlot
-          ? createPortal(<span className="text-sm font-medium">Properties</span>, paneHeaderSlot)
-          : null}
-        {propertiesBody}
-      </>
-    );
-  }
 
   // Flag ON: wrap the same body in a Properties | Plan | Artifacts tab shell
   // (v5 decision: singular "Plan", Docs merged into Artifacts). The Properties
