@@ -23,6 +23,9 @@ import { cn, relativeTime } from "@/lib/utils";
 /** Kept in step with the `team_wiki_pages_space_check` constraint. */
 const SPACES = ["paperclip", "agent", "personal"] as const;
 type Space = (typeof SPACES)[number];
+/** The team page's switcher shows team spaces only; personal lives behind its
+ *  own Personal assets entry (tabs isolated, machinery shared — user 2026-08-26). */
+const TEAM_SPACES = ["paperclip", "agent"] as const;
 
 const SPACE_META: Record<Space, { label: string; blurb: string }> = {
   paperclip: {
@@ -98,7 +101,7 @@ function authorLabel(agentId: string | null, agentNames: Map<string, string>) {
   return agentNames.get(agentId) ?? "已移除的 Agent";
 }
 
-export function TeamWiki() {
+export function TeamWiki({ fixedSpace }: { fixedSpace?: Space } = {}) {
   const params = useParams();
   const navigate = useNavigate();
   const { selectedCompanyId, selectedCompany } = useCompany();
@@ -106,7 +109,7 @@ export function TeamWiki() {
   const { pushToast } = useToastActions();
   const agentNames = useAgentNames(selectedCompanyId);
 
-  const space: Space = isSpace(params.space) ? params.space : "paperclip";
+  const space: Space = fixedSpace ?? (isSpace(params.space) ? params.space : "paperclip");
   const [search, setSearch] = useState("");
   const [draft, setDraft] = useState<{ title: string; path: string; body: string } | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
@@ -165,23 +168,28 @@ export function TeamWiki() {
     <div className="mx-auto w-full max-w-4xl space-y-6 px-6 py-8">
       <header className="space-y-1">
         <h1 className="flex items-center gap-2 text-lg font-semibold">
-          <BookOpen className="h-5 w-5 text-sky-600 dark:text-sky-400" aria-hidden /> Team Wiki
+          <BookOpen className="h-5 w-5 text-sky-600 dark:text-sky-400" aria-hidden />{" "}
+          {fixedSpace === "personal" ? "个人指令文件" : "Team Wiki"}
         </h1>
         <p className="text-sm text-muted-foreground">
-          团队的知识作为一个 workspace 给 Agent
+          {fixedSpace === "personal"
+            ? "个人层指令文件的登记与快照版本；真身在文件系统，回滚=导出后手动覆盖"
+            : "团队的知识作为一个 workspace 给 Agent"}
         </p>
       </header>
 
       {/* PageTabBar renders Radix triggers, so the change event arrives on the
           surrounding Tabs — wiring only the inner prop leaves the tabs inert. */}
-      <Tabs value={space} onValueChange={(next) => navigate(`/${prefix}/team-wiki/${next}`)}>
-        <PageTabBar
-          align="start"
-          value={space}
-          onValueChange={(next) => navigate(`/${prefix}/team-wiki/${next}`)}
-          items={SPACES.map((value) => ({ value, label: SPACE_META[value].label }))}
-        />
-      </Tabs>
+      {fixedSpace ? null : (
+        <Tabs value={space} onValueChange={(next) => navigate(`/${prefix}/team-wiki/${next}`)}>
+          <PageTabBar
+            align="start"
+            value={space}
+            onValueChange={(next) => navigate(`/${prefix}/team-wiki/${next}`)}
+            items={TEAM_SPACES.map((value) => ({ value, label: SPACE_META[value].label }))}
+          />
+        </Tabs>
+      )}
 
       <p className="text-sm text-muted-foreground">{meta.blurb}</p>
 
