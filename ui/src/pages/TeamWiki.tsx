@@ -26,6 +26,14 @@ type Space = (typeof SPACES)[number];
 /** The team page's switcher shows team spaces only; personal lives behind its
  *  own Personal assets entry (tabs isolated, machinery shared — user 2026-08-26). */
 const TEAM_SPACES = ["paperclip", "agent"] as const;
+/** Tool tabs render proper casing even though paths are lowercase. */
+const TOOL_LABELS: Record<string, string> = {
+  claude: "Claude",
+  codex: "Codex",
+  zcode: "Zcode",
+  grok: "Grok",
+};
+const toolLabel = (tool: string) => TOOL_LABELS[tool] ?? tool;
 
 const SPACE_META: Record<Space, { label: string; blurb: string }> = {
   paperclip: {
@@ -180,6 +188,14 @@ export function TeamWiki({ fixedSpace }: { fixedSpace?: Space } = {}) {
   const dirGroups = [...new Set(
     visiblePages.filter((p) => p.path.includes("/")).map((p) => p.path.split("/")[0]),
   )].sort();
+  const [dirTab, setDirTab] = useState<string>("all");
+  const filteredPages = fixedSpace
+    ? visiblePages
+    : dirTab === "all"
+      ? visiblePages
+      : dirTab === "__root__"
+        ? rootPages
+        : visiblePages.filter((p) => p.path.startsWith(dirTab + "/"));
 
   return (
     <div className="mx-auto w-full max-w-4xl space-y-6 px-6 py-8">
@@ -284,7 +300,7 @@ export function TeamWiki({ fixedSpace }: { fixedSpace?: Space } = {}) {
         {fixedSpace ? (
           <div role="tablist" className="flex flex-wrap gap-1 border-b border-border pb-2" data-testid="personal-tool-tabs">
             {[{ id: "all", label: `全部 ${pages.length}` }].concat(
-              tools.map((t) => ({ id: t, label: `${t} ${pages.filter((p) => p.path.split("/")[0] === t).length}` })),
+              tools.map((t) => ({ id: t, label: `${toolLabel(t)} ${pages.filter((p) => p.path.split("/")[0] === t).length}` })),
             ).map((t) => (
               <button
                 key={t.id}
@@ -299,8 +315,32 @@ export function TeamWiki({ fixedSpace }: { fixedSpace?: Space } = {}) {
             ))}
           </div>
         ) : null}
-        <ul className="space-y-3">
-          {(fixedSpace ? visiblePages : rootPages).map((page) => (
+        <div className={fixedSpace ? "" : "flex flex-col gap-6 sm:flex-row"}>
+        {fixedSpace ? null : (
+          <nav className="sm:w-44 sm:shrink-0" aria-label="目录" data-testid="wiki-dir-nav">
+            <p className="mb-1 px-2 text-(length:--text-micro) font-semibold uppercase tracking-wide text-muted-foreground">目录</p>
+            <ul className="space-y-0.5">
+              {[
+                { id: "all", label: `全部 ${visiblePages.length}` },
+                ...(rootPages.length > 0 ? [{ id: "__root__", label: `未分组 ${rootPages.length}` }] : []),
+                ...dirGroups.map((dir) => ({ id: dir, label: `${dir} ${visiblePages.filter((p) => p.path.split("/")[0] === dir).length}` })),
+              ].map((item) => (
+                <li key={item.id}>
+                  <button
+                    type="button"
+                    aria-current={dirTab === item.id}
+                    onClick={() => setDirTab(item.id)}
+                    className={`w-full rounded-md px-2 py-1 text-left text-sm transition-colors ${dirTab === item.id ? "bg-accent font-medium text-foreground" : "text-muted-foreground hover:bg-accent/40 hover:text-foreground"}`}
+                  >
+                    {item.label}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </nav>
+        )}
+        <ul className={fixedSpace ? "space-y-3" : "min-w-0 flex-1 space-y-3"}>
+          {filteredPages.map((page) => (
             <li key={page.id} className="rounded-lg border border-border p-4">
               {editing === page.id ? (
                 <PageEditor
@@ -363,54 +403,8 @@ export function TeamWiki({ fixedSpace }: { fixedSpace?: Space } = {}) {
               )}
             </li>
           ))}
-        {(fixedSpace ? [] : dirGroups.map((dir) => (
-          <li key={`dir-${dir}`} className="rounded-lg border border-border/60 bg-muted/10 p-3">
-            <details open>
-              <summary className="cursor-pointer select-none text-sm font-semibold text-foreground" data-testid="wiki-dir-group">
-                {dir}
-                <span className="ml-2 font-mono text-(length:--text-micro) text-muted-foreground">
-                  {visiblePages.filter((p) => p.path.split("/")[0] === dir).length} 页
-                </span>
-              </summary>
-              <ul className="mt-2 space-y-2">
-                {visiblePages.filter((p) => p.path.split("/")[0] === dir).map((page) => (
-                  <li key={page.id} className="rounded-lg border border-border bg-background p-4">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="truncate font-mono text-(length:--text-micro) text-muted-foreground">{page.path}</p>
-                        <h3 className="text-sm font-semibold">{page.title}</h3>
-                      </div>
-                      <div className="flex shrink-0 gap-1">
-                        <Button
-                          size="icon-xs"
-                          variant="ghost"
-                          aria-label="版本历史"
-                          title="版本历史"
-                          onClick={() => setHistoryFor((current) => (current === page.id ? null : page.id))}
-                        >
-                          <History className="h-3.5 w-3.5" aria-hidden />
-                        </Button>
-                        <Button size="icon-xs" variant="ghost" aria-label="编辑" onClick={() => setEditing(page.id)}>
-                          <Pencil className="h-3.5 w-3.5" aria-hidden />
-                        </Button>
-                      </div>
-                    </div>
-                    {historyFor === page.id ? (
-                      <PageVersions
-                        companyId={selectedCompanyId}
-                        space={space}
-                        pageId={page.id}
-                        agentNames={agentNames}
-                        onRestored={invalidatePages}
-                      />
-                    ) : null}
-                  </li>
-                ))}
-              </ul>
-            </details>
-          </li>
-        )))}
         </ul>
+        </div>
         </>
       )}
     </div>
