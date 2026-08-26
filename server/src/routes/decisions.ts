@@ -147,9 +147,12 @@ export function decisionRoutes(db: Db, options: DecisionServiceOptions) {
     const agent = agentContext(req); if (!agent) { res.status(403).json({ error: "Agent run context required" }); return; }
     res.status(201).json(await svc.createBundle({ companyId, actor: req.actor, ...agent, ...req.body }));
   });
+  // Readable by agents as well as the board: an agent picking up a task needs
+  // to see what was already decided on it, and a decision is a record of what
+  // the company agreed, not a private board artifact.
   router.get("/companies/:companyId/decisions", async (req, res) => {
-    const companyId = req.params.companyId as string; assertBoard(req); assertCompanyAccess(req, companyId);
-    const query = z.object({ status: z.enum(["open", "decided", "expired", "cancelled"]).optional(), bundleId: z.string().guid().optional(), targetIssueId: z.string().guid().optional(), originAgentId: z.string().guid().optional(), limit: z.coerce.number().int().positive().max(100).optional() }).safeParse(req.query);
+    const companyId = req.params.companyId as string; assertCompanyAccess(req, companyId);
+    const query = z.object({ status: z.enum(["open", "decided", "expired", "cancelled"]).optional(), bundleId: z.string().guid().optional(), targetIssueId: z.string().guid().optional(), originIssueId: z.string().guid().optional(), originAgentId: z.string().guid().optional(), limit: z.coerce.number().int().positive().max(100).optional() }).safeParse(req.query);
     if (!query.success) { res.status(400).json({ error: "Invalid decision filters", details: query.error.flatten() }); return; }
     res.json(await svc.list(companyId, query.data));
   });

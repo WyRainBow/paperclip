@@ -110,8 +110,8 @@ describePg("decisionService", () => {
 
   it("executes once, replays stored outcome, and attributes executor audit to the decider", async () => {
     const created = await createCommentDecision();
-    const first = await service().decide({ id: created.id, optionId: "yes", idempotencyKey: "decide-1", decidedByUserId, userActor: boardActor() });
-    const replay = await service().decide({ id: created.id, optionId: "yes", idempotencyKey: "decide-1", decidedByUserId, userActor: boardActor() });
+    const first = await service().decide({ id: created.id, optionId: "yes", idempotencyKey: "decide-1", decidedByUserId, userActor: boardActor() , inputValues: { rationale: "test rationale" } });
+    const replay = await service().decide({ id: created.id, optionId: "yes", idempotencyKey: "decide-1", decidedByUserId, userActor: boardActor() , inputValues: { rationale: "test rationale" } });
     expect(first.executionStatus).toBe("succeeded"); expect(replay.executionStatus).toBe("succeeded");
     expect(await db.select().from(issueComments).where(eq(issueComments.issueId, targetIssueId))).toHaveLength(1);
     const audit = await db.select().from(activityLog).where(eq(activityLog.action, "decision.effect_executed"));
@@ -124,8 +124,8 @@ describePg("decisionService", () => {
   it("allows one double-decide winner and rejects the loser", async () => {
     const created = await createCommentDecision();
     const outcomes = await Promise.allSettled([
-      service().decide({ id: created.id, optionId: "yes", idempotencyKey: "race-a", decidedByUserId, userActor: boardActor() }),
-      service().decide({ id: created.id, optionId: "yes", idempotencyKey: "race-b", decidedByUserId, userActor: boardActor() }),
+      service().decide({ id: created.id, optionId: "yes", idempotencyKey: "race-a", decidedByUserId, userActor: boardActor() , inputValues: { rationale: "test rationale" } }),
+      service().decide({ id: created.id, optionId: "yes", idempotencyKey: "race-b", decidedByUserId, userActor: boardActor() , inputValues: { rationale: "test rationale" } }),
     ]);
     expect(outcomes.filter((item) => item.status === "fulfilled")).toHaveLength(1);
     expect(outcomes.filter((item) => item.status === "rejected")).toHaveLength(1);
@@ -183,7 +183,7 @@ describePg("decisionService", () => {
       optionId: "archive",
       decidedByUserId,
       userActor: boardActor(),
-    });
+     inputValues: { rationale: "test rationale" } });
     expect(result.executionStatus).toBe("succeeded");
     const states = await db.select().from(decisionRetention);
     expect(states.filter((row) => row.archivedAt).map((row) => row.sourceId).sort()).toEqual([extraIssueId, targetIssueId].sort());
@@ -193,11 +193,11 @@ describePg("decisionService", () => {
   it("skips strict stale targets and fails closed on intersection denial", async () => {
     const stale = await createCommentDecision("strict");
     await db.update(issues).set({ updatedAt: new Date(Date.now() + 1_000) }).where(eq(issues.id, targetIssueId));
-    const staleResult = await service().decide({ id: stale.id, optionId: "yes", decidedByUserId, userActor: boardActor() });
+    const staleResult = await service().decide({ id: stale.id, optionId: "yes", decidedByUserId, userActor: boardActor() , inputValues: { rationale: "test rationale" } });
     expect(staleResult.executions[0]).toMatchObject({ status: "skipped", error: "target_changed" });
 
     const denied = await createCommentDecision("lenient", { idempotencyKey: "denied" });
-    const deniedResult = await service().decide({ id: denied.id, optionId: "yes", decidedByUserId, userActor: { type: "none", source: "none" } });
+    const deniedResult = await service().decide({ id: denied.id, optionId: "yes", decidedByUserId, userActor: { type: "none", source: "none" } , inputValues: { rationale: "test rationale" } });
     expect(deniedResult.executions[0]).toMatchObject({ status: "failed", error: "deny_decision_intersection" });
     const failedAudit = await db.select().from(activityLog).where(eq(activityLog.action, "decision.effect_failed"));
     expect(failedAudit.at(-1)?.details).toMatchObject({ reason: "deny_decision_intersection" });
@@ -209,7 +209,7 @@ describePg("decisionService", () => {
       options: [{ id: "yes", label: "Yes", effects: [{ type: "update_issue_status", targetIssueId, staleness: "lenient", status: "in_progress" }] }],
     });
     await db.update(companyMemberships).set({ membershipRole: "viewer" }).where(eq(companyMemberships.principalId, originResponsibleUserId));
-    const result = await service().decide({ id: created.id, optionId: "yes", decidedByUserId, userActor: boardActor() });
+    const result = await service().decide({ id: created.id, optionId: "yes", decidedByUserId, userActor: boardActor() , inputValues: { rationale: "test rationale" } });
     expect(result.executions[0]).toMatchObject({ status: "failed", error: "deny_decision_intersection" });
   });
 
@@ -233,7 +233,7 @@ describePg("decisionService", () => {
         removeBlockedByIssueIds: [removedBlockerId] }] }],
     });
 
-    await service().decide({ id: created.id, optionId: "yes", decidedByUserId, userActor: boardActor() });
+    await service().decide({ id: created.id, optionId: "yes", decidedByUserId, userActor: boardActor() , inputValues: { rationale: "test rationale" } });
 
     const relations = await db.select().from(issueRelations).where(eq(issueRelations.companyId, companyId));
     expect(relations).toEqual(expect.arrayContaining([
@@ -262,7 +262,7 @@ describePg("decisionService", () => {
     const created = await createCommentDecision("lenient");
     await db.update(decisions).set({ expiresAt: new Date(Date.now() - 1) })
       .where(eq(decisions.id, created.id));
-    await expect(service().decide({ id: created.id, optionId: "yes", decidedByUserId, userActor: boardActor() }))
+    await expect(service().decide({ id: created.id, optionId: "yes", decidedByUserId, userActor: boardActor() , inputValues: { rationale: "test rationale" } }))
       .rejects.toThrow("decision_expired");
     expect((await service().get(created.id))?.status).toBe("expired");
     expect(await db.select().from(issueComments).where(eq(issueComments.issueId, targetIssueId))).toHaveLength(0);
@@ -276,7 +276,7 @@ describePg("decisionService", () => {
       options: [{ id: "yes", label: "Yes", effects: [{ type: "create_issue", targetIssueId, staleness: "strict", draft: { title: "Follow-up", blockedByIssueIds: [blockerId] } }] }],
     });
     await db.update(issues).set({ updatedAt: new Date(Date.now() + 1_000) }).where(eq(issues.id, blockerId));
-    const createResult = await service().decide({ id: createDecision.id, optionId: "yes", decidedByUserId, userActor: boardActor() });
+    const createResult = await service().decide({ id: createDecision.id, optionId: "yes", decidedByUserId, userActor: boardActor() , inputValues: { rationale: "test rationale" } });
     expect(createResult.executions[0]).toMatchObject({ status: "skipped", error: "target_changed" });
 
     const cancelDecision = await service().create({
@@ -285,7 +285,7 @@ describePg("decisionService", () => {
     });
     const childId = randomUUID();
     await db.insert(issues).values({ id: childId, companyId, title: "New child", status: "todo", priority: "medium", parentId: targetIssueId, responsibleUserId: decidedByUserId });
-    const cancelResult = await service().decide({ id: cancelDecision.id, optionId: "yes", decidedByUserId, userActor: boardActor() });
+    const cancelResult = await service().decide({ id: cancelDecision.id, optionId: "yes", decidedByUserId, userActor: boardActor() , inputValues: { rationale: "test rationale" } });
     expect(cancelResult.executions[0]).toMatchObject({ status: "skipped", error: "target_changed" });
     expect((await db.select().from(issues).where(eq(issues.id, childId)))[0]?.status).toBe("todo");
   });
@@ -304,7 +304,7 @@ describePg("decisionService", () => {
     await db.insert(issues).values({ id: unreviewedChildId, companyId, title: "Unreviewed child", status: "todo", priority: "medium",
       parentId: targetIssueId, responsibleUserId: decidedByUserId });
 
-    const result = await service().decide({ id: created.id, optionId: "yes", decidedByUserId, userActor: boardActor() });
+    const result = await service().decide({ id: created.id, optionId: "yes", decidedByUserId, userActor: boardActor() , inputValues: { rationale: "test rationale" } });
 
     expect(result.executions[0]).toMatchObject({ status: "executed",
       result: { cancelledIssueIds: [reviewedChildId, targetIssueId] } });
@@ -324,7 +324,7 @@ describePg("decisionService", () => {
     });
 
     expect((created.targetSnapshots as Record<string, { descendantCount: number }>)[targetIssueId]?.descendantCount).toBe(1);
-    const result = await service().decide({ id: created.id, optionId: "cancel", decidedByUserId, userActor: boardActor() });
+    const result = await service().decide({ id: created.id, optionId: "cancel", decidedByUserId, userActor: boardActor() , inputValues: { rationale: "test rationale" } });
     expect(result.executions[0]).toMatchObject({ status: "executed", result: { cancelledIssueIds: [childId, targetIssueId] } });
     expect(await db.select({ id: issues.id, status: issues.status }).from(issues).where(eq(issues.companyId, companyId)))
       .toEqual(expect.arrayContaining([
@@ -341,14 +341,14 @@ describePg("decisionService", () => {
       options: [{ id: "yes", label: "Yes", effects: [{ type: "assign_issue", targetIssueId, staleness: "lenient", assigneeAgentId }] }],
     });
     await db.update(companyMemberships).set({ membershipRole: "viewer" }).where(eq(companyMemberships.principalId, decidedByUserId));
-    const result = await service().decide({ id: created.id, optionId: "yes", decidedByUserId, userActor: boardActor() });
+    const result = await service().decide({ id: created.id, optionId: "yes", decidedByUserId, userActor: boardActor() , inputValues: { rationale: "test rationale" } });
     expect(result.executions[0]).toMatchObject({ status: "failed", error: "deny_decision_intersection" });
   });
 
   it("fails closed when the origin responsible user loses visibility", async () => {
     const created = await createCommentDecision();
     await db.update(companyMemberships).set({ status: "inactive" }).where(eq(companyMemberships.principalId, originResponsibleUserId));
-    const result = await service().decide({ id: created.id, optionId: "yes", decidedByUserId, userActor: boardActor() });
+    const result = await service().decide({ id: created.id, optionId: "yes", decidedByUserId, userActor: boardActor() , inputValues: { rationale: "test rationale" } });
     expect(result.executions[0]).toMatchObject({ status: "failed", error: "deny_decision_intersection" });
     expect(result.executions[0]?.result).toMatchObject({ originReason: "deny_missing_membership" });
   });
@@ -361,7 +361,7 @@ describePg("decisionService", () => {
     delete process.env.PAPERCLIP_DECISION_SIGNING_SECRET;
     process.env.PAPERCLIP_AGENT_JWT_SECRET = "agent-jwt-secret-must-not-sign-decisions";
     try {
-      await expect(service().decide({ id: created.id, optionId: "yes", decidedByUserId, userActor: boardActor() }))
+      await expect(service().decide({ id: created.id, optionId: "yes", decidedByUserId, userActor: boardActor() , inputValues: { rationale: "test rationale" } }))
         .rejects.toThrow("Decision signature verification failed");
       expect(await db.select().from(issueComments).where(eq(issueComments.issueId, targetIssueId))).toHaveLength(0);
     } finally {
@@ -378,7 +378,7 @@ describePg("decisionService", () => {
     delete process.env.PAPERCLIP_DECISION_SIGNING_SECRET;
     try {
       const created = await createCommentDecision();
-      const result = await service().decide({ id: created.id, optionId: "yes", decidedByUserId, userActor: boardActor() });
+      const result = await service().decide({ id: created.id, optionId: "yes", decidedByUserId, userActor: boardActor() , inputValues: { rationale: "test rationale" } });
       expect(result.executionStatus).toBe("succeeded");
     } finally {
       if (originalHome === undefined) delete process.env.PAPERCLIP_HOME;
@@ -395,7 +395,7 @@ describePg("decisionService", () => {
         { type: "comment_on_issue", targetIssueId, staleness: "lenient", bodyMarkdown: "still runs" },
       ] }],
     });
-    const result = await service().decide({ id: created.id, optionId: "yes", decidedByUserId, userActor: boardActor() });
+    const result = await service().decide({ id: created.id, optionId: "yes", decidedByUserId, userActor: boardActor() , inputValues: { rationale: "test rationale" } });
     expect(result.executionStatus).toBe("partial");
     expect(result.executions).toEqual(expect.arrayContaining([
       expect.objectContaining({ effectIndex: 0, status: "failed", error: "effect_execution_failed" }),
@@ -407,9 +407,9 @@ describePg("decisionService", () => {
   it("resumes claimed effects exactly once after a simulated crash without a client idempotency key", async () => {
     const created = await createCommentDecision();
     await db.update(decisions).set({ status: "decided", executionStatus: "running", chosenOptionId: "yes", decidedByUserId,
-      inputValues: {} }).where(eq(decisions.id, created.id));
+      inputValues: { rationale: "test rationale" } }).where(eq(decisions.id, created.id));
     await db.insert(decisionEffectExecutions).values({ decisionId: created.id, effectIndex: 0, effectType: "comment_on_issue", targetIssueId, status: "claimed" });
-    const resumed = await service().decide({ id: created.id, optionId: "yes", decidedByUserId, userActor: boardActor() });
+    const resumed = await service().decide({ id: created.id, optionId: "yes", decidedByUserId, userActor: boardActor() , inputValues: { rationale: "test rationale" } });
     expect(resumed.executionStatus).toBe("succeeded");
     expect(await db.select().from(issueComments).where(eq(issueComments.issueId, targetIssueId))).toHaveLength(1);
   });
@@ -434,7 +434,7 @@ describePg("decisionService", () => {
       throw new Error("simulated post-execution crash");
     } });
 
-    await expect(crashingService.decide({ id: created.id, optionId: "yes", decidedByUserId, userActor: boardActor() }))
+    await expect(crashingService.decide({ id: created.id, optionId: "yes", decidedByUserId, userActor: boardActor() , inputValues: { rationale: "test rationale" } }))
       .rejects.toThrow("simulated post-execution crash");
     expect((await service().get(created.id))?.executionStatus).toBe("succeeded");
     expect((await service().get(created.id))?.metadata).toMatchObject({ continuationPending: true });
@@ -469,7 +469,7 @@ describePg("decisionService", () => {
 
   it("batches effect executions into terminal decision lists", async () => {
     const created = await createCommentDecision();
-    await service().decide({ id: created.id, optionId: "yes", decidedByUserId, userActor: boardActor() });
+    await service().decide({ id: created.id, optionId: "yes", decidedByUserId, userActor: boardActor() , inputValues: { rationale: "test rationale" } });
 
     const listed = await service().list(companyId, { status: "decided" });
 
@@ -614,8 +614,8 @@ describePg("decisionService", () => {
       companyId, actor: agentActor(), agentId, runId, ruleKey: "cleanup.stale", title: "Clean up?", body: "Body",
       options: [{ id: "clean", label: "Clean", effects: [] }], expiresAt: nearFutureExpiry(),
     });
-    await service().decide({ id: accepted.id, optionId: "assign", decidedByUserId, userActor: boardActor() });
-    await service().decide({ id: acceptedAgain.id, optionId: "assign", decidedByUserId, userActor: boardActor() });
+    await service().decide({ id: accepted.id, optionId: "assign", decidedByUserId, userActor: boardActor() , inputValues: { rationale: "test rationale" } });
+    await service().decide({ id: acceptedAgain.id, optionId: "assign", decidedByUserId, userActor: boardActor() , inputValues: { rationale: "test rationale" } });
     await service().dismiss(rejected.id, decidedByUserId, boardActor(), "Not this time");
     await expireDecisionNow(stale.id);
     await service().sweepExpired();

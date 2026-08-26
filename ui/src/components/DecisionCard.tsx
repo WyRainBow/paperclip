@@ -18,6 +18,7 @@ import type {
   DecisionEffectExecution,
   DecisionTargetSnapshot,
 } from "../api/decisions";
+import { t } from "../i18n";
 import { absoluteTimestamp, cn } from "../lib/utils";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -230,6 +231,20 @@ const RESULT_ICON: Record<ResultRow["status"], ReactNode> = {
   claimed: <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-muted-foreground" aria-hidden />,
 };
 
+/**
+ * The body up to (but not including) the second heading — the "背景" section
+ * under the team's decision template, and a sensible lead-in for any other
+ * shape. Used as the collapsed preview of a settled decision.
+ */
+function firstBodySection(body: string): string {
+  const lines = body.split("\n");
+  const headings = lines
+    .map((line, index) => ({ line, index }))
+    .filter(({ line }) => /^#{1,6}\s/.test(line));
+  if (headings.length < 2) return body;
+  return lines.slice(0, headings[1]!.index).join("\n").trimEnd();
+}
+
 export function DecisionCard({
   decision,
   executions,
@@ -279,7 +294,9 @@ export function DecisionCard({
             ? "partial"
             : "failed";
 
-  const badgeLabel = open
+  // The data attribute keeps the English key (selectors and tests match on it);
+  // only the rendered text is localized.
+  const badgeKey = open
     ? "Pending"
     : decision.status === "expired"
       ? "Expired"
@@ -292,6 +309,15 @@ export function DecisionCard({
             : decision.executionStatus === "partial"
               ? "Partial"
               : "Failed";
+  const badgeLabel = t(badgeKey);
+
+  // A settled decision is history: the reader is scanning for which one it was,
+  // not re-reading the case. Collapse it to the background paragraph and let a
+  // click restore the rest. An open decision is never collapsed — the reader
+  // has to see the whole case before choosing.
+  const [collapsed, setCollapsed] = useState(!open);
+  const isCollapsed = !open && collapsed;
+  const collapsedBody = useMemo(() => firstBodySection(decision.body ?? ""), [decision.body]);
 
   const requiredUnmet = (decision.inputs ?? []).some(
     (field) => field.required && !(inputValues[field.id] ?? "").trim(),
@@ -334,7 +360,7 @@ export function DecisionCard({
         dimmed && "opacity-80",
         className,
       )}
-      data-decision-state={badgeLabel.toLowerCase()}
+      data-decision-state={badgeKey.toLowerCase()}
     >
       {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -390,10 +416,24 @@ export function DecisionCard({
       {/* Body */}
       {decision.body?.trim() && (
         <div className="mt-3 text-sm leading-6 text-foreground/90">
-          <MarkdownBody>{decision.body}</MarkdownBody>
+          <MarkdownBody>{isCollapsed ? collapsedBody : decision.body}</MarkdownBody>
         </div>
       )}
 
+      {!open && (
+        <button
+          type="button"
+          onClick={() => setCollapsed((value) => !value)}
+          className="mt-2 flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+          aria-expanded={!isCollapsed}
+        >
+          <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", !isCollapsed && "rotate-180")} aria-hidden />
+          {isCollapsed ? t("Show more") : t("Show less")}
+        </button>
+      )}
+
+      {isCollapsed ? null : (
+      <>
       {/* Stale-target warning (open only) */}
       {open && isStale && (
         <div className="mt-3 rounded-lg border border-amber-500/50 bg-amber-500/10 px-3 py-2">
@@ -625,7 +665,7 @@ export function DecisionCard({
               >
                 <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden />
                 <span className="font-medium text-foreground">
-                  Chosen:{" "}
+                  {t("Chosen")}{": "}
                   {decision.options.find((option) => option.id === decision.chosenOptionId)?.label ??
                     decision.chosenOptionId}
                 </span>
@@ -633,7 +673,7 @@ export function DecisionCard({
                   <span className="tabular-nums text-muted-foreground"> · {absoluteTimestamp(decision.decidedAt)}</span>
                 )}
                 {decision.decidedByAgentId && decidedByAgentName && (
-                  <span className="text-muted-foreground"> · by {decidedByAgentName}</span>
+                  <span className="text-muted-foreground"> · {t("by")} {decidedByAgentName}</span>
                 )}
                 {!decision.decidedByAgentId && decision.decidedByUserId && (
                   <span className="text-muted-foreground"> · by {decision.decidedByUserId}</span>
@@ -664,7 +704,7 @@ export function DecisionCard({
                           <span className="text-sm font-medium text-foreground">{option.label}</span>
                           {chosen && (
                             <span className="shrink-0 rounded-full border border-emerald-500/60 bg-emerald-500/10 px-2 py-0.5 text-(length:--text-micro) font-medium text-emerald-800 dark:text-emerald-200">
-                              Chosen
+                              {t("Chosen")}
                             </span>
                           )}
                         </div>
@@ -705,6 +745,8 @@ export function DecisionCard({
             </>
           )}
         </div>
+      )}
+      </>
       )}
     </div>
   );

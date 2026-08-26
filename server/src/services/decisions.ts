@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { and, asc, count, desc, eq, gt, gte, inArray, lte, or, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import { companyMemberships, decisionBundles, decisionEffectExecutions, decisionRetention, decisions, decisionTargetIssues, heartbeatRuns, issueRelations, issues } from "@paperclipai/db";
-import { ATTENTION_SOURCE_KINDS, decisionEffectTargetIssueIds } from "@paperclipai/shared";
+import { ATTENTION_SOURCE_KINDS, DECISION_TEMPLATE_INPUTS, decisionEffectTargetIssueIds } from "@paperclipai/shared";
 import type { AttentionArchiveManifestEntry, DecisionEffect, DecisionInput, DecisionOption, DecisionStatsCounts, DecisionStatsResponse } from "@paperclipai/shared";
 import { conflict, forbidden, notFound, tooManyRequests, unprocessable } from "../errors.js";
 import { authorizationService, type AuthorizationActor } from "./authorization.js";
@@ -209,7 +209,11 @@ export function decisionService(db: Db, options: DecisionServiceOptions) {
             .filter(([key]) => key.startsWith("attention:")))) === canonicalJson(input.additionalTargetSnapshots)
         );
         const equivalent = existing.title === input.title && existing.body === input.body &&
-          canonicalJson(existing.options) === canonicalJson(input.options) && canonicalJson(existing.inputs ?? null) === canonicalJson(input.inputs ?? null) &&
+          canonicalJson(existing.options) === canonicalJson(input.options) &&
+          // Compare against what the insert actually stores, not what the
+          // caller passed: inputs are replaced by the template, so comparing
+          // the raw request would make every idempotent retry look changed.
+          canonicalJson(existing.inputs ?? null) === canonicalJson(DECISION_TEMPLATE_INPUTS) &&
           archiveEquivalent;
         if (!equivalent) throw conflict("Decision idempotency key already used with a different payload");
         return existing;
@@ -241,7 +245,7 @@ export function decisionService(db: Db, options: DecisionServiceOptions) {
     const id = randomUUID();
     const [created] = await dbOrTx.insert(decisions).values({ id, companyId: input.companyId, bundleId: input.bundleId ?? null,
       originAgentId: input.agentId, originIssueId: provenance.issueId, originRunId: input.runId, ruleKey: input.ruleKey ?? null,
-      title: input.title, body: input.body, options: input.options, inputs: input.inputs ?? null, expiresAt,
+      title: input.title, body: input.body, options: input.options, inputs: DECISION_TEMPLATE_INPUTS, expiresAt,
       idempotencyKey: input.idempotencyKey ?? null, signedSpec: signDecisionSpec(spec({ id, options: input.options, targetSnapshots })),
       targetSnapshots, continuationPolicy: input.continuationPolicy ?? "none", metadata: input.metadata ?? {},
       resolverPolicy: input.resolverPolicy ?? "board" }).onConflictDoNothing().returning();
@@ -279,11 +283,14 @@ export function decisionService(db: Db, options: DecisionServiceOptions) {
     return { ...decision, executions };
   }
 
-  async function list(companyId: string, filter: { status?: string; bundleId?: string; targetIssueId?: string; originAgentId?: string; limit?: number } = {}) {
+  async function list(companyId: string, filter: { status?: string; bundleId?: string; targetIssueId?: string; originIssueId?: string; originAgentId?: string; limit?: number } = {}) {
     const conditions = [eq(decisions.companyId, companyId)];
     if (filter.status) conditions.push(eq(decisions.status, filter.status));
     if (filter.bundleId) conditions.push(eq(decisions.bundleId, filter.bundleId));
     if (filter.originAgentId) conditions.push(eq(decisions.originAgentId, filter.originAgentId));
+    // Origin, not target: "which decisions were raised while working this
+    // issue", which is what an issue's own decision tab shows.
+    if (filter.originIssueId) conditions.push(eq(decisions.originIssueId, filter.originIssueId));
     if (filter.targetIssueId) {
       const links = await db.select({ id: decisionTargetIssues.decisionId }).from(decisionTargetIssues).where(and(eq(decisionTargetIssues.companyId, companyId), eq(decisionTargetIssues.issueId, filter.targetIssueId)));
       if (!links.length) return [];
@@ -734,7 +741,15 @@ export function decisionService(db: Db, options: DecisionServiceOptions) {
     const current = await get(id); if (!current) throw notFound("Decision not found");
     if (!verifyDecisionSpec(spec({ id: current.id, options: current.options, targetSnapshots: current.targetSnapshots as Record<string, Snapshot> }), current.signedSpec)) throw forbidden("Decision signature verification failed");
     const empty = current.options.find((option) => option.effects.length === 0);
-    if (empty) return decide({ id, optionId: empty.id, decidedByUserId: userId, userActor, dismissed: true, dismissReason: reason });
+    // A dismissal already carries its own reason, so asking again for the
+    // template's rationale would demand the same sentence twice. Feed the
+    // dismissal reason in as the rationale instead.
+    if (empty) {
+      return decide({
+        id, optionId: empty.id, decidedByUserId: userId, userActor, dismissed: true, dismissReason: reason,
+        inputValues: { rationale: reason?.trim() || "驳回，未给出理由" },
+      });
+    }
     const [updated] = await db.update(decisions).set({ status: "decided", executionStatus: "succeeded", chosenOptionId: "dismissed", decidedByUserId: userId,
       decidedAt: new Date(), updatedAt: new Date(), metadata: { ...current.metadata, dismissed: true, dismissReason: reason ?? null,
         ...(current.continuationPolicy === "wake_origin_agent" ? { continuationPending: true } : {}) } }).where(and(eq(decisions.id, id), eq(decisions.status, "open"))).returning();

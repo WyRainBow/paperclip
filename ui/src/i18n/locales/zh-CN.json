@@ -70,7 +70,7 @@
   "In progress": "进行中",
   "In review": "评审中",
   "Blocked": "被阻塞",
-  "Cancelled": "已取消",
+  "Cancelled": "已作废",
   "Companies": "公司",
   "Deleting…": "删除中…",
   "Delete": "删除",
@@ -306,5 +306,13 @@
   "Expires in {{n}}m": "{{n}} 分钟后过期",
   "Expires in {{n}}h": "{{n}} 小时后过期",
   "Expires in {{n}}d": "{{n}} 天后过期",
-  "Team Wiki": "Team Wiki"
+  "Team Wiki": "Team Wiki",
+  "Pending": "待裁决",
+  "Decided": "已裁决",
+  "Dismissed": "已驳回",
+  "Partial": "部分执行",
+  "Failed": "执行失败",
+  "Chosen": "已选",
+  "by": "由",
+  "Show less": "收起"
 }

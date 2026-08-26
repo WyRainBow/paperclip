@@ -306,5 +306,13 @@
   "Expires in {{n}}m": "Expires in {{n}}m",
   "Expires in {{n}}h": "Expires in {{n}}h",
   "Expires in {{n}}d": "Expires in {{n}}d",
-  "Team Wiki": "Team Wiki"
+  "Team Wiki": "Team Wiki",
+  "Pending": "Pending",
+  "Decided": "Decided",
+  "Dismissed": "Dismissed",
+  "Partial": "Partial",
+  "Failed": "Failed",
+  "Chosen": "Chosen",
+  "by": "by",
+  "Show less": "Show less"
 }

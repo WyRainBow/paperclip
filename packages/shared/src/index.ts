@@ -22,6 +22,12 @@ export {
 } from "./validators/decision.js";
 
 export { decisionEffectTargetIssueIds } from "./types/decision.js";
+export {
+  DECISION_BODY_SECTIONS,
+  DECISION_BODY_TEMPLATE,
+  DECISION_TEMPLATE_INPUTS,
+  missingDecisionBodySections,
+} from "./decision-template.js";
 
 export type {
   DecisionEffectStaleness,
