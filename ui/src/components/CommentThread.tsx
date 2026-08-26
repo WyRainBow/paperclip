@@ -1,3 +1,4 @@
+import { agentCustomIcon } from "./AgentIconPicker";
 import { memo, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { Link, useLocation } from "react-router-dom";
 import type {
@@ -1063,7 +1064,7 @@ export function CommentThread({
                   return (
                     <>
                       {agent ? (
-                        <AgentIcon icon={agent.icon} className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                        <AgentIcon customIconUrl={agentCustomIcon(agent)} icon={agent.icon} className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                       ) : null}
                       <span className="truncate">{option.label}</span>
                     </>
@@ -1076,7 +1077,7 @@ export function CommentThread({
                   return (
                     <>
                       {agent ? (
-                        <AgentIcon icon={agent.icon} className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                        <AgentIcon customIconUrl={agentCustomIcon(agent)} icon={agent.icon} className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                       ) : null}
                       <span className="truncate">{option.label}</span>
                     </>

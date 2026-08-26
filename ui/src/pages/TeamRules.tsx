@@ -2,6 +2,8 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { History, Pencil, RotateCcw, Save, Scale, Trash2, X } from "lucide-react";
 import { api } from "@/api/client";
+import { agentsApi } from "@/api/agents";
+import { queryKeys } from "@/lib/queryKeys";
 import { useCompany } from "@/context/CompanyContext";
 import { useToastActions } from "@/context/ToastContext";
 import { Button } from "@/components/ui/button";
@@ -45,6 +47,30 @@ function versionsKey(companyId: string | null, noteId: string) {
   return ["team-rules", "notes", companyId, noteId, "versions"];
 }
 
+/**
+ * Notes and versions only store an agent id, so resolve names once per company
+ * and hand the map down — a rule reader wants to know *which* teammate wrote a
+ * revision, and "agent" alone doesn't answer that.
+ */
+function useAgentNames(companyId: string | null) {
+  const agentsQuery = useQuery({
+    queryKey: companyId ? queryKeys.agents.list(companyId) : ["agents", "team-rules", "none"],
+    queryFn: () => agentsApi.list(companyId!),
+    enabled: Boolean(companyId),
+  });
+  return useMemo(() => {
+    const map = new Map<string, string>();
+    for (const agent of agentsQuery.data ?? []) map.set(agent.id, agent.name);
+    return map;
+  }, [agentsQuery.data]);
+}
+
+/** Byline for a note or revision: the agent's own name when we can resolve it. */
+function authorLabel(agentId: string | null, agentNames: Map<string, string>) {
+  if (!agentId) return null;
+  return agentNames.get(agentId) ?? "agent";
+}
+
 export function TeamRules() {
   const { selectedCompanyId } = useCompany();
   const queryClient = useQueryClient();
@@ -52,6 +78,7 @@ export function TeamRules() {
   const [draft, setDraft] = useState<{ title: string; body: string } | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [historyFor, setHistoryFor] = useState<string | null>(null);
+  const agentNames = useAgentNames(selectedCompanyId);
 
   const notesQuery = useQuery({
     queryKey: notesKey(selectedCompanyId),
@@ -182,10 +209,16 @@ export function TeamRules() {
                     </div>
                     <p className="mt-2 text-(length:--text-micro) text-muted-foreground">
                       更新于 {new Date(note.updatedAt).toLocaleString()}
-                      {note.createdByAgentId ? " · agent 创建" : ""}
+                      {authorLabel(note.createdByAgentId, agentNames)
+                        ? ` · ${authorLabel(note.createdByAgentId, agentNames)} 创建`
+                        : ""}
                     </p>
                     {historyFor === note.id ? (
-                      <NoteVersions companyId={selectedCompanyId} noteId={note.id} />
+                      <NoteVersions
+                        companyId={selectedCompanyId}
+                        noteId={note.id}
+                        agentNames={agentNames}
+                      />
                     ) : null}
                   </>
                 )}
@@ -214,7 +247,15 @@ function diffSelection(versions: TeamRuleNoteVersion[], targetId?: string | null
   return { leftId: left?.id ?? null, rightId: right.id };
 }
 
-function NoteVersions({ companyId, noteId }: { companyId: string | null; noteId: string }) {
+function NoteVersions({
+  companyId,
+  noteId,
+  agentNames,
+}: {
+  companyId: string | null;
+  noteId: string;
+  agentNames: Map<string, string>;
+}) {
   const queryClient = useQueryClient();
   const { pushToast } = useToastActions();
   const [diffOpen, setDiffOpen] = useState(false);
@@ -284,7 +325,9 @@ function NoteVersions({ companyId, noteId }: { companyId: string | null; noteId:
                 </div>
                 <div className="mt-0.5 text-(length:--text-micro) text-muted-foreground">
                   {relativeTime(version.createdAt)}
-                  {version.authorAgentId ? " · agent" : ""}
+                  {authorLabel(version.authorAgentId, agentNames)
+                    ? ` · ${authorLabel(version.authorAgentId, agentNames)}`
+                    : ""}
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-1">

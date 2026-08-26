@@ -36,6 +36,7 @@ import {
 import { usePublishSharedQueryData, useSharedPollingQuery } from "../hooks/useSharedPolling";
 
 import { getAdapterLabel } from "../adapters/adapter-display-registry";
+import { AgentIcon, agentCustomIcon } from "../components/AgentIconPicker";
 
 const roleLabels = AGENT_ROLE_LABELS as Record<string, string>;
 
@@ -404,8 +405,10 @@ export function Agents() {
         )}
         leading={hasInvalidOrgChain ? (
           <AlertTriangle className="h-3.5 w-3.5 text-amber-500" aria-label="Invalid reporting chain" />
+        ) : agentCustomIcon(agent) ? (
+          <img src={agentCustomIcon(agent)!} alt="" className="h-4 w-4 shrink-0 rounded-sm object-cover" />
         ) : (
-          <AgentStatusCapsule status={agent.status} />
+          <AgentIcon icon={agent.icon} className="h-4 w-4 shrink-0 text-muted-foreground" />
         )}
         secondaryRow={
           builtInCluster ? (

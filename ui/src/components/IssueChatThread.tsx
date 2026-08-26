@@ -116,7 +116,7 @@ import { MarkdownEditor, type MentionOption, type MarkdownEditorRef } from "./Ma
 import { Identity } from "./Identity";
 import { InlineEntitySelector, type InlineEntityOption } from "./InlineEntitySelector";
 import { IssueThreadInteractionCard } from "./IssueThreadInteractionCard";
-import { AgentIcon } from "./AgentIconPicker";
+import { AgentIcon, agentCustomIcon } from "./AgentIconPicker";
 import {
   AssigneeChip,
   ComposerHandoffPreviewRow,
@@ -989,6 +989,7 @@ function IssueChatChainOfThought({
   const authorAgentId = typeof custom.authorAgentId === "string" ? custom.authorAgentId : null;
   const agentId = authorAgentId ?? runAgentId;
   const agentIcon = agentId ? agentMap?.get(agentId)?.icon : undefined;
+  const agentCustomIconUrl = agentId ? agentCustomIcon(agentMap?.get(agentId)) : null;
   // Adapters whose backends overwhelm the one-line reasoning ticker declare
   // a scrollable live reasoning view via their UI adapter module
   // (transcriptPresentation.liveReasoningView); resolved through the registry
@@ -1057,7 +1058,7 @@ function IssueChatChainOfThought({
           <div className="flex min-w-0 items-center gap-2.5">
             <span className="inline-flex items-center gap-2 text-sm font-medium text-foreground/80">
               {agentIcon ? (
-                <AgentIcon icon={agentIcon} className="h-4 w-4 shrink-0" />
+                <AgentIcon icon={agentIcon} customIconUrl={agentCustomIconUrl} className="h-4 w-4 shrink-0" />
               ) : isActive ? (
                 <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" />
               ) : (
@@ -1786,6 +1787,7 @@ function IssueChatAssistantMessage({
   const runStatus = typeof custom.runStatus === "string" ? custom.runStatus : null;
   const agentId = authorAgentId ?? runAgentId;
   const agentIcon = agentId ? agentMap?.get(agentId)?.icon : undefined;
+  const agentCustomIconUrl = agentId ? agentCustomIcon(agentMap?.get(agentId)) : null;
   const commentId = typeof custom.commentId === "string" ? custom.commentId : null;
   const sourceTrust = isSourceTrustMetadata(custom.sourceTrust) ? custom.sourceTrust : null;
   const attribution = resolveCommentAttribution({
@@ -1851,7 +1853,7 @@ function IssueChatAssistantMessage({
 
   const agentAvatar = (
     <Avatar size="sm" className="shrink-0">
-      {agentIcon ? (
+      {agentCustomIconUrl ? <AvatarImage src={agentCustomIconUrl} alt="" /> : agentIcon ? (
         <AvatarFallback><AgentIcon icon={agentIcon} className="h-3.5 w-3.5" /></AvatarFallback>
       ) : (
         <AvatarFallback>{initialsForName(authorName)}</AvatarFallback>

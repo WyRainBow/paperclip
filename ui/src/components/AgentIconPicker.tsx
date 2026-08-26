@@ -19,6 +19,11 @@ interface AgentIconProps {
   className?: string;
 }
 
+export function agentCustomIcon(agent: { icon?: string | null; metadata?: Record<string, unknown> | null } | null | undefined): string | null {
+  const url = agent?.metadata?.customIcon;
+  return typeof url === "string" ? url : null;
+}
+
 export function AgentIcon({ icon, customIconUrl, className }: AgentIconProps & { customIconUrl?: string | null }) {
   if (customIconUrl) {
     return <img src={customIconUrl} alt="" className={cn("rounded-sm object-cover", className)} />;
