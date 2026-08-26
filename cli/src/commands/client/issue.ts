@@ -79,9 +79,13 @@ interface IssueUpdateOptions extends BaseClientOptions {
 }
 
 interface IssueClaimOptions extends BaseClientOptions {
-  branch?: string;
   note?: string;
   status?: string;
+}
+
+interface IssueStartOptions extends BaseClientOptions {
+  branch: string;
+  note?: string;
 }
 
 interface IssueProgressOptions extends BaseClientOptions {
@@ -368,9 +372,8 @@ export function registerIssueCommands(program: Command): void {
   addCommonClientOptions(
     issue
       .command("claim")
-      .description("Claim an issue as a terminal agent: move it to in_progress and file an opening progress note")
+      .description("Claim an issue: take ownership (in_progress + assignee) and file an opening note. No branch — that is `issue start`")
       .argument("<issueId>", "Issue ID or identifier")
-      .option("--branch <name>", "Working branch name to record in the note")
       .option("--note <text>", "Extra opening note text")
       .option("--status <status>", "Target status (default in_progress)", "in_progress")
       .action(async (issueId: string, opts: IssueClaimOptions) => {
@@ -397,14 +400,55 @@ export function registerIssueCommands(program: Command): void {
               });
             }
           }
-          const lines = [`接卡开工：${issue.identifier} → ${opts.status}（by claim command）`];
-          if (opts.branch) lines.push(`工作分支：${opts.branch}`);
+          const lines = [`接卡：${issue.identifier} → ${opts.status}（by claim command）`];
           if (opts.note) lines.push(opts.note);
           await ctx.api.post(apiPath`/api/issues/${issue.id}/comments`, {
             body: lines.join("\n"),
             presentation: { kind: "progress_note", tone: "info" },
           });
-          printOutput({ identifier: issue.identifier, status: updated?.status ?? opts.status, branch: opts.branch ?? null }, { json: ctx.json });
+          printOutput({ identifier: issue.identifier, status: updated?.status ?? opts.status }, { json: ctx.json });
+        } catch (err) {
+          handleCommandError(err);
+        }
+      }),
+  );
+
+  addCommonClientOptions(
+    issue
+      .command("start")
+      .description("Start work on a claimed issue: record the working branch (and flip to in_progress if needed)")
+      .argument("<issueId>", "Issue ID or identifier")
+      .requiredOption("--branch <name>", "Working branch name")
+      .option("--note <text>", "Extra start note text")
+      .action(async (issueId: string, opts: IssueStartOptions) => {
+        try {
+          const ctx = resolveCommandContext(opts);
+          const issue = await ctx.api.get<Issue>(apiPath`/api/issues/${issueId}`);
+          if (!issue) throw new Error(`Issue not found: ${issueId}`);
+          let updated: Issue | null = issue;
+          if (issue.status !== "in_progress") {
+            try {
+              updated = await ctx.api.patch<Issue>(apiPath`/api/issues/${issue.id}`, { status: "in_progress" });
+            } catch (err) {
+              const message = err instanceof Error ? err.message : String(err);
+              if (!message.includes("require an assignee")) throw err;
+              const me = await ctx.api.get<Issue & { id: string }>(apiPath`/api/agents/me`).catch(() => null);
+              if (!me?.id) {
+                throw new Error("in_progress requires an assignee; claim first or run with --api-key as the working agent");
+              }
+              updated = await ctx.api.patch<Issue>(apiPath`/api/issues/${issue.id}`, {
+                status: "in_progress",
+                assigneeAgentId: me.id,
+              });
+            }
+          }
+          const lines = [`开工：${issue.identifier}，工作分支：${opts.branch}`];
+          if (opts.note) lines.push(opts.note);
+          await ctx.api.post(apiPath`/api/issues/${issue.id}/comments`, {
+            body: lines.join("\n"),
+            presentation: { kind: "progress_note", tone: "info" },
+          });
+          printOutput({ identifier: issue.identifier, status: updated?.status ?? "in_progress", branch: opts.branch }, { json: ctx.json });
         } catch (err) {
           handleCommandError(err);
         }
