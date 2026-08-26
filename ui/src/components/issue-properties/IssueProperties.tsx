@@ -256,23 +256,14 @@ export function IssueProperties({
   });
   const hasProgressTab = true;
   const [paneTab, setPaneTab] = useState("properties");
-  // Once a plan document exists, surface it: switch the pane to the Plan tab so
-  // the write-up is exposed alongside the plan-approval card, instead of leaving
-  // the user on Properties. Only auto-switch until the user picks a tab by hand —
-  // after that their choice wins. Ref-guarded so it fires once per mount.
-  const paneTabUserChosenRef = useRef(false);
+  // The pane opens on Properties (user 2026-08-26); the earlier auto-switch to
+  // Plan fired on every mount because hasPlanTab is a constant, and the plan
+  // area is deliberately empty until MUL-43 decides what lives there.
   const handlePaneTabChange = useCallback((value: string) => {
-    paneTabUserChosenRef.current = true;
     setPaneTab(value);
   }, []);
   useEffect(() => {
-    if (hasPlanTab && !paneTabUserChosenRef.current) {
-      setPaneTab("plans");
-    }
-  }, [hasPlanTab]);
-  useEffect(() => {
     if (!documentDeepLink) return;
-    paneTabUserChosenRef.current = true;
     setPaneTab(documentDeepLink.tab);
   }, [documentDeepLink]);
   const [assigneeOpen, setAssigneeOpen] = useState(false);
