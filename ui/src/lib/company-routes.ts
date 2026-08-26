@@ -3,7 +3,7 @@ const BOARD_ROUTE_ROOTS = new Set([
   "companies",
   "company",
   "skills",
-  "openspace",
+  "team-rules",
   "teams-catalog",
   "org",
   "agents",

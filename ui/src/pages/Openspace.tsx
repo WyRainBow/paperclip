@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Globe, Puzzle, Save, Trash2, X } from "lucide-react";
+import { Puzzle, Save, Scale, Trash2, X } from "lucide-react";
 import { api } from "@/api/client";
 import { useCompany } from "@/context/CompanyContext";
 import { useToastActions } from "@/context/ToastContext";
@@ -64,10 +64,10 @@ export function Openspace() {
     <div className="mx-auto w-full max-w-4xl space-y-8 px-6 py-8">
       <header className="space-y-1">
         <h1 className="flex items-center gap-2 text-lg font-semibold">
-          <Globe className="h-5 w-5 text-sky-600 dark:text-sky-400" aria-hidden /> Openspace
+          <Scale className="h-5 w-5 text-sky-600 dark:text-sky-400" aria-hidden /> Team Rules
         </h1>
         <p className="text-sm text-muted-foreground">
-          公司级团队规则（rules）：所有 agent 与人共守的工作规则正文。
+          全局团队规则（Team Rules）：所有 agent 与人共守的唯一规则正文，规则优先级最高层——Team Rules ＞ terminal-workflow skill（操作 SOP）＞ 各 agent 自有 AGENTS.md（个体补充）。
         </p>
       </header>
 
@@ -111,7 +111,7 @@ export function Openspace() {
         {notesQuery.isLoading ? (
           <p className="text-xs text-muted-foreground">加载中…</p>
         ) : notes.length === 0 && !draft ? (
-          <p className="text-xs text-muted-foreground">还没有规则。写团队通用规则：身份与通道、接卡流程、决策与记录、纪律。</p>
+          <p className="text-xs text-muted-foreground">还没有规则。写全局团队规则：身份与通道、接卡流程、决策与记录、纪律。</p>
         ) : (
           <ul className="space-y-3">
             {notes.map((note) => (

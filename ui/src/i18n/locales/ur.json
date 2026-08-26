@@ -236,5 +236,11 @@
   "Import from path or URL": "Import from path or URL",
   "Import skills from project": "Import skills from project",
   "Select": "Select",
-  "Scan project workspaces for skills": "Scan project workspaces for skills"
+  "Scan project workspaces for skills": "Scan project workspaces for skills",
+  "This task is paused by ancestor ": "This task is paused by ancestor ",
+  ". Resume from the root task to deliver deferred work.": ". Resume from the root task to deliver deferred work.",
+  "Sending this comment will wake {{name}} for triage while the subtree remains paused.": "Sending this comment will wake {{name}} for triage while the subtree remains paused.",
+  "the assignee": "the assignee",
+  "Assign an agent to wake them for triage while the subtree remains paused.": "Assign an agent to wake them for triage while the subtree remains paused.",
+  "This issue's isolated workspace was archived. Your next comment or resume reopens it and rebuilds the worktree.": "This issue's isolated workspace was archived. Your next comment or resume reopens it and rebuilds the worktree."
 }

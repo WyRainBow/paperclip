@@ -152,7 +152,6 @@
   "Explain why this subtree control is being applied...": "说明为什么要对此子树执行该控制...",
   "Comment failed": "评论失败",
   "Comment deleted": "评论已删除",
-  "Openspace": "开放空间",
   "Unfiled": "未归类",
   "Bundled": "内置",
   "Plugin": "插件",
@@ -236,5 +235,12 @@
   "Import from path or URL": "从路径或 URL 导入",
   "Import skills from project": "从项目导入技能",
   "Select": "选择",
-  "Scan project workspaces for skills": "扫描项目工作区里的技能"
+  "Scan project workspaces for skills": "扫描项目工作区里的技能",
+  "This task is paused by ancestor ": "此任务被上级 ",
+  ". Resume from the root task to deliver deferred work.": " 暂停。要交付被搁置的工作，请从根任务恢复。",
+  "Sending this comment will wake {{name}} for triage while the subtree remains paused.": "发出这条评论会唤醒 {{name}} 来分诊，子树仍保持暂停。",
+  "the assignee": "负责人",
+  "Assign an agent to wake them for triage while the subtree remains paused.": "指派一个 Agent 才能唤醒它分诊，子树仍保持暂停。",
+  "This issue's isolated workspace was archived. Your next comment or resume reopens it and rebuilds the worktree.": "这个任务的隔离工作区已归档。你下一条评论或恢复操作会重新打开它并重建工作树。",
+  "Team Rules": "团队规则"
 }

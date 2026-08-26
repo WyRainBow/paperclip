@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt, gte, inArray, isNull, notInArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, inArray, isNull, like, notInArray, or, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import { clampIssueRequestDepth } from "@paperclipai/shared";
 import {
@@ -14,6 +14,7 @@ import {
 import { logger } from "../middleware/logger.js";
 import { logActivity } from "./activity-log.js";
 import { budgetService } from "./budgets.js";
+import { instanceSettingsService } from "./instance-settings.js";
 import { issueService } from "./issues.js";
 import { visibleIssueCondition } from "./issue-visibility.js";
 import {
@@ -40,6 +41,17 @@ const MAX_CANDIDATE_ISSUES = 250;
 const MAX_RUNS_FOR_STREAK = 100;
 const MAX_PARENT_WALK_DEPTH = 25;
 export const PRODUCTIVITY_REVIEW_REFRESH_COMMENT_PREFIX = "Productivity review evidence refreshed.";
+export const PRODUCTIVITY_REVIEW_REFRESH_COMMENT_PREFIX_ZH = "生产力复核证据已刷新。";
+
+/**
+ * The refresh comment's first line doubles as the lookup key for the
+ * refresh-count throttle, so a localized prefix must not orphan the comments
+ * written before (or under) the other language.
+ */
+export const PRODUCTIVITY_REVIEW_REFRESH_COMMENT_PREFIXES = [
+  PRODUCTIVITY_REVIEW_REFRESH_COMMENT_PREFIX,
+  PRODUCTIVITY_REVIEW_REFRESH_COMMENT_PREFIX_ZH,
+] as const;
 
 type IssueRow = typeof issues.$inferSelect;
 type AgentRow = typeof agents.$inferSelect;
@@ -114,14 +126,14 @@ function issueRunScopeSql(issueId: string) {
   )`;
 }
 
-function msToHuman(ms: number | null) {
-  if (ms === null) return "unknown";
+function msToHuman(ms: number | null, zh = false) {
+  if (ms === null) return zh ? "未知" : "unknown";
   const minutes = Math.floor(ms / 60_000);
-  if (minutes < 60) return `${minutes}m`;
+  if (minutes < 60) return zh ? `${minutes} 分钟` : `${minutes}m`;
   const hours = Math.floor(minutes / 60);
   const days = Math.floor(hours / 24);
-  if (days > 0) return `${days}d ${hours % 24}h`;
-  return `${hours}h ${minutes % 60}m`;
+  if (days > 0) return zh ? `${days} 天 ${hours % 24} 小时` : `${days}d ${hours % 24}h`;
+  return zh ? `${hours} 小时 ${minutes % 60} 分钟` : `${hours}h ${minutes % 60}m`;
 }
 
 function issueUiLink(issue: { identifier: string | null; id: string }, prefix: string) {
@@ -208,15 +220,23 @@ function isSoftStopTrigger(trigger: ProductivityReviewTrigger) {
   return trigger === "no_comment_streak" || trigger === "high_churn";
 }
 
-function formatTrigger(trigger: ProductivityReviewTrigger) {
-  if (trigger === "no_comment_streak") return "No-comment streak";
-  if (trigger === "high_churn") return "High churn";
-  return "Long active duration";
+function formatTrigger(trigger: ProductivityReviewTrigger, zh = false) {
+  if (trigger === "no_comment_streak") return zh ? "连续无评论" : "No-comment streak";
+  if (trigger === "high_churn") return zh ? "高频空转" : "High churn";
+  return zh ? "长时间活跃" : "Long active duration";
 }
 
 export function productivityReviewService(db: Db, deps?: { enqueueWakeup?: EnqueueWakeup }) {
   const issuesSvc = issueService(db);
   const budgets = budgetService(db);
+  const instanceSettings = instanceSettingsService(db);
+
+  // Reread per invocation rather than caching: the instance language is a live
+  // setting, and a stale cache would keep emitting the old language until the
+  // process restarts.
+  async function outputIsChinese() {
+    return (await instanceSettings.get()).general.agentOutputLanguage === "zh-CN";
+  }
 
   async function getCompanyIssuePrefix(companyId: string) {
     return db
@@ -380,7 +400,7 @@ export function productivityReviewService(db: Db, deps?: { enqueueWakeup?: Enque
         and(
           eq(issueComments.companyId, companyId),
           eq(issueComments.issueId, reviewIssueId),
-          sql`${issueComments.body} like ${`${PRODUCTIVITY_REVIEW_REFRESH_COMMENT_PREFIX}%`}`,
+          or(...PRODUCTIVITY_REVIEW_REFRESH_COMMENT_PREFIXES.map((prefix) => like(issueComments.body, `${prefix}%`))),
         ),
       )
       .then((rows) => {
@@ -448,6 +468,7 @@ export function productivityReviewService(db: Db, deps?: { enqueueWakeup?: Enque
     sourceAgent: AgentRow,
     thresholds: ProductivityReviewThresholds,
     now: Date,
+    zh = false,
   ): Promise<ProductivityReviewEvidence | null> {
     const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
     const sixHoursAgo = new Date(now.getTime() - 6 * 60 * 60 * 1000);
@@ -557,12 +578,20 @@ export function productivityReviewService(db: Db, deps?: { enqueueWakeup?: Enque
     if (!trigger) return null;
 
     const triggerReasons: string[] = [];
-    if (noComment) triggerReasons.push(`${noCommentStreak} consecutive completed issue-linked runs had no run-created issue comment`);
-    if (longActive) triggerReasons.push(`current active episode has lasted ${msToHuman(elapsedMs)}`);
+    if (noComment) {
+      triggerReasons.push(zh
+        ? `连续 ${noCommentStreak} 次完成的任务关联运行都没有留下评论`
+        : `${noCommentStreak} consecutive completed issue-linked runs had no run-created issue comment`);
+    }
+    if (longActive) {
+      triggerReasons.push(zh
+        ? `当前活跃时段已持续 ${msToHuman(elapsedMs, true)}`
+        : `current active episode has lasted ${msToHuman(elapsedMs)}`);
+    }
     if (highChurn) {
-      triggerReasons.push(
-        `${runCountLastHour} runs/${assigneeRunCommentCountLastHour} assignee-run comments in 1h; ${runCountLastSixHours} runs/${assigneeRunCommentCountLastSixHours} assignee-run comments in 6h`,
-      );
+      triggerReasons.push(zh
+        ? `1 小时内 ${runCountLastHour} 次运行/${assigneeRunCommentCountLastHour} 条负责人评论；6 小时内 ${runCountLastSixHours} 次运行/${assigneeRunCommentCountLastSixHours} 条负责人评论`
+        : `${runCountLastHour} runs/${assigneeRunCommentCountLastHour} assignee-run comments in 1h; ${runCountLastSixHours} runs/${assigneeRunCommentCountLastSixHours} assignee-run comments in 6h`);
     }
 
     return {
@@ -627,20 +656,70 @@ export function productivityReviewService(db: Db, deps?: { enqueueWakeup?: Enque
     return null;
   }
 
-  function buildReviewMarkdown(evidence: ProductivityReviewEvidence, prefix: string) {
+  function buildReviewMarkdown(evidence: ProductivityReviewEvidence, prefix: string, zh = false) {
     const latestRuns = evidence.latestRuns.length > 0
       ? evidence.latestRuns.map((run) =>
-        `- ${runUiLink(run, prefix)} \`${run.status}\` liveness \`${run.livenessState ?? "unknown"}\`, created ${run.createdAt.toISOString()}${run.nextAction ? `, next action: ${truncateInline(run.nextAction, 160)}` : ""}`,
+        `- ${runUiLink(run, prefix)} \`${run.status}\` liveness \`${run.livenessState ?? "unknown"}\`, ${zh ? "创建于" : "created"} ${run.createdAt.toISOString()}${run.nextAction ? `, ${zh ? "下一步" : "next action"}: ${truncateInline(run.nextAction, 160)}` : ""}`,
       ).join("\n")
-      : "- none";
+      : (zh ? "- 无" : "- none");
     const latestComments = evidence.latestComments.length > 0
       ? evidence.latestComments.map((comment) =>
-        `- ${comment.createdAt.toISOString()}${comment.createdByRunId ? ` run \`${comment.createdByRunId}\`` : ""}: ${truncateInline(comment.body)}`,
+        `- ${comment.createdAt.toISOString()}${comment.createdByRunId ? ` ${zh ? "运行" : "run"} \`${comment.createdByRunId}\`` : ""}: ${truncateInline(comment.body)}`,
       ).join("\n")
-      : "- none";
+      : (zh ? "- 无" : "- none");
     const usage = evidence.usageSamples.length > 0
       ? evidence.usageSamples.map((sample) => `- \`${sample.runId}\`: \`${JSON.stringify(sample.usageJson).slice(0, 500)}\``).join("\n")
-      : "- no usage payloads on sampled runs";
+      : (zh ? "- 抽样的运行里没有用量数据" : "- no usage payloads on sampled runs");
+    if (zh) {
+      return [
+        "Paperclip 在一个已指派的任务上发现了异常的生产力/推进模式。",
+        "",
+        "## 来源",
+        "",
+        `- 来源任务：${issueUiLink(evidence.sourceIssue, prefix)}`,
+        `- 指派 Agent：${evidence.sourceAgent.name}（${evidence.sourceAgent.role}）`,
+        `- 主触发条件：\`${evidence.trigger}\`（${formatTrigger(evidence.trigger, true)}）`,
+        `- 触发原因：${evidence.triggerReasons.join("；")}`,
+        `- 生成时间：${evidence.generatedAt.toISOString()}`,
+        "",
+        "## 证据",
+        "",
+        `- 抽样的任务关联运行总数：${evidence.totalRunCount}`,
+        `- 已结束的抽样运行：${evidence.terminalRunCount}`,
+        `- 排队/运行中/已排期的运行：${evidence.activeRunCount}`,
+        `- 连续无评论的完成运行数：${evidence.noCommentStreak}`,
+        `- 当前活跃已耗时：${msToHuman(evidence.elapsedMs, true)}`,
+        `- 滚动窗口内的运行数：1 小时 ${evidence.runCountLastHour} 次，6 小时 ${evidence.runCountLastSixHours} 次`,
+        `- 负责人运行关联评论 总数/窗口：共 ${evidence.commentCount} 条，1 小时 ${evidence.commentCountLastHour} 条，6 小时 ${evidence.commentCountLastSixHours} 条`,
+        `- 成本事件合计：${evidence.costCents} 美分`,
+        `- 当前下一步：${evidence.nextAction ? truncateInline(evidence.nextAction, 500) : "未记录"}`,
+        "",
+        "## 阈值",
+        "",
+        `- 连续无评论：${evidence.thresholds.noCommentStreakRuns} 次完成运行`,
+        `- 长时间活跃：${msToHuman(evidence.thresholds.longActiveMs, true)}`,
+        `- 高频空转：1 小时 ${evidence.thresholds.highChurnHourly} 次 或 6 小时 ${evidence.thresholds.highChurnSixHours} 次 运行/负责人评论`,
+        `- 复核关闭后的静默期：${msToHuman(evidence.thresholds.resolvedSnoozeMs, true)}`,
+        "",
+        "## 最近的运行",
+        "",
+        latestRuns,
+        "",
+        "## 最近的负责人运行评论",
+        "",
+        latestComments,
+        "",
+        "## 用量抽样",
+        "",
+        usage,
+        "",
+        "## 管理决策",
+        "",
+        "- 如果这个模式本就符合预期，按「有产出」关闭。",
+        "- 如果当前工作应该继续跑又不想反复被复核打扰，设一个静默窗口后继续。",
+        "- 如果工作确实低效，可以要求拆解、改派、指定解阻负责人后阻塞，或直接停止/取消源任务。",
+      ].join("\n");
+    }
     return [
       "Paperclip detected an unusual productivity/progression pattern on an assigned issue.",
       "",
@@ -691,9 +770,21 @@ export function productivityReviewService(db: Db, deps?: { enqueueWakeup?: Enque
     ].join("\n");
   }
 
-  function buildRefreshComment(evidence: ProductivityReviewEvidence, prefix: string) {
+  function buildRefreshComment(evidence: ProductivityReviewEvidence, prefix: string, zh = false) {
+    if (zh) {
+      return [
+        PRODUCTIVITY_REVIEW_REFRESH_COMMENT_PREFIX_ZH,
+        "",
+        `- 来源任务：${issueUiLink(evidence.sourceIssue, prefix)}`,
+        `- 触发条件：\`${evidence.trigger}\`（${formatTrigger(evidence.trigger, true)}）`,
+        `- 原因：${evidence.triggerReasons.join("；")}`,
+        `- 连续无评论：${evidence.noCommentStreak}`,
+        `- 运行/负责人评论：1 小时 ${evidence.runCountLastHour}/${evidence.commentCountLastHour}，6 小时 ${evidence.runCountLastSixHours}/${evidence.commentCountLastSixHours}`,
+        `- 下一步：${evidence.nextAction ? truncateInline(evidence.nextAction, 300) : "未记录"}`,
+      ].join("\n");
+    }
     return [
-      "Productivity review evidence refreshed.",
+      PRODUCTIVITY_REVIEW_REFRESH_COMMENT_PREFIX,
       "",
       `- Source issue: ${issueUiLink(evidence.sourceIssue, prefix)}`,
       `- Trigger: \`${evidence.trigger}\` (${formatTrigger(evidence.trigger)})`,
@@ -706,7 +797,7 @@ export function productivityReviewService(db: Db, deps?: { enqueueWakeup?: Enque
 
   async function createOrUpdateReview(
     evidence: ProductivityReviewEvidence,
-    opts: { prefix: string; thresholds: ProductivityReviewThresholds },
+    opts: { prefix: string; thresholds: ProductivityReviewThresholds; zh?: boolean },
   ) {
     const existing = await findOpenProductivityReview(evidence.sourceIssue.companyId, evidence.sourceIssue.id);
     if (existing) {
@@ -718,7 +809,7 @@ export function productivityReviewService(db: Db, deps?: { enqueueWakeup?: Enque
       ) {
         return { kind: "existing" as const, reviewIssueId: existing.id };
       }
-      await addRefreshComment(existing.id, buildRefreshComment(evidence, opts.prefix), evidence.generatedAt);
+      await addRefreshComment(existing.id, buildRefreshComment(evidence, opts.prefix, opts.zh), evidence.generatedAt);
       await logActivity(db, {
         companyId: evidence.sourceIssue.companyId,
         actorType: "system",
@@ -762,8 +853,10 @@ export function productivityReviewService(db: Db, deps?: { enqueueWakeup?: Enque
     let review: Awaited<ReturnType<typeof issuesSvc.create>>;
     try {
       review = await issuesSvc.create(evidence.sourceIssue.companyId, {
-        title: `Review productivity for ${evidence.sourceIssue.identifier ?? evidence.sourceIssue.title}`,
-        description: buildReviewMarkdown(evidence, opts.prefix),
+        title: opts.zh
+          ? `复核 ${evidence.sourceIssue.identifier ?? evidence.sourceIssue.title} 的生产力`
+          : `Review productivity for ${evidence.sourceIssue.identifier ?? evidence.sourceIssue.title}`,
+        description: buildReviewMarkdown(evidence, opts.prefix, opts.zh),
         status: "todo",
         priority: evidence.trigger === "long_active_duration" ? "medium" : "high",
         parentId: evidence.sourceIssue.id,
@@ -846,6 +939,7 @@ export function productivityReviewService(db: Db, deps?: { enqueueWakeup?: Enque
   }) {
     const now = opts?.now ?? new Date();
     const thresholds = buildThresholds(opts?.thresholds);
+    const zh = await outputIsChinese();
     const candidates = await db
       .select()
       .from(issues)
@@ -901,7 +995,7 @@ export function productivityReviewService(db: Db, deps?: { enqueueWakeup?: Enque
         result.skipped += 1;
         continue;
       }
-      const evidence = await collectEvidence(candidate, sourceAgent, thresholds, now);
+      const evidence = await collectEvidence(candidate, sourceAgent, thresholds, now, zh);
       if (!evidence) {
         result.skipped += 1;
         continue;
@@ -912,7 +1006,7 @@ export function productivityReviewService(db: Db, deps?: { enqueueWakeup?: Enque
         prefixCache.set(candidate.companyId, prefix);
       }
       try {
-        const outcome = await createOrUpdateReview(evidence, { prefix, thresholds });
+        const outcome = await createOrUpdateReview(evidence, { prefix, thresholds, zh });
         if (outcome.kind === "created") result.created += 1;
         else if (outcome.kind === "updated") result.updated += 1;
         else if (outcome.kind === "creation_capped") result.creationCapped += 1;
@@ -957,7 +1051,7 @@ export function productivityReviewService(db: Db, deps?: { enqueueWakeup?: Enque
     ]);
     if (!sourceIssue || !sourceAgent || !openReview) return { held: false as const };
     if (sourceAgent.companyId !== input.companyId) return { held: false as const };
-    const evidence = await collectEvidence(sourceIssue, sourceAgent, thresholds, now);
+    const evidence = await collectEvidence(sourceIssue, sourceAgent, thresholds, now, await outputIsChinese());
     if (!evidence || !isSoftStopTrigger(evidence.trigger)) return { held: false as const };
     return {
       held: true as const,
