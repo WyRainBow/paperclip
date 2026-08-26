@@ -27,6 +27,7 @@ import {
   BookOpen,
   Scale,
   Webhook,
+  UserRoundPen,
 } from "lucide-react";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -60,6 +61,7 @@ export function Sidebar() {
   // one policy across static nav groups and the data-driven sections.
   const [workOpen, setWorkOpen] = useState(true);
   const [teamWorkspaceOpen, setTeamWorkspaceOpen] = useState(true);
+  const [personalAssetsOpen, setPersonalAssetsOpen] = useState(true);
   const [companyOpen, setCompanyOpen] = useState(true);
   const { selectedCompanyId, selectedCompany } = useCompany();
   const { isMobile, collapsed, collapseLocked, peeking, toggleCollapsed, setCollapsed } = useSidebar();
@@ -279,6 +281,10 @@ export function Sidebar() {
           <SidebarNavItem to="/team-wiki" label={t("Team Wiki")} icon={BookOpen} />
           <SidebarNavItem to="/skills" label={t("Skills")} icon={Boxes} />
           <SidebarNavItem to="/hooks" label={t("Hooks")} icon={Webhook} />
+        </SidebarSection>
+
+        <SidebarSection label={t("Personal assets")} collapsible={{ open: personalAssetsOpen, onOpenChange: setPersonalAssetsOpen }}>
+          <SidebarNavItem to="/personal-assets" label={t("Personal files")} icon={UserRoundPen} end />
         </SidebarSection>
 
         {/* Classic mode restores the per-project collapsible below Work. */}

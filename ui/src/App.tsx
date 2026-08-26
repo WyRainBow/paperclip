@@ -120,7 +120,8 @@ function boardRoutes() {
       <Route path="company/settings/environments" element={<Navigate to="/company/settings/instance/environments" replace />} />
       <Route path="company/settings/cloud-upstream" element={<Navigate to="/company/export" replace />} />
       <Route path="company/settings/members" element={<CompanyAccess />} />
-      <Route path="company/settings/personal-files" element={<PersonalFiles />} />
+      <Route path="company/settings/personal-files" element={<Navigate to="/personal-assets" replace />} />
+      <Route path="personal-assets" element={<PersonalFiles />} />
       <Route path="company/settings/access" element={<CompanyAccessLegacyRoute />} />
       <Route path="company/settings/invites" element={<CompanyInvites />} />
       <Route
