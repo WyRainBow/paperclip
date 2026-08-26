@@ -96,6 +96,7 @@ import { ApprovalCard } from "../components/ApprovalCard";
 import { ProjectTile } from "../components/ProjectTile";
 import { InlineEditor } from "../components/InlineEditor";
 import { IssueDecisionsPanel } from "../components/IssueDecisionsPanel";
+import { IssueDiscussionPanel } from "../components/IssueDiscussionPanel";
 import {
   IssueChatThread,
   type IssueChatComposerHandle,
@@ -208,6 +209,7 @@ import {
   Repeat,
   SlidersHorizontal,
   XCircle,
+  MessagesSquare,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -5225,6 +5227,10 @@ export function IssueDetail() {
             <ListChecks className="h-3.5 w-3.5" />
             {t("Decisions")}
           </TabsTrigger>
+          <TabsTrigger value="discussion" className="gap-1.5">
+            <MessagesSquare className="h-3.5 w-3.5" aria-hidden />
+            Discussion
+          </TabsTrigger>
           {issuePluginTabItems.map((item) => (
             <TabsTrigger key={item.value} value={item.value}>
               {item.label}
@@ -5418,6 +5424,10 @@ export function IssueDetail() {
             lists everything by time; here the question is narrower. */}
         <TabsContent value="decisions" className={shellSectionClass}>
           <IssueDecisionsPanel companyId={issue.companyId} issueId={issue.id} agentMap={agentMap} />
+        </TabsContent>
+
+        <TabsContent value="discussion" className={shellSectionClass}>
+          <IssueDiscussionPanel issueId={issue.id} />
         </TabsContent>
 
         {activePluginTab && (

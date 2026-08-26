@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { Command } from "commander";
 import { readFile, writeFile } from "node:fs/promises";
 import {
@@ -95,6 +96,14 @@ interface IssueStartOptions extends BaseClientOptions {
   note?: string;
   session?: string;
 }
+
+interface IssueQaOptions extends BaseClientOptions {
+  question: string;
+  answer: string;
+  label?: string;
+}
+
+interface IssueQaListOptions extends BaseClientOptions {}
 
 interface IssueProgressOptions extends BaseClientOptions {
   tone?: string;
@@ -557,6 +566,90 @@ export function registerIssueCommands(program: Command): void {
             presentation: { kind: "progress_note", tone: "info" },
           });
           printOutput({ identifier: issue.identifier, status: updated?.status ?? "in_progress", branch: opts.branch, drivingSession }, { json: ctx.json });
+        } catch (err) {
+          handleCommandError(err);
+        }
+      }),
+  );
+
+  addCommonClientOptions(
+    issue
+      .command("qa")
+      .description("File a Q&A pair as a discussion thread (two linked comments, bubble-rendered)")
+      .argument("<issueId>", "Issue ID or identifier")
+      .requiredOption("--question <text>", "The question (left bubble)")
+      .requiredOption("--answer <text>", "The answer (right bubble)")
+      .option("--label <text>", "Optional label for the thread")
+      .action(async (issueId: string, opts: IssueQaOptions) => {
+        try {
+          const ctx = resolveCommandContext(opts);
+          const issue = await ctx.api.get<Issue>(apiPath`/api/issues/${issueId}`);
+          if (!issue) throw new Error(`Issue not found: ${issueId}`);
+          const threadId = crypto.randomUUID();
+          const qComment = await ctx.api.post<{ id: string } & IssueComment>(
+            apiPath`/api/issues/${issue.id}/comments`,
+            {
+              body: opts.question,
+              presentation: { kind: "discussion_qa", threadId, role: "question", label: opts.label ?? null },
+            },
+          );
+          const aComment = await ctx.api.post<{ id: string } & IssueComment>(
+            apiPath`/api/issues/${issue.id}/comments`,
+            {
+              body: opts.answer,
+              presentation: { kind: "discussion_qa", threadId, role: "answer", label: opts.label ?? null },
+            },
+          );
+          printOutput({
+            threadId,
+            questionCommentId: qComment?.id,
+            answerCommentId: aComment?.id,
+            issue: issue.identifier,
+          }, { json: ctx.json });
+        } catch (err) {
+          handleCommandError(err);
+        }
+      }),
+  );
+
+  addCommonClientOptions(
+    issue
+      .command("qa:list")
+      .description("List discussion threads on an issue")
+      .argument("<issueId>", "Issue ID or identifier")
+      .action(async (issueId: string, opts: IssueQaListOptions) => {
+        try {
+          const ctx = resolveCommandContext(opts);
+          const issue = await ctx.api.get<Issue>(apiPath`/api/issues/${issueId}`);
+          if (!issue) throw new Error(`Issue not found: ${issueId}`);
+          const comments = (await ctx.api.get<Array<{ id: string; body: string; presentation?: Record<string, unknown>; authorAgentId?: string | null; authorUserId?: string | null; createdAt: string }>>(
+            apiPath`/api/issues/${issue.id}/comments`,
+          )) ?? [];
+          const threads = new Map<string, Array<{ role: string; body: string; author: string; createdAt: string; commentId: string }>>();
+          for (const c of comments) {
+            const p = c.presentation as { kind?: string; threadId?: string; role?: string } | null | undefined;
+            if (p?.kind === "discussion_qa" && p.threadId) {
+              const list = threads.get(p.threadId) ?? [];
+              list.push({
+                role: p.role ?? "unknown",
+                body: c.body,
+                author: c.authorAgentId ? `agent:${c.authorAgentId.slice(0, 8)}` : c.authorUserId ?? "board",
+                createdAt: c.createdAt,
+                commentId: c.id,
+              });
+              threads.set(p.threadId, list);
+            }
+          }
+          if (ctx.json) {
+            printOutput([...threads.entries()].map(([tid, msgs]) => ({ threadId: tid, messages: msgs })), { json: true });
+            return;
+          }
+          for (const [tid, msgs] of threads) {
+            console.log(`\n=== thread ${tid.slice(0, 8)} ===`);
+            for (const m of msgs) {
+              console.log(`  [${m.role}] ${m.author}: ${m.body.slice(0, 100)}`);
+            }
+          }
         } catch (err) {
           handleCommandError(err);
         }

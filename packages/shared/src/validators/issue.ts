@@ -653,6 +653,10 @@ export const issueCommentPresentationSchema = z.object({
   title: z.string().trim().min(1).max(160).nullable().optional(),
   detailsDefaultOpen: z.boolean().optional().default(false),
   density: z.enum(ISSUE_COMMENT_PRESENTATION_DENSITIES).optional(),
+  // discussion_qa: pairs two comments into a bubble thread (MUL-38).
+  threadId: z.string().uuid().optional(),
+  role: z.enum(["question", "answer"]).optional(),
+  label: z.string().trim().max(200).nullable().optional(),
 }).strict();
 
 export type IssueCommentPresentation = z.infer<typeof issueCommentPresentationSchema>;
