@@ -27,11 +27,11 @@ type Space = (typeof SPACES)[number];
 const SPACE_META: Record<Space, { label: string; blurb: string }> = {
   paperclip: {
     label: "Paperclip Wiki",
-    blurb: "写给人看：Paperclip 自身的文档、架构、排障，以及人要守的约定。可以有背景和取舍过程。",
+    blurb: "写给人看：Paperclip 自身的文档、架构、怎么使用PaperClip的功能以及人要守的约定",
   },
   agent: {
     label: "Agent Wiki",
-    blurb: "写给 Agent 看：可执行的步骤、判定条件、边界、反例。判据是「读完能直接行动」，不是「读着顺」。",
+    blurb: "写给 Agent 看：可执行的步骤、判定条件、边界、反例。判据是「读完能直接行动」、不是「读着顺」。",
   },
 };
 
@@ -165,7 +165,7 @@ export function TeamWiki() {
           <BookOpen className="h-5 w-5 text-sky-600 dark:text-sky-400" aria-hidden /> Team Wiki
         </h1>
         <p className="text-sm text-muted-foreground">
-          团队自己写、自己维护的知识。机器蒸馏出来的内容归 LLM Wiki，重建不出来的才放这里。
+          团队的知识作为一个 workspace 给 Agent
         </p>
       </header>
 
