@@ -159,6 +159,7 @@ type ResolvedDependencyWakeBackstopOptions = {
 type LatestIssueRun = Pick<
   typeof heartbeatRuns.$inferSelect,
   | "id"
+  | "invocationSource"
   | "agentId"
   | "status"
   | "error"
@@ -817,6 +818,7 @@ export function recoveryService(db: Db, deps: { enqueueWakeup: RecoveryWakeup })
         status: heartbeatRuns.status,
         error: heartbeatRuns.error,
         errorCode: heartbeatRuns.errorCode,
+        invocationSource: heartbeatRuns.invocationSource,
         contextSnapshot: heartbeatRuns.contextSnapshot,
         livenessState: heartbeatRuns.livenessState,
         resultJson: heartbeatRuns.resultJson,
@@ -847,6 +849,7 @@ export function recoveryService(db: Db, deps: { enqueueWakeup: RecoveryWakeup })
         status: heartbeatRuns.status,
         error: heartbeatRuns.error,
         errorCode: heartbeatRuns.errorCode,
+        invocationSource: heartbeatRuns.invocationSource,
         contextSnapshot: heartbeatRuns.contextSnapshot,
         livenessState: heartbeatRuns.livenessState,
         resultJson: heartbeatRuns.resultJson,
@@ -878,6 +881,7 @@ export function recoveryService(db: Db, deps: { enqueueWakeup: RecoveryWakeup })
         id: heartbeatRuns.id,
         status: heartbeatRuns.status,
         errorCode: heartbeatRuns.errorCode,
+        invocationSource: heartbeatRuns.invocationSource,
         contextSnapshot: heartbeatRuns.contextSnapshot,
         finishedAt: heartbeatRuns.finishedAt,
       })
@@ -1086,6 +1090,7 @@ export function recoveryService(db: Db, deps: { enqueueWakeup: RecoveryWakeup })
         status: heartbeatRuns.status,
         error: heartbeatRuns.error,
         errorCode: heartbeatRuns.errorCode,
+        invocationSource: heartbeatRuns.invocationSource,
         contextSnapshot: heartbeatRuns.contextSnapshot,
         livenessState: heartbeatRuns.livenessState,
         resultJson: heartbeatRuns.resultJson,
@@ -4098,6 +4103,15 @@ export function recoveryService(db: Db, deps: { enqueueWakeup: RecoveryWakeup })
       }
 
       let latestRun = await getLatestIssueRun(issue.companyId, issue.id);
+
+      // Terminal contributor sessions are the live execution path by
+      // definition (the operator's terminal holds the work). The stranded
+      // sweep must not escalate, retry, or repair issues whose latest run is
+      // a terminal session.
+      if (latestRun?.invocationSource === "terminal_contributor") {
+        result.skipped += 1;
+        continue;
+      }
 
       const agent = await getAgent(agentId);
       const agentInvokable = agent && agent.companyId === issue.companyId
