@@ -89,6 +89,19 @@ export function relativeTime(date: Date | string): string {
   return formatDate(date);
 }
 
+/**
+ * Absolute local timestamp to the second. Decisions are an audit record, so
+ * "3m ago" is not enough — a reader needs to know exactly when a decision was
+ * proposed and when it was made.
+ */
+export function absoluteTimestamp(date: Date | string): string {
+  const value = new Date(date);
+  if (!Number.isFinite(value.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())} `
+    + `${pad(value.getHours())}:${pad(value.getMinutes())}:${pad(value.getSeconds())}`;
+}
+
 export function formatTokens(n: number): string {
   if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(1)}B`;
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;

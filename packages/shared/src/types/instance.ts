@@ -76,6 +76,7 @@ export interface InstanceExperimentalSettings {
   enableConferenceRoomChat: boolean;
   enableClassicTaskInterface: boolean;
   enableTaskWatchdogs: boolean;
+  enableStaleActiveRunEvaluations: boolean;
   enableIssuePlanDecompositions: boolean;
   enableExperimentalFileViewer: boolean;
   enableExternalObjects: boolean;

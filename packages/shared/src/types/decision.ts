@@ -84,6 +84,8 @@ export interface DecisionOption {
   label: string;
   description?: string | null;
   style?: DecisionOptionStyle;
+  /** Agent recommending this option; always the proposing agent, enforced server-side. */
+  recommendedByAgentId?: string | null;
   effects: DecisionEffect[];
 }
 

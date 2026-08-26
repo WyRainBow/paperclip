@@ -291,5 +291,19 @@
   "Discover, install, fork, share": "Discover, install, fork, share",
   "Skills Store": "Skills Store",
   "Categories": "Categories",
-  "Team Skills": "Team Skills"
+  "Team Skills": "Team Skills",
+  "When to decide": "When to decide",
+  "Today": "Today",
+  "This week": "This week",
+  "Whenever": "Whenever",
+  "Pick date": "Pick date",
+  "Not set": "Not set",
+  "Queues": "Queues",
+  "New queue name…": "New queue name…",
+  "Snooze": "Snooze",
+  "Ask agent for recommendation": "Ask agent for recommendation",
+  "Expired": "Expired",
+  "Expires in {{n}}m": "Expires in {{n}}m",
+  "Expires in {{n}}h": "Expires in {{n}}h",
+  "Expires in {{n}}d": "Expires in {{n}}d"
 }

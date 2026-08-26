@@ -58,6 +58,10 @@ export const instanceExperimentalSettingsSchema = z.object({
   enableConferenceRoomChat: z.boolean().default(false),
   enableClassicTaskInterface: z.boolean().default(false),
   enableTaskWatchdogs: z.boolean().default(false),
+  // Auto-raised "Review silent active run" tasks. On by default so existing
+  // installs keep their safety net; terminal-contributor sessions look silent
+  // to Paperclip by construction, so operators who run those need it off.
+  enableStaleActiveRunEvaluations: z.boolean().default(true),
   enableIssuePlanDecompositions: z.boolean().default(false),
   enableExperimentalFileViewer: z.boolean().default(false),
   enableExternalObjects: z.boolean().default(false),

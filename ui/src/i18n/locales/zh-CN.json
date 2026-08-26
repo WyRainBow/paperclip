@@ -291,5 +291,19 @@
   "Discover, install, fork, share": "发现、安装、复刻、共享",
   "Skills Store": "技能库",
   "Categories": "分类",
-  "Team Skills": "团队技能"
+  "Team Skills": "团队技能",
+  "When to decide": "何时裁决",
+  "Today": "今天",
+  "This week": "本周",
+  "Whenever": "不限期",
+  "Pick date": "选日期",
+  "Not set": "未设定",
+  "Queues": "队列",
+  "New queue name…": "新队列名称…",
+  "Snooze": "稍后提醒",
+  "Ask agent for recommendation": "请 Agent 给建议",
+  "Expired": "已过期",
+  "Expires in {{n}}m": "{{n}} 分钟后过期",
+  "Expires in {{n}}h": "{{n}} 小时后过期",
+  "Expires in {{n}}d": "{{n}} 天后过期"
 }

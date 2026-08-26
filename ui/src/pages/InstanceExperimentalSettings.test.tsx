@@ -90,6 +90,7 @@ function defaultExperimentalSettings(): InstanceExperimentalSettingsPayload {
     enableDecisions: false,
     enableGoalsSidebarLink: false,
     enableTaskWatchdogs: false,
+    enableStaleActiveRunEvaluations: true,
     enableServerInfoDebugView: false,
     enableSimplifiedEnglishInteractions: false,
     enableSmokeLab: false,

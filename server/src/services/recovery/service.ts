@@ -2339,6 +2339,13 @@ export function recoveryService(db: Db, deps: { enqueueWakeup: RecoveryWakeup })
       });
     }
 
+    // Operators running terminal-contributor sessions see these fire constantly:
+    // an external terminal produces no run output Paperclip can observe, so
+    // every such session eventually looks "silent". Let them turn it off.
+    if ((await instanceSettings.getExperimental()).enableStaleActiveRunEvaluations === false) {
+      candidates = [];
+    }
+
     const result = {
       scanned: candidates.length,
       created: 0,

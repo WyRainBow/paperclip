@@ -9,6 +9,7 @@ import type {
   AttentionSourceKind,
   AttentionWorkspaceRef,
 } from "@paperclipai/shared";
+import { t } from "../i18n";
 
 export type AttentionListOptions = AttentionFeedQuery;
 
@@ -417,12 +418,17 @@ export const DECIDE_BY_OPTIONS: ReadonlyArray<[DecideByPreset, string]> = [
   ["whenever", "Whenever"],
 ];
 
+/** Localized labels for the segmented control; keys stay the English source. */
+export function decideByOptions(): ReadonlyArray<[DecideByPreset, string]> {
+  return DECIDE_BY_OPTIONS.map(([value, label]) => [value, t(label)] as [DecideByPreset, string]);
+}
+
 /** Human label for any stored `decideBy` value (preset or `YYYY-MM-DD`). */
 export function decideByLabel(decideBy: string | null): string {
-  if (!decideBy) return "Not set";
-  if (decideBy === "today") return "Today";
-  if (decideBy === "this_week") return "This week";
-  if (decideBy === "whenever") return "Whenever";
+  if (!decideBy) return t("Not set");
+  if (decideBy === "today") return t("Today");
+  if (decideBy === "this_week") return t("This week");
+  if (decideBy === "whenever") return t("Whenever");
   if (/^\d{4}-\d{2}-\d{2}$/.test(decideBy)) {
     const parsed = new Date(`${decideBy}T00:00:00.000Z`);
     return Number.isFinite(parsed.getTime())

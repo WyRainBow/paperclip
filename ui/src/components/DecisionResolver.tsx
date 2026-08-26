@@ -3,6 +3,7 @@ import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/rea
 import { Loader2 } from "lucide-react";
 import { decisionEffectTargetIssueIds, type Agent, type AttentionSubject } from "@paperclipai/shared";
 import { decisionsApi, type DecisionOutcome } from "../api/decisions";
+import { agentCustomIcon } from "./AgentIconPicker";
 import { issuesApi } from "../api/issues";
 import { queryKeys } from "../lib/queryKeys";
 import { useCompany } from "../context/CompanyContext";
@@ -193,6 +194,11 @@ export function DecisionResolver({ companyId, decisionId, originIssue, agentMap,
       resolveIssue={resolveIssue}
       cancelTreePreview={cancelTreePreview}
       originAgentName={agentMap?.get(decision.originAgentId)?.name ?? null}
+      resolveAgent={(agentId) => {
+        const agent = agentMap?.get(agentId);
+        if (!agent) return null;
+        return { name: agent.name, icon: agent.icon ?? null, customIconUrl: agentCustomIcon(agent) };
+      }}
       decidedByAgentName={
         decision.decidedByAgentId
           ? agentMap?.get(decision.decidedByAgentId)?.name ?? decision.decidedByAgentId

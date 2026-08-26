@@ -18,11 +18,12 @@ import type {
   DecisionEffectExecution,
   DecisionTargetSnapshot,
 } from "../api/decisions";
-import { cn } from "../lib/utils";
+import { absoluteTimestamp, cn } from "../lib/utils";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
 import { MarkdownBody } from "./MarkdownBody";
+import { AgentIcon } from "./AgentIconPicker";
 
 /**
  * Presentational card for a single Decisions-v1 decision (PAP-14966 / PAP-14939
@@ -53,6 +54,8 @@ export interface DecisionCardProps {
   /** Full sub-tree that a `cancel_issue_tree` option would cancel. */
   cancelTreePreview?: (targetIssueId: string) => DecisionIssueRef[] | null;
   originAgentName?: string | null;
+  /** Resolve an agent id to the bits needed for a recommendation badge. */
+  resolveAgent?: (agentId: string) => { name: string; icon: string | null; customIconUrl: string | null } | null;
   /** Resolved name of the agent that decided, when an agent resolved it. */
   decidedByAgentName?: string | null;
   originIssue?: DecisionIssueRef | null;
@@ -234,6 +237,7 @@ export function DecisionCard({
   resolveIssue = () => null,
   cancelTreePreview,
   originAgentName,
+  resolveAgent,
   decidedByAgentName,
   originIssue,
   runHref,
@@ -451,6 +455,7 @@ export function DecisionCard({
             const confirming = confirmOptionId === option.id;
             const previewRows = cancelTree && cancelTreePreview ? cancelTreePreview(cancelTree.targetIssueId) : null;
             const confirmRef = cancelTree ? resolveIssue(cancelTree.targetIssueId) : null;
+            const recommender = option.recommendedByAgentId ? resolveAgent?.(option.recommendedByAgentId) ?? null : null;
             const confirmToken = confirmRef?.identifier ?? confirmRef?.id ?? cancelTree?.targetIssueId ?? "";
             return (
               <div key={option.id} className="space-y-2">
@@ -470,6 +475,17 @@ export function DecisionCard({
                     <span className={cn("text-sm font-medium", destructive && "text-rose-700 dark:text-rose-300")}>
                       {option.label}
                     </span>
+                    {recommender && (
+                      <span className="flex shrink-0 items-center gap-1.5 rounded-full border border-sky-500/40 bg-sky-500/10 py-0.5 pl-1.5 pr-2 text-(length:--text-micro) text-muted-foreground">
+                        <AgentIcon
+                          icon={recommender.icon}
+                          customIconUrl={recommender.customIconUrl}
+                          className="h-3.5 w-3.5 shrink-0"
+                        />
+                        <span className="font-medium text-foreground">{recommender.name}</span>
+                        推荐
+                      </span>
+                    )}
                     {blockedStale && (
                       <span className="shrink-0 rounded-full border border-amber-500/60 bg-amber-500/10 px-2 py-0.5 text-(length:--text-micro) font-medium text-amber-800 dark:text-amber-200">
                         Blocked · stale
@@ -614,7 +630,7 @@ export function DecisionCard({
                     decision.chosenOptionId}
                 </span>
                 {decision.decidedAt && (
-                  <span className="text-muted-foreground"> · {new Date(decision.decidedAt).toLocaleString()}</span>
+                  <span className="tabular-nums text-muted-foreground"> · {absoluteTimestamp(decision.decidedAt)}</span>
                 )}
                 {decision.decidedByAgentId && decidedByAgentName && (
                   <span className="text-muted-foreground"> · by {decidedByAgentName}</span>

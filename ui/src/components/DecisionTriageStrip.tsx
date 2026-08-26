@@ -8,10 +8,11 @@ import { useToastActions } from "../context/ToastContext";
 import { queryKeys } from "../lib/queryKeys";
 import {
   attentionTaskRef,
-  DECIDE_BY_OPTIONS,
+  decideByOptions,
   decideByLabel,
   type DecideByPreset,
 } from "../lib/attention";
+import { t } from "../i18n";
 import { cn } from "../lib/utils";
 import { Button } from "./ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
@@ -52,13 +53,13 @@ function toQueueKey(title: string): string {
 function expiryLabel(expiresAt: string): { text: string; overdue: boolean } {
   const diff = new Date(expiresAt).getTime() - Date.now();
   if (!Number.isFinite(diff)) return { text: "", overdue: false };
-  if (diff <= 0) return { text: "Expired", overdue: true };
+  if (diff <= 0) return { text: t("Expired"), overdue: true };
   const mins = Math.round(diff / 60000);
-  if (mins < 60) return { text: `Expires in ${mins}m`, overdue: false };
+  if (mins < 60) return { text: t("Expires in {{n}}m", { n: mins }), overdue: false };
   const hrs = Math.round(mins / 60);
-  if (hrs < 24) return { text: `Expires in ${hrs}h`, overdue: false };
+  if (hrs < 24) return { text: t("Expires in {{n}}h", { n: hrs }), overdue: false };
   const days = Math.round(hrs / 24);
-  return { text: `Expires in ${days}d`, overdue: false };
+  return { text: t("Expires in {{n}}d", { n: days }), overdue: false };
 }
 
 interface DecisionTriageStripProps {
@@ -163,9 +164,9 @@ export function DecisionTriageStrip({ item, companyId, agents }: DecisionTriageS
 
       {/* When to decide — the importance signal that drives desk ordering. */}
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs font-medium text-muted-foreground">When to decide</span>
-        <div className="flex flex-wrap items-center gap-1" role="group" aria-label="When to decide">
-          {DECIDE_BY_OPTIONS.map(([value, label]) => (
+        <span className="text-xs font-medium text-muted-foreground">{t("When to decide")}</span>
+        <div className="flex flex-wrap items-center gap-1" role="group" aria-label={t("When to decide")}>
+          {decideByOptions().map(([value, label]) => (
             <SegmentButton
               key={value}
               active={decideBy === (value satisfies DecideByPreset)}
@@ -179,7 +180,7 @@ export function DecisionTriageStrip({ item, companyId, agents }: DecisionTriageS
             <PopoverTrigger asChild>
               <SegmentButton active={isDatePreset} disabled={pending}>
                 <CalendarClock className="h-3.5 w-3.5" />
-                {isDatePreset ? decideByLabel(decideBy) : "Pick date"}
+                {isDatePreset ? decideByLabel(decideBy) : t("Pick date")}
               </SegmentButton>
             </PopoverTrigger>
             <PopoverContent align="start" className="w-auto p-2">
@@ -201,7 +202,7 @@ export function DecisionTriageStrip({ item, companyId, agents }: DecisionTriageS
 
       {/* Queues — current membership as removable chips + add/create. */}
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs font-medium text-muted-foreground">Queues</span>
+        <span className="text-xs font-medium text-muted-foreground">{t("Queues")}</span>
         {item.queues.map((queue) => (
           <span
             key={queue.key}
@@ -247,7 +248,7 @@ export function DecisionTriageStrip({ item, companyId, agents }: DecisionTriageS
             <DropdownMenuTrigger asChild>
               <Button type="button" variant="outline" size="xs" className="h-7 gap-1" disabled={pending}>
                 <AlarmClock className="h-3.5 w-3.5" />
-                Snooze
+                {t("Snooze")}
                 <ChevronDown className="h-3 w-3" />
               </Button>
             </DropdownMenuTrigger>
@@ -362,7 +363,7 @@ function QueuePicker({
                 if (event.key === "Enter" && title.trim()) create.mutate(title);
                 if (event.key === "Escape") setCreating(false);
               }}
-              placeholder="New queue name…"
+              placeholder={t("New queue name…")}
               className="w-full rounded-sm border border-border bg-background px-2 py-1 text-xs"
             />
             <div className="flex justify-end gap-1">
@@ -448,7 +449,7 @@ function AskAgentPicker({
           title={disabledReason}
         >
           <UserPlus className="h-3.5 w-3.5" />
-          Ask agent for recommendation
+          {t("Ask agent for recommendation")}
           <ChevronDown className="h-3 w-3" />
         </Button>
       </DropdownMenuTrigger>

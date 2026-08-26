@@ -215,6 +215,17 @@ export function decisionService(db: Db, options: DecisionServiceOptions) {
         return existing;
       }
     }
+    // A recommendation is only credible if the proposer cannot attribute it to
+    // someone else, so the only id accepted here is the proposing agent's own.
+    const forgedRecommendation = input.options.find(
+      (option) => option.recommendedByAgentId && option.recommendedByAgentId !== input.agentId,
+    );
+    if (forgedRecommendation) {
+      throw unprocessable("recommendedByAgentId must be the proposing agent", {
+        code: "recommendation_agent_mismatch",
+        optionId: forgedRecommendation.id,
+      });
+    }
     const open = await dbOrTx.select({ value: count() }).from(decisions).where(and(eq(decisions.companyId, input.companyId), eq(decisions.originAgentId, input.agentId), eq(decisions.status, "open")));
     const cap = Number(process.env.PAPERCLIP_DECISIONS_OPEN_CAP ?? 50);
     if (Number(open[0]?.value ?? 0) >= cap) throw tooManyRequests("Open decision cap reached");

@@ -1320,7 +1320,7 @@ export function attentionService(db: Db, serviceOptions: AttentionServiceOptions
           updatedAt: toIso(decision.updatedAt),
           relatedIssue: issue ? issueSubject(prefix, issue) : null,
           ...issueContext(issue),
-          detail: { kind: "generic", summaryExcerpt: decision.body.slice(0, DETAIL_EXCERPT_LENGTH), images: [] },
+          detail: { kind: "generic", summaryExcerpt: excerpt(decision.body), images: [] },
         }));
       }
 
