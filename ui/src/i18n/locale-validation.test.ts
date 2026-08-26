@@ -90,3 +90,40 @@ describe("locale validation", () => {
     ]);
   });
 });
+
+// The app validates every shipped locale at module load and throws on the first
+// mismatch, which blanks the whole UI before React mounts. Four such white
+// screens shipped from editing zh-CN without adding the key to en.json, so pin
+// the invariant here where it fails as a red test instead of a blank page.
+describe("shipped locale catalog", () => {
+  const catalog = import.meta.glob("./locales/*.json", { eager: true, import: "default" }) as Record<
+    string,
+    Record<string, unknown>
+  >;
+
+  function localeName(path: string) {
+    return path.match(/\/([A-Za-z0-9_-]+)\.json$/)?.[1] ?? path;
+  }
+
+  const english = Object.entries(catalog).find(([path]) => localeName(path) === "en")?.[1];
+
+  it("ships an English catalog", () => {
+    expect(english).toBeTruthy();
+  });
+
+  it.each(
+    Object.entries(catalog)
+      .map(([path, messages]) => [localeName(path), messages] as const)
+      .filter(([locale]) => locale !== "en"),
+  )("%s has exactly the English key set", (_locale, messages) => {
+    const englishKeys = Object.keys(english ?? {}).sort();
+    expect(Object.keys(messages).sort()).toEqual(englishKeys);
+  });
+
+  it.each(Object.entries(catalog).map(([path, messages]) => [localeName(path), messages] as const))(
+    "%s passes the runtime validator",
+    (_locale, messages) => {
+      expect(validateLocaleMessages(messages, english)).toEqual([]);
+    },
+  );
+});

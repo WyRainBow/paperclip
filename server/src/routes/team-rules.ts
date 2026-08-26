@@ -1,0 +1,253 @@
+import { Router } from "express";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
+import type { Db } from "@paperclipai/db";
+import { teamRuleNotes, teamRuleNoteVersions } from "@paperclipai/db";
+import { assertCompanyAccess, assertBoardOrAgent } from "./authz.js";
+import { badRequest, notFound } from "../errors.js";
+import { getActorInfo } from "./authz.js";
+import { logActivity } from "../services/activity-log.js";
+
+/**
+ * Team Rules: the company's shared rule text. Notes are the only Team
+ * Rules-owned storage; skills and the wiki are referenced, never copied.
+ *
+ * Every saved edit appends a full snapshot to `team_rule_note_versions`, so the
+ * tab can show a revision history and restore an earlier rule text.
+ */
+export function teamRulesRoutes(db: Db) {
+  const router = Router();
+
+  type Actor = ReturnType<typeof getActorInfo>;
+
+  /**
+   * Append the next revision for a note. The revision number is derived inside
+   * the insert so two concurrent edits cannot both claim the same number — the
+   * unique (note_id, revision_number) index would reject the loser anyway, but
+   * deriving it here keeps the common path to a single round trip.
+   */
+  async function appendVersion(input: {
+    companyId: string;
+    noteId: string;
+    title: string;
+    body: string;
+    label?: string | null;
+    actor: Actor;
+  }) {
+    const [version] = await db
+      .insert(teamRuleNoteVersions)
+      .values({
+        companyId: input.companyId,
+        noteId: input.noteId,
+        revisionNumber: sql<number>`(
+          select coalesce(max(${teamRuleNoteVersions.revisionNumber}), 0) + 1
+          from ${teamRuleNoteVersions}
+          where ${teamRuleNoteVersions.noteId} = ${input.noteId}
+        )`,
+        title: input.title,
+        body: input.body,
+        label: input.label ?? null,
+        authorUserId: input.actor.actorType === "user" ? input.actor.actorId : null,
+        authorAgentId: input.actor.actorType === "agent" ? (input.actor.agentId ?? null) : null,
+      })
+      .returning();
+    return version;
+  }
+
+  async function requireNote(companyId: string, noteId: string) {
+    const [note] = await db
+      .select()
+      .from(teamRuleNotes)
+      .where(and(eq(teamRuleNotes.id, noteId), eq(teamRuleNotes.companyId, companyId)));
+    if (!note) throw notFound("Note not found");
+    return note;
+  }
+
+  router.get("/companies/:companyId/team-rules/notes", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    const notes = await db
+      .select()
+      .from(teamRuleNotes)
+      .where(eq(teamRuleNotes.companyId, companyId))
+      .orderBy(asc(teamRuleNotes.position), asc(teamRuleNotes.createdAt));
+    res.json(notes);
+  });
+
+  router.post("/companies/:companyId/team-rules/notes", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    assertBoardOrAgent(req);
+    const title = typeof req.body?.title === "string" ? req.body.title.trim() : "";
+    if (!title) throw badRequest("title is required");
+    const body = typeof req.body?.body === "string" ? req.body.body : "";
+    const position = typeof req.body?.position === "number" ? req.body.position : 0;
+    const actor = getActorInfo(req);
+    const [created] = await db
+      .insert(teamRuleNotes)
+      .values({
+        companyId,
+        title: title.slice(0, 200),
+        body,
+        position,
+        createdByUserId: actor.actorType === "user" ? actor.actorId : null,
+        createdByAgentId: actor.actorType === "agent" ? (actor.agentId ?? null) : null,
+      })
+      .returning();
+    await appendVersion({
+      companyId,
+      noteId: created.id,
+      title: created.title,
+      body: created.body,
+      label: "Initial version",
+      actor,
+    });
+    await logActivity(db, {
+      companyId,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      agentId: actor.agentId,
+      runId: actor.runId,
+      action: "team_rules.note_created",
+      entityType: "team_rule_note",
+      entityId: created.id,
+      details: { title: created.title },
+    });
+    res.status(201).json(created);
+  });
+
+  router.patch("/companies/:companyId/team-rules/notes/:noteId", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    const noteId = req.params.noteId as string;
+    assertCompanyAccess(req, companyId);
+    assertBoardOrAgent(req);
+    const existing = await requireNote(companyId, noteId);
+    const patch: Record<string, unknown> = { updatedAt: new Date() };
+    if (typeof req.body?.title === "string" && req.body.title.trim()) patch.title = req.body.title.trim().slice(0, 200);
+    if (typeof req.body?.body === "string") patch.body = req.body.body;
+    if (typeof req.body?.position === "number") patch.position = req.body.position;
+    const [updated] = await db
+      .update(teamRuleNotes)
+      .set(patch)
+      .where(and(eq(teamRuleNotes.id, noteId), eq(teamRuleNotes.companyId, companyId)))
+      .returning();
+    if (!updated) throw notFound("Note not found");
+    const actor = getActorInfo(req);
+    // Reordering is not a rule change, so only text edits earn a revision —
+    // otherwise a drag-to-reorder would bury the history in empty versions.
+    const textChanged = updated.title !== existing.title || updated.body !== existing.body;
+    if (textChanged) {
+      await appendVersion({
+        companyId,
+        noteId,
+        title: updated.title,
+        body: updated.body,
+        label: typeof req.body?.versionLabel === "string" ? req.body.versionLabel.trim().slice(0, 200) || null : null,
+        actor,
+      });
+    }
+    await logActivity(db, {
+      companyId,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      agentId: actor.agentId,
+      runId: actor.runId,
+      action: "team_rules.note_updated",
+      entityType: "team_rule_note",
+      entityId: updated.id,
+      details: { title: updated.title },
+    });
+    res.json(updated);
+  });
+
+  router.get("/companies/:companyId/team-rules/notes/:noteId/versions", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    const noteId = req.params.noteId as string;
+    assertCompanyAccess(req, companyId);
+    await requireNote(companyId, noteId);
+    const versions = await db
+      .select()
+      .from(teamRuleNoteVersions)
+      .where(and(eq(teamRuleNoteVersions.noteId, noteId), eq(teamRuleNoteVersions.companyId, companyId)))
+      .orderBy(desc(teamRuleNoteVersions.revisionNumber));
+    res.json(versions);
+  });
+
+  router.post(
+    "/companies/:companyId/team-rules/notes/:noteId/versions/:revisionNumber/restore",
+    async (req, res) => {
+      const companyId = req.params.companyId as string;
+      const noteId = req.params.noteId as string;
+      const revisionNumber = Number.parseInt(req.params.revisionNumber as string, 10);
+      assertCompanyAccess(req, companyId);
+      assertBoardOrAgent(req);
+      if (!Number.isInteger(revisionNumber)) throw badRequest("revisionNumber must be an integer");
+      await requireNote(companyId, noteId);
+      const [version] = await db
+        .select()
+        .from(teamRuleNoteVersions)
+        .where(
+          and(
+            eq(teamRuleNoteVersions.noteId, noteId),
+            eq(teamRuleNoteVersions.companyId, companyId),
+            eq(teamRuleNoteVersions.revisionNumber, revisionNumber),
+          ),
+        );
+      if (!version) throw notFound("Version not found");
+      const [updated] = await db
+        .update(teamRuleNotes)
+        .set({ title: version.title, body: version.body, updatedAt: new Date() })
+        .where(and(eq(teamRuleNotes.id, noteId), eq(teamRuleNotes.companyId, companyId)))
+        .returning();
+      const actor = getActorInfo(req);
+      // A restore is itself an edit: it lands as a new revision on top rather
+      // than rewinding the history, so the rollback stays auditable.
+      await appendVersion({
+        companyId,
+        noteId,
+        title: updated.title,
+        body: updated.body,
+        label: `Restored from v${revisionNumber}`,
+        actor,
+      });
+      await logActivity(db, {
+        companyId,
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        agentId: actor.agentId,
+        runId: actor.runId,
+        action: "team_rules.note_restored",
+        entityType: "team_rule_note",
+        entityId: noteId,
+        details: { title: updated.title, restoredFrom: revisionNumber },
+      });
+      res.json(updated);
+    },
+  );
+
+  router.delete("/companies/:companyId/team-rules/notes/:noteId", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    const noteId = req.params.noteId as string;
+    assertCompanyAccess(req, companyId);
+    assertBoardOrAgent(req);
+    const [deleted] = await db
+      .delete(teamRuleNotes)
+      .where(and(eq(teamRuleNotes.id, noteId), eq(teamRuleNotes.companyId, companyId)))
+      .returning();
+    if (!deleted) throw notFound("Note not found");
+    const actor = getActorInfo(req);
+    await logActivity(db, {
+      companyId,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      agentId: actor.agentId,
+      runId: actor.runId,
+      action: "team_rules.note_deleted",
+      entityType: "team_rule_note",
+      entityId: deleted.id,
+      details: { title: deleted.title },
+    });
+    res.json(deleted);
+  });
+
+  return router;
+}

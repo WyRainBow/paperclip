@@ -242,5 +242,6 @@
   "the assignee": "the assignee",
   "Assign an agent to wake them for triage while the subtree remains paused.": "Assign an agent to wake them for triage while the subtree remains paused.",
   "This issue's isolated workspace was archived. Your next comment or resume reopens it and rebuilds the worktree.": "This issue's isolated workspace was archived. Your next comment or resume reopens it and rebuilds the worktree.",
-  "Team Rules": "Team Rules"
+  "Team Rules": "Team Rules",
+  "Brief": "Brief"
 }

@@ -85,6 +85,7 @@ import {
   HelpCircle,
   FolderOpen,
   AlertTriangle,
+  Upload, X,
 } from "lucide-react";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -285,8 +286,8 @@ export const AGENT_DETAIL_TABS: ReadonlyArray<{ value: AgentDetailView; label: s
   { value: "secrets", label: "Secrets" },
   { value: "tools", label: "Tools" },
   { value: "runs", label: "Runs" },
-  { value: "audit", label: "Audit" },
-  { value: "budget", label: "Budget" },
+  { value: "audit", label: "审核" },
+  { value: "budget", label: "预算" },
 ];
 
 export const DISCARD_AGENT_CONFIG_CHANGES_MESSAGE = "Discard unsaved agent configuration changes?";
@@ -1027,6 +1028,39 @@ export function AgentDetail() {
     },
   });
 
+  const uploadIcon = useMutation({
+    mutationFn: async (file: File) => {
+      const form = new FormData();
+      form.append("file", file);
+      const response = await fetch(`/api/agents/${agentLookupRef}/icon`, {
+        method: "POST",
+        body: form,
+      });
+      if (!response.ok) throw new Error(await response.text());
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.agents.detail(routeAgentRef) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.agents.detail(agentLookupRef) });
+      if (resolvedCompanyId) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.agents.list(resolvedCompanyId) });
+      }
+    },
+  });
+  const removeIcon = useMutation({
+    mutationFn: async () => {
+      const response = await fetch(`/api/agents/${agentLookupRef}/icon`, { method: "DELETE" });
+      if (!response.ok) throw new Error(await response.text());
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.agents.detail(routeAgentRef) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.agents.detail(agentLookupRef) });
+      if (resolvedCompanyId) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.agents.list(resolvedCompanyId) });
+      }
+    },
+  });
   const updateIcon = useMutation({
     mutationFn: (icon: string) => agentsApi.update(agentLookupRef, { icon }, resolvedCompanyId ?? undefined),
     onSuccess: () => {
@@ -1079,7 +1113,7 @@ export function AgentDetail() {
       } else if (activeView === "runs") {
         crumbs.push({ label: "Runs" });
       } else if (activeView === "budget") {
-        crumbs.push({ label: "Budget" });
+        crumbs.push({ label: "预算" });
       } else {
         crumbs.push({ label: "Dashboard" });
       }
@@ -1273,14 +1307,41 @@ export function AgentDetail() {
       {/* Header */}
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-3 min-w-0">
-          <AgentIconPicker
-            value={agent.icon}
-            onChange={(icon) => updateIcon.mutate(icon)}
-          >
-            <button className="shrink-0 flex items-center justify-center h-12 w-12 rounded-lg bg-accent hover:bg-accent/80 transition-colors">
-              <AgentIcon icon={agent.icon} className="h-6 w-6" />
-            </button>
-          </AgentIconPicker>
+          <div className="relative shrink-0">
+            <AgentIconPicker
+              value={agent.icon}
+              onChange={(icon) => updateIcon.mutate(icon)}
+            >
+              <button className="shrink-0 flex items-center justify-center h-12 w-12 rounded-lg bg-accent hover:bg-accent/80 transition-colors overflow-hidden">
+                <AgentIcon icon={agent.icon} customIconUrl={(agent.metadata as { customIcon?: string } | null)?.customIcon ?? null} className="h-6 w-6" />
+              </button>
+            </AgentIconPicker>
+            <label
+              className="absolute -bottom-1 -right-1 flex h-5 w-5 cursor-pointer items-center justify-center rounded-full border border-border bg-background shadow-sm hover:bg-accent"
+              title="上传自定义头像"
+            >
+              <Upload className="h-3 w-3" aria-hidden />
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/svg+xml,image/gif"
+                className="hidden"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) uploadIcon.mutate(file);
+                  event.target.value = "";
+                }}
+              />
+            </label>
+            {(agent.metadata as { customIcon?: string } | null)?.customIcon ? (
+              <button
+                className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full border border-border bg-background shadow-sm hover:bg-accent"
+                title="移除自定义头像"
+                onClick={() => removeIcon.mutate()}
+              >
+                <X className="h-3 w-3" aria-hidden />
+              </button>
+            ) : null}
+          </div>
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <h2 className="text-2xl font-bold truncate">{agent.name}</h2>

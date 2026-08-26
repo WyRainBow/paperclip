@@ -19,7 +19,10 @@ interface AgentIconProps {
   className?: string;
 }
 
-export function AgentIcon({ icon, className }: AgentIconProps) {
+export function AgentIcon({ icon, customIconUrl, className }: AgentIconProps & { customIconUrl?: string | null }) {
+  if (customIconUrl) {
+    return <img src={customIconUrl} alt="" className={cn("rounded-sm object-cover", className)} />;
+  }
   const Icon = getAgentIcon(icon);
   return <Icon className={className} />;
 }

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Puzzle, Save, Scale, Trash2, X } from "lucide-react";
+import { History, Pencil, RotateCcw, Save, Scale, Trash2, X } from "lucide-react";
 import { api } from "@/api/client";
 import { useCompany } from "@/context/CompanyContext";
 import { useToastActions } from "@/context/ToastContext";
@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { MarkdownBody } from "@/components/MarkdownBody";
 
-interface OpenspaceNote {
+interface TeamRuleNote {
   id: string;
   companyId: string;
   title: string;
@@ -21,42 +21,64 @@ interface OpenspaceNote {
   updatedAt: string;
 }
 
-export function Openspace() {
+interface TeamRuleNoteVersion {
+  id: string;
+  noteId: string;
+  revisionNumber: number;
+  title: string;
+  body: string;
+  label: string | null;
+  authorUserId: string | null;
+  authorAgentId: string | null;
+  createdAt: string;
+}
+
+function notesKey(companyId: string | null) {
+  return ["team-rules", "notes", companyId];
+}
+
+function versionsKey(companyId: string | null, noteId: string) {
+  return ["team-rules", "notes", companyId, noteId, "versions"];
+}
+
+export function TeamRules() {
   const { selectedCompanyId } = useCompany();
   const queryClient = useQueryClient();
   const { pushToast } = useToastActions();
   const [draft, setDraft] = useState<{ title: string; body: string } | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
+  const [historyFor, setHistoryFor] = useState<string | null>(null);
 
   const notesQuery = useQuery({
-    queryKey: ["openspace", "notes", selectedCompanyId],
-    queryFn: () => api.get<OpenspaceNote[]>(`/companies/${selectedCompanyId}/openspace/notes`),
+    queryKey: notesKey(selectedCompanyId),
+    queryFn: () => api.get<TeamRuleNote[]>(`/companies/${selectedCompanyId}/team-rules/notes`),
     enabled: Boolean(selectedCompanyId),
   });
 
   const createNote = useMutation({
     mutationFn: (payload: { title: string; body: string }) =>
-      api.post<OpenspaceNote>(`/companies/${selectedCompanyId}/openspace/notes`, payload),
+      api.post<TeamRuleNote>(`/companies/${selectedCompanyId}/team-rules/notes`, payload),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["openspace", "notes", selectedCompanyId] });
+      queryClient.invalidateQueries({ queryKey: notesKey(selectedCompanyId) });
       setDraft(null);
     },
     onError: (error: Error) => pushToast({ title: "创建失败", body: error.message, tone: "error" }),
   });
   const updateNote = useMutation({
     mutationFn: (payload: { id: string; title: string; body: string }) =>
-      api.patch<OpenspaceNote>(`/companies/${selectedCompanyId}/openspace/notes/${payload.id}`, {
+      api.patch<TeamRuleNote>(`/companies/${selectedCompanyId}/team-rules/notes/${payload.id}`, {
         title: payload.title,
         body: payload.body,
       }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["openspace", "notes", selectedCompanyId] });
+    onSuccess: (_data, payload) => {
+      queryClient.invalidateQueries({ queryKey: notesKey(selectedCompanyId) });
+      queryClient.invalidateQueries({ queryKey: versionsKey(selectedCompanyId, payload.id) });
       setEditing(null);
     },
   });
   const deleteNote = useMutation({
-    mutationFn: (id: string) => api.delete(`/companies/${selectedCompanyId}/openspace/notes/${id}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["openspace", "notes", selectedCompanyId] }),
+    mutationFn: (id: string) => api.delete(`/companies/${selectedCompanyId}/team-rules/notes/${id}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: notesKey(selectedCompanyId) }),
   });
 
   const notes = notesQuery.data ?? [];
@@ -71,7 +93,6 @@ export function Openspace() {
         </p>
       </header>
 
-      {/* 公共笔记 */}
       <section className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold">Rules</h2>
@@ -128,8 +149,17 @@ export function Openspace() {
                     <div className="flex items-start justify-between gap-2">
                       <h3 className="text-sm font-semibold">{note.title}</h3>
                       <div className="flex shrink-0 gap-1">
+                        <Button
+                          size="icon-xs"
+                          variant="ghost"
+                          aria-label="版本历史"
+                          title="版本历史"
+                          onClick={() => setHistoryFor((current) => (current === note.id ? null : note.id))}
+                        >
+                          <History className="h-3.5 w-3.5" aria-hidden />
+                        </Button>
                         <Button size="icon-xs" variant="ghost" aria-label="编辑" onClick={() => setEditing(note.id)}>
-                          <Puzzle className="h-3.5 w-3.5" aria-hidden />
+                          <Pencil className="h-3.5 w-3.5" aria-hidden />
                         </Button>
                         <Button
                           size="icon-xs"
@@ -150,6 +180,9 @@ export function Openspace() {
                       更新于 {new Date(note.updatedAt).toLocaleString()}
                       {note.createdByAgentId ? " · agent 创建" : ""}
                     </p>
+                    {historyFor === note.id ? (
+                      <NoteVersions companyId={selectedCompanyId} noteId={note.id} />
+                    ) : null}
                   </>
                 )}
               </li>
@@ -157,7 +190,87 @@ export function Openspace() {
           </ul>
         )}
       </section>
+    </div>
+  );
+}
 
+function NoteVersions({ companyId, noteId }: { companyId: string | null; noteId: string }) {
+  const queryClient = useQueryClient();
+  const { pushToast } = useToastActions();
+  const [expanded, setExpanded] = useState<number | null>(null);
+
+  const versionsQuery = useQuery({
+    queryKey: versionsKey(companyId, noteId),
+    queryFn: () =>
+      api.get<TeamRuleNoteVersion[]>(`/companies/${companyId}/team-rules/notes/${noteId}/versions`),
+    enabled: Boolean(companyId),
+  });
+
+  const restore = useMutation({
+    mutationFn: (revisionNumber: number) =>
+      api.post(`/companies/${companyId}/team-rules/notes/${noteId}/versions/${revisionNumber}/restore`, {}),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: notesKey(companyId) });
+      queryClient.invalidateQueries({ queryKey: versionsKey(companyId, noteId) });
+    },
+    onError: (error: Error) => pushToast({ title: "回滚失败", body: error.message, tone: "error" }),
+  });
+
+  const versions = versionsQuery.data ?? [];
+  return (
+    <div className="mt-3 border-t border-border pt-3">
+      <p className="text-xs font-medium text-muted-foreground">
+        {versionsQuery.isLoading ? "加载版本…" : `${versions.length} 个版本`}
+      </p>
+      <ul className="mt-2 space-y-1">
+        {versions.map((version, index) => (
+          <li key={version.id} className="text-xs">
+            <div className="flex items-center justify-between gap-2 py-1">
+              <button
+                type="button"
+                className="flex min-w-0 items-baseline gap-2 text-left hover:underline"
+                onClick={() =>
+                  setExpanded((current) => (current === version.revisionNumber ? null : version.revisionNumber))
+                }
+              >
+                <span className="font-medium">v{version.revisionNumber}</span>
+                {version.label ? <span className="text-muted-foreground">· {version.label}</span> : null}
+                {index === 0 ? <span className="text-muted-foreground">· 当前</span> : null}
+                <span className="truncate text-muted-foreground">
+                  {new Date(version.createdAt).toLocaleString()}
+                  {version.authorAgentId ? " · agent" : ""}
+                </span>
+              </button>
+              {/* The newest revision is already the live text, so restoring it
+                  would only append an identical version. */}
+              {index === 0 ? null : (
+                <Button
+                  size="icon-xs"
+                  variant="ghost"
+                  aria-label={`回滚到 v${version.revisionNumber}`}
+                  title={`回滚到 v${version.revisionNumber}`}
+                  disabled={restore.isPending}
+                  onClick={() => {
+                    if (window.confirm(`把这条规则回滚到 v${version.revisionNumber}？当前内容会另存为新版本。`)) {
+                      restore.mutate(version.revisionNumber);
+                    }
+                  }}
+                >
+                  <RotateCcw className="h-3.5 w-3.5" aria-hidden />
+                </Button>
+              )}
+            </div>
+            {expanded === version.revisionNumber ? (
+              <div className="mb-2 rounded-md bg-muted/40 px-3 py-2 text-sm">
+                <p className="text-xs font-medium">{version.title}</p>
+                <div className="mt-1 text-muted-foreground">
+                  <MarkdownBody>{version.body || "_（空）_"}</MarkdownBody>
+                </div>
+              </div>
+            ) : null}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -168,7 +281,7 @@ function NoteEditor({
   onCancel,
   pending,
 }: {
-  note: OpenspaceNote;
+  note: TeamRuleNote;
   onSave: (title: string, body: string) => void;
   onCancel: () => void;
   pending: boolean;
