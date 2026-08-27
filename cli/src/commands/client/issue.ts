@@ -535,13 +535,31 @@ export function registerIssueCommands(program: Command): void {
               });
             }
           }
+          // 接卡即开工（user 2026-08-27）: Driving records the claiming agent.
+          // Sub-agents it dispatches are its implementation detail and are not
+          // recorded anywhere; a new claimant overwrites Driving, which is the
+          // intended handover semantics. Auto-filled here because 15 of 18
+          // started cards simply had nobody remember to run `issue start`.
+          const drivingSession =
+            process.env.CLAUDE_CODE_SESSION_ID?.trim() ||
+            process.env.CODEX_SESSION_ID?.trim() ||
+            null;
+          const me = await ctx.api.get<{ id: string } | null>(apiPath`/api/agents/me`).catch(() => null);
+          const drivingAgentId = me?.id ?? process.env.PAPERCLIP_AGENT_ID?.trim() ?? null;
+          if (drivingSession || drivingAgentId) {
+            const drivingPatch: Record<string, unknown> = {};
+            if (drivingSession) drivingPatch.drivingSession = drivingSession;
+            if (drivingAgentId) drivingPatch.drivingAgentId = drivingAgentId;
+            updated = await ctx.api.patch<Issue>(apiPath`/api/issues/${issue.id}`, drivingPatch).catch(() => updated);
+          }
           const lines = [`接卡：${issue.identifier} → ${opts.status}（by claim command）`];
+          if (drivingAgentId || drivingSession) lines.push(`Driving：${drivingAgentId ?? "?"}${drivingSession ? ` · 会话 ${drivingSession}` : ""}`);
           if (opts.note) lines.push(opts.note);
           await ctx.api.post(apiPath`/api/issues/${issue.id}/comments`, {
             body: lines.join("\n"),
             presentation: { kind: "progress_note", tone: "info" },
           });
-          printOutput({ identifier: issue.identifier, status: updated?.status ?? opts.status }, { json: ctx.json });
+          printOutput({ identifier: issue.identifier, status: updated?.status ?? opts.status, drivingAgentId, drivingSession }, { json: ctx.json });
         } catch (err) {
           handleCommandError(err);
         }

@@ -5081,6 +5081,11 @@ export function IssueDetail() {
       {/* Flag ON: attachments/work products/workspace live in the properties
           pane (Artifacts tab) — the center column belongs to the thread. */}
       {taskChatShellEnabled ? null : (
+      // Documents overflow the page's 3xl column to the right, where `main`
+      // already has unused width. Stepped by breakpoint rather than a flat
+      // width so the overflow can never outrun the viewport and introduce a
+      // horizontal page scroll on smaller screens.
+      <div className="w-full xl:w-[56rem] 2xl:w-(--tc-documents-max-w)">
       <IssueDocumentsSection
         issue={issue}
         canDeleteDocuments={Boolean(session?.user?.id)}
@@ -5108,6 +5113,7 @@ export function IssueDetail() {
         agentMap={agentMap}
         userProfileMap={userProfileMap}
       />
+      </div>
       )}
 
       {taskChatShellEnabled ? null : (

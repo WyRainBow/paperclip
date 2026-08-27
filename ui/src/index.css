@@ -280,6 +280,13 @@
      long spec bodies, and 60rem wrapped them harder than the content needed. */
   --tc-shell-max-w: 80rem;
 
+  /* Documents alone opt out of the classic 3xl content column (user
+     2026-08-27): their header packs key, revision, docID, author, and
+     timestamp into one row, which truncates at 48rem. Applied only from the
+     2xl breakpoint up, where the viewport has room for the overflow — see
+     IssueDetail for the narrower xl step. */
+  --tc-documents-max-w: 72rem;
+
   /* Mobile pinned-composer bottom offset (PAP-495). Default clears just the
      safe-area inset (+20px); Layout raises it to the bottom-nav height
      (--sz-calc-14) while the auto-hiding mobile nav is on screen, so the
