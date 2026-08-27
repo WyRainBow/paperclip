@@ -240,7 +240,7 @@
   ". Resume from the root task to deliver deferred work.": " 暂停。要交付被搁置的工作，请从根任务恢复。",
   "Sending this comment will wake {{name}} for triage while the subtree remains paused.": "发出这条评论会唤醒 {{name}} 来分诊，子树仍保持暂停。",
   "the assignee": "负责人",
-  "Assign an agent to wake them for triage while the subtree remains paused.": "指派一个 Agent 才能唤醒它分诊，子树仍保持暂停。",
+  "Assign an agent to wake them for triage while the subtree remains paused.": "指派一个 Agent 才能唤醒它分诊、子树仍保持暂停。",
   "This issue's isolated workspace was archived. Your next comment or resume reopens it and rebuilds the worktree.": "这个任务的隔离工作区已归档。你下一条评论或恢复操作会重新打开它并重建工作树。",
   "Team Rules": "Team Rules",
   "Brief": "角色简报",
@@ -358,5 +358,6 @@
   "Pull request": "Pull request",
   "Hooks": "Hooks",
   "Personal files": "个人文件",
-  "Personal assets": "个人资产"
+  "Personal assets": "个人资产",
+  "Templates": "模板"
 }
