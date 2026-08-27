@@ -806,7 +806,7 @@ export function registerIssueCommands(program: Command): void {
   addCommonClientOptions(
     issue
       .command("decision:create")
-      .description("Record a decision on an issue — the CLI builds the payload, so no hand-written JSON and no borrowed run context")
+      .description("Record a decision on an issue — flags build the payload, no hand-written JSON. Payload-file sibling: `decision create` — same server contract, pick by input shape")
       .argument("<issueId>", "Issue ID or identifier the decision was raised on")
       .requiredOption("--title <text>", "What is being decided")
       .requiredOption("--body <text>", "背景 / 判断标准 / 方案 — the prose a later reader sees")
