@@ -173,13 +173,12 @@ export function decisionRoutes(db: Db, options: DecisionServiceOptions) {
       res.status(403).json({ error: "Agent identity required: authenticate as an agent, or pass createdByAgentId naming the company agent this decision is attributed to" });
       return;
     }
-    const userId = boardUserId(req);
+    assertBoard(req);
     const originAgentId = await companyAgentId(db, companyId, createdByAgentId);
     if (!originAgentId) { res.status(422).json({ error: "createdByAgentId does not belong to this company" }); return; }
     // The board owns the call, the named agent owns the record: the decision is
     // filed under that agent with no run, so provenance falls back to
     // originIssueId — which the service requires on this path.
-    void userId;
     res.status(201).json(await svc.create({ companyId, actor: req.actor, agentId: originAgentId, runId: null, ...body }));
   });
   router.post("/companies/:companyId/decision-bundles", validate(bundleSchema), async (req, res) => {
@@ -249,16 +248,11 @@ export function decisionRoutes(db: Db, options: DecisionServiceOptions) {
     // the operator. Same shape the issue list already uses for created-by.
     let actingAgent: string | null = null;
     if (actingAgentId) {
-      const agent = await db
-        .select({ id: agents.id })
-        .from(agents)
-        .where(and(eq(agents.id, actingAgentId), eq(agents.companyId, decision.companyId)))
-        .then((rows) => rows[0] ?? null);
-      if (!agent) {
+      actingAgent = await companyAgentId(db, decision.companyId, actingAgentId);
+      if (!actingAgent) {
         res.status(422).json({ error: "actingAgentId does not belong to this company" });
         return;
       }
-      actingAgent = agent.id;
     }
     res.json(await svc.decide({
       id: decision.id,

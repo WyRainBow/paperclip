@@ -49,6 +49,8 @@ interface DiscussionComment {
     questionAgentId?: string;
     docKey?: string;
     docTitle?: string;
+    answerModel?: string;
+    answerEffort?: string;
   } | null;
 }
 
@@ -204,6 +206,11 @@ export function IssueDiscussionPanel({ issueId, issueIdentifier }: { issueId: st
                     ) : (
                       displayName
                     )}
+                    {msg.presentation?.answerModel ? (
+                      <span className="font-mono text-muted-foreground/80">
+                        · {msg.presentation.answerModel}{msg.presentation.answerEffort ? ` ${msg.presentation.answerEffort}` : ""}
+                      </span>
+                    ) : null}
                     <span>· {chineseTimestamp(msg.createdAt)}</span>
                   </p>
                   <p className="whitespace-pre-wrap">{msg.body}</p>

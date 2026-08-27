@@ -677,6 +677,11 @@ export const issueCommentPresentationSchema = z.object({
   // document under this key (one per round) and the bubble keeps the verdict.
   docKey: z.string().trim().min(1).max(120).optional(),
   docTitle: z.string().trim().max(200).nullable().optional(),
+  // Which model produced the answer, and at what effort. These were being
+  // hand-written into --label text ("Codex gpt-5.6-sol high"), which no
+  // machine could read back (MUL-61, user: 保留模型名/effort).
+  answerModel: z.string().trim().max(120).optional(),
+  answerEffort: z.string().trim().max(40).optional(),
 }).strict();
 
 export type IssueCommentPresentation = z.infer<typeof issueCommentPresentationSchema>;
