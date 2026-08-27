@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { History, Pencil, RotateCcw, Save, Scale, Trash2, X } from "lucide-react";
+import { History, Pencil, RotateCcw, Save, Scale, X } from "lucide-react";
 import { api } from "@/api/client";
 import { agentsApi } from "@/api/agents";
 import { queryKeys } from "@/lib/queryKeys";
@@ -113,11 +113,6 @@ export function TeamRules() {
       setEditing(null);
     },
   });
-  const deleteNote = useMutation({
-    mutationFn: (id: string) => api.delete(`/companies/${selectedCompanyId}/team-rules/notes/${id}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: notesKey(selectedCompanyId) }),
-  });
-
   const notes = notesQuery.data ?? [];
   return (
     <div className="mx-auto w-full max-w-4xl space-y-8 px-6 py-8">
@@ -126,16 +121,20 @@ export function TeamRules() {
           <Scale className="h-5 w-5 text-sky-600 dark:text-sky-400" aria-hidden /> Team Rules
         </h1>
         <p className="text-sm text-muted-foreground">
-          全局团队规则（Team Rules）：所有 agent 与人共守的唯一规则正文，规则优先级最高层——Team Rules ＞ terminal-workflow skill（操作 SOP）＞ 各 agent 自有 AGENTS.md（个体补充）。
+          全局团队规则（Team Rules）：所有 agent 与人共守的唯一规则正文，只维护这一份文档——新规则并入正文，不另开笔记。规则优先级最高层——Team Rules ＞ terminal-workflow skill（操作 SOP）＞ 各 agent 自有 AGENTS.md（个体补充）。
         </p>
       </header>
 
       <section className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold">Rules</h2>
-          <Button size="sm" variant="outline" onClick={() => setDraft({ title: "", body: "" })}>
-            新建笔记
-          </Button>
+          {/* Team Rules keeps a single document, so creating is only offered
+              while the company has none — after that, the flow is edit-only. */}
+          {notes.length === 0 && !notesQuery.isLoading ? (
+            <Button size="sm" variant="outline" onClick={() => setDraft({ title: "", body: "" })}>
+              创建规则文档
+            </Button>
+          ) : null}
         </div>
         {draft ? (
           <div className="space-y-2 rounded-lg border border-border p-4">
@@ -197,16 +196,6 @@ export function TeamRules() {
                         </Button>
                         <Button size="icon-xs" variant="ghost" aria-label="编辑" onClick={() => setEditing(note.id)}>
                           <Pencil className="h-3.5 w-3.5" aria-hidden />
-                        </Button>
-                        <Button
-                          size="icon-xs"
-                          variant="ghost"
-                          aria-label="删除"
-                          onClick={() => {
-                            if (window.confirm(`删除笔记「${note.title}」？`)) deleteNote.mutate(note.id);
-                          }}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" aria-hidden />
                         </Button>
                       </div>
                     </div>

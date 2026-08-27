@@ -11,8 +11,11 @@ import { logActivity } from "../services/activity-log.js";
  * Team Rules: the company's shared rule text. Notes are the only Team
  * Rules-owned storage; skills and the wiki are referenced, never copied.
  *
- * Every saved edit appends a full snapshot to `team_rule_note_versions`, so the
- * tab can show a revision history and restore an earlier rule text.
+ * A company keeps exactly one rules document: create is rejected once a note
+ * exists, so new rules are merged into the standing text instead of piling up
+ * as parallel notes. Every saved edit appends a full snapshot to
+ * `team_rule_note_versions`, so the tab can show a revision history and
+ * restore an earlier rule text.
  */
 export function teamRulesRoutes(db: Db) {
   const router = Router();
@@ -81,6 +84,14 @@ export function teamRulesRoutes(db: Db) {
     if (!title) throw badRequest("title is required");
     const body = typeof req.body?.body === "string" ? req.body.body : "";
     const position = typeof req.body?.position === "number" ? req.body.position : 0;
+    const [existing] = await db
+      .select({ id: teamRuleNotes.id })
+      .from(teamRuleNotes)
+      .where(eq(teamRuleNotes.companyId, companyId))
+      .limit(1);
+    if (existing) {
+      throw badRequest("Team Rules keeps a single document — edit the existing note instead of creating another");
+    }
     const actor = getActorInfo(req);
     const [created] = await db
       .insert(teamRuleNotes)

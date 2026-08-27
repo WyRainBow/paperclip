@@ -295,15 +295,22 @@ describe("IssueDocumentsSection", () => {
     document.body.appendChild(container);
     ensureLocalStorageMock();
     window.localStorage.clear();
-    // Documents open folded for a reader who has never chosen (a long spec
-    // otherwise buries everything under it). These tests assert on rendered
-    // bodies, so they stand in for a reader who already unfolded them.
-    for (const subjectId of ["issue-1", "case-1"]) {
-      window.localStorage.setItem(`paperclip:issue-document-folds:v2:${subjectId}`, "[]");
-    }
     vi.clearAllMocks();
     markdownEditorMockState.emitMountEmptyChange = false;
   });
+
+
+  async function expandAllDocuments() {
+    const buttons = Array.from(
+      container.querySelectorAll<HTMLButtonElement>('button[aria-label^="Expand "][aria-label$=" document"]'),
+    );
+    for (const button of buttons) {
+      await act(async () => {
+        button.click();
+      });
+    }
+    await flush();
+  }
 
   afterEach(() => {
     container.remove();
@@ -373,6 +380,7 @@ describe("IssueDocumentsSection", () => {
     });
     await flush();
     await flush();
+    await expandAllDocuments();
 
     expect(container.textContent).toContain("# Plan");
     expect(container.textContent).not.toContain("# Handoff");
@@ -546,6 +554,7 @@ describe("IssueDocumentsSection", () => {
     });
     await flush();
     await flush();
+    await expandAllDocuments();
 
     expect(container.textContent).toContain("Locked plan body");
     expect(container.textContent).not.toContain("Edit document");
@@ -762,6 +771,7 @@ describe("IssueDocumentsSection", () => {
     });
     await flush();
     await flush();
+    await expandAllDocuments();
 
     expect(container.textContent).toContain("Current plan body");
 
@@ -841,6 +851,7 @@ describe("IssueDocumentsSection", () => {
     });
     await flush();
     await flush();
+    await expandAllDocuments();
 
     expect(container.textContent).toContain("Current plan body");
 
@@ -903,6 +914,7 @@ describe("IssueDocumentsSection", () => {
 
     await flush();
     await flush();
+    await expandAllDocuments();
 
     expect(container.textContent).toContain("Loaded plan body");
     expect(container.textContent).not.toContain("Markdown body");
@@ -951,6 +963,7 @@ describe("IssueDocumentsSection", () => {
     });
     await flush();
     await flush();
+    await expandAllDocuments();
 
     const markdownBodies = Array.from(
       container.querySelectorAll('[data-testid="markdown-body"]'),
@@ -1073,6 +1086,7 @@ describe("IssueDocumentsSection", () => {
     });
     await flush();
     await flush();
+    await expandAllDocuments();
 
     expect(listDocuments).toHaveBeenCalled();
     expect(container.textContent).toContain("Reusable case document body");

@@ -86,29 +86,6 @@ type DocumentSubjectConfig = {
 
 const DOCUMENT_AUTOSAVE_DEBOUNCE_MS = 900;
 const DOCUMENT_KEY_PATTERN = /^[a-z0-9][a-z0-9_-]*$/;
-// v2: documents now start folded, and the old key had an empty array written
-// on every visit — which under the new rules reads as "this reader opened them
-// all" and would suppress the default everywhere they had ever looked. Bumping
-// the key drops those stale entries once; real choices persist from then on.
-const getFoldedDocumentsStorageKey = (issueId: string) => `paperclip:issue-document-folds:v2:${issueId}`;
-
-function loadFoldedDocumentKeys(issueId: string): string[] | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.localStorage.getItem(getFoldedDocumentsStorageKey(issueId));
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === "string") : null;
-  } catch {
-    return null;
-  }
-}
-
-function saveFoldedDocumentKeys(issueId: string, keys: string[]) {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(getFoldedDocumentsStorageKey(issueId), JSON.stringify(keys));
-}
-
 function renderFoldableBody(
   body: string,
   className?: string,
@@ -313,12 +290,10 @@ export function IssueDocumentsSection({
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState<DraftState | null>(null);
   const [documentConflict, setDocumentConflict] = useState<DocumentConflictState | null>(null);
-  // null = this reader has never folded/unfolded anything here, which is the
-  // signal to start every document folded. A stored [] means they deliberately
-  // opened them all, so it must not be treated the same way.
-  const [foldedDocumentKeys, setFoldedDocumentKeys] = useState<string[] | null>(
-    () => loadFoldedDocumentKeys(documentSubject.id),
-  );
+  // Session-only: every page load starts with every document folded (user
+  // 2026-08-27 — persistence kept resurrecting expanded states, so it's gone).
+  // null = untouched = all folded; toggling materialises the full key list.
+  const [foldedDocumentKeys, setFoldedDocumentKeys] = useState<string[] | null>(null);
   const [annotationPanelOpenKeys, setAnnotationPanelOpenKeys] = useState<string[]>(
     () => (defaultAnnotationPanelOpenKeys ?? []),
   );
@@ -790,7 +765,7 @@ export function IssueDocumentsSection({
   };
 
   useEffect(() => {
-    setFoldedDocumentKeys(loadFoldedDocumentKeys(documentSubject.id));
+    setFoldedDocumentKeys(null);
   }, [documentSubject.id]);
 
   useEffect(() => {
@@ -798,21 +773,14 @@ export function IssueDocumentsSection({
   }, [documentSubject.id, location.hash]);
 
   useEffect(() => {
+    if (sortedDocuments.length === 0) return;
     const validKeys = new Set(sortedDocuments.map((doc) => doc.key));
     setFoldedDocumentKeys((current) => {
       if (current === null) return current;
       const next = current.filter((key) => validKeys.has(key));
-      if (next.length !== current.length) {
-        saveFoldedDocumentKeys(documentSubject.id, next);
-      }
-      return next;
+      return next.length === current.length ? current : next;
     });
-  }, [documentSubject.id, sortedDocuments]);
-
-  useEffect(() => {
-    if (foldedDocumentKeys === null) return;
-    saveFoldedDocumentKeys(documentSubject.id, foldedDocumentKeys);
-  }, [documentSubject.id, foldedDocumentKeys]);
+  }, [sortedDocuments]);
 
   useEffect(() => {
     if (!documentConflict) return;
