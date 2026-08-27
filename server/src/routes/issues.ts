@@ -2913,7 +2913,14 @@ export function issueRoutes(
     kind: CrossIssueInfluenceKind,
   ) {
     if (req.actor.type !== "agent") return true;
-    if (!req.actor.agentId || !req.actor.runId) throw crossIssueInfluenceRunContextError();
+    if (!req.actor.agentId) return true;
+    // No run, no cap. The counter derives the "source issue" from the run's
+    // context snapshot, so without a run there is nothing for a write to be
+    // *cross* to — the concept does not apply. Refusing instead meant a
+    // terminal agent holding a valid key could not comment at all, on any
+    // card, which is not what the cap was protecting against (user
+    // 2026-08-27). Run-backed agents are still counted and still capped.
+    if (!req.actor.runId) return true;
 
     // The counter transaction locks and validates the persisted run before it
     // derives the source issue. Never trust the API-key run header by itself.

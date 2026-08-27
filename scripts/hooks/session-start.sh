@@ -21,13 +21,30 @@ fi
 # Build the directory map (server-side assembled, same recall endpoint but
 # with a "directory" mode that returns just titles+paths).
 MAP=$(curl -sf --max-time 3 "${API_BASE}/api/companies/${COMPANY_ID}/workspace/recall?q=&mode=directory&budget=${BUDGET}" 2>/dev/null) || exit 0
+[ -n "$MAP" ] || exit 0
 
-if [ -n "$MAP" ]; then
-  # Claude-family: JSON additionalContext
-  if [ -n "${CLAUDE_CODE_SESSION_ID:-}" ] || [ -n "${CLAUDE_PROJECT_DIR:-}" ]; then
-    echo "{\"hookSpecificOutput\":{\"hookEventName\":\"SessionStart\",\"additionalContext\":${MAP}}}"
-  else
-    # Codex/zcode/grok: plain text to stderr (picked up as context)
-    echo "$MAP" >&2
-  fi
+if [ -n "${CLAUDE_CODE_SESSION_ID:-}" ] || [ -n "${CLAUDE_PROJECT_DIR:-}" ]; then
+  # Claude-family: additionalContext must be a STRING — extract the map's
+  # `text` field and re-serialize, instead of splicing the whole response
+  # object in (which fails the hook schema and drops the injection).
+  printf '%s' "$MAP" | python3 -c '
+import json, sys
+try:
+    text = json.load(sys.stdin).get("text", "")
+except Exception:
+    sys.exit(0)
+if text:
+    print(json.dumps({"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": text}}, ensure_ascii=False))
+' 2>/dev/null || exit 0
+else
+  # Codex/zcode/grok: plain text to stderr (picked up as context)
+  printf '%s' "$MAP" | python3 -c '
+import json, sys
+try:
+    text = json.load(sys.stdin).get("text", "")
+except Exception:
+    sys.exit(0)
+if text:
+    print(text, file=sys.stderr)
+' || exit 0
 fi

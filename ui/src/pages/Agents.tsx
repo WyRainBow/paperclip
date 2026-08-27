@@ -830,6 +830,17 @@ function AgentMetaColumns({
   const adapterLabel = getAdapterLabel(agent.adapterType);
   return (
     <>
+      {/* The agent id is what a terminal exports as PAPERCLIP_AGENT_ID and what
+          the CLI and API address the agent by, so it belongs where someone is
+          already looking at the roster. Full id in the tooltip. */}
+      <div className="w-40 min-w-0 leading-tight">
+        <div className="truncate font-mono text-xs text-muted-foreground" title={agent.id}>
+          {agent.id.slice(0, 8)}
+        </div>
+        <div className="truncate font-mono text-(length:--text-micro) text-muted-foreground/70">
+          agent ID
+        </div>
+      </div>
       <div className="w-44 min-w-0 leading-tight">
         <div
           className="truncate font-mono text-xs text-muted-foreground"

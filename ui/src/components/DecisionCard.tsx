@@ -59,6 +59,7 @@ export interface DecisionCardProps {
   resolveAgent?: (agentId: string) => { name: string; icon: string | null; customIconUrl: string | null } | null;
   /** Resolved name of the agent that decided, when an agent resolved it. */
   decidedByAgentName?: string | null;
+  decidedByUserName?: string | null;
   originIssue?: DecisionIssueRef | null;
   runHref?: string | null;
   busy?: boolean;
@@ -254,6 +255,7 @@ export function DecisionCard({
   originAgentName,
   resolveAgent,
   decidedByAgentName,
+  decidedByUserName,
   originIssue,
   runHref,
   busy = false,
@@ -740,13 +742,13 @@ export function DecisionCard({
                     agent made every such verdict read as anonymous local-board. */}
                 {decision.decidedByUserId && decision.decidedByAgentId && decidedByAgentName ? (
                   <span className="text-muted-foreground">
-                    {" · "}{t("by")} {decision.decidedByUserId}
+                    {" · "}{t("by")} {decidedByUserName ?? decision.decidedByUserId}
                     {" · via "}{decidedByAgentName}
                   </span>
                 ) : decision.decidedByAgentId && decidedByAgentName ? (
                   <span className="text-muted-foreground"> · {t("by")} {decidedByAgentName}</span>
                 ) : decision.decidedByUserId ? (
-                  <span className="text-muted-foreground"> · {t("by")} {decision.decidedByUserId}</span>
+                  <span className="text-muted-foreground"> · {t("by")} {decidedByUserName ?? decision.decidedByUserId}</span>
                 ) : null}
                 <ChevronDown
                   className={cn(

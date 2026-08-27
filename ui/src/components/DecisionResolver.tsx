@@ -6,6 +6,8 @@ import { decisionsApi, type DecisionOutcome } from "../api/decisions";
 import { agentsApi } from "../api/agents";
 import { agentCustomIcon } from "./AgentIconPicker";
 import { issuesApi } from "../api/issues";
+import { accessApi } from "../api/access";
+import { buildCompanyUserLabelMap } from "../lib/company-members";
 import { queryKeys } from "../lib/queryKeys";
 import { useCompany } from "../context/CompanyContext";
 import { DecisionCard, type DecisionIssueRef } from "./DecisionCard";
@@ -143,6 +145,15 @@ export function DecisionResolver({ companyId, decisionId, originIssue, agentMap,
     queryFn: () => agentsApi.list(companyId, { includeTerminated: true }),
     enabled: Boolean(companyId),
   });
+  const membersQuery = useQuery({
+    queryKey: ["company-members", companyId],
+    queryFn: () => accessApi.listMembers(companyId),
+    enabled: Boolean(companyId),
+  });
+  const companyUserLabels = useMemo(
+    () => buildCompanyUserLabelMap(membersQuery.data?.members ?? []),
+    [membersQuery.data],
+  );
   const mergedAgentMap = useMemo(() => {
     const map = new Map<string, Agent>();
     for (const agent of terminatedInclusiveAgents.data ?? []) map.set(agent.id, agent);
@@ -218,6 +229,13 @@ export function DecisionResolver({ companyId, decisionId, originIssue, agentMap,
       decidedByAgentName={
         decision.decidedByAgentId
           ? mergedAgentMap.get(decision.decidedByAgentId)?.name ?? decision.decidedByAgentId
+          : null
+      }
+      // "local-board" is a user id, not a name. The company roster knows the
+      // person behind it, so show that instead of the raw handle.
+      decidedByUserName={
+        decision.decidedByUserId
+          ? companyUserLabels.get(decision.decidedByUserId) ?? decision.decidedByUserId
           : null
       }
       originIssue={
