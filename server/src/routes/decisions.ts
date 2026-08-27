@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
-import type { Db } from "@paperclipai/db";
+import { agents, type Db } from "@paperclipai/db";
+import { and, eq } from "drizzle-orm";
 import {
   createDecisionArchiveProposalSchema,
   decisionInputsSchema,
@@ -33,7 +34,11 @@ const createSchema = z.object({
   metadata: z.record(z.string(), z.unknown()).optional(),
 }).strict();
 const bundleSchema = z.object({ title: z.string().trim().min(1).max(500), summary: z.string().max(100_000), decisions: z.array(createSchema).min(1).max(50) }).strict();
-const decideSchema = z.object({ optionId: z.string().trim().min(1).max(120), inputValues: z.record(z.string(), z.string().max(20_000)).optional(), idempotencyKey: z.string().trim().min(1).max(500).nullable().optional() }).strict();
+// actingAgentId: a board-policy decision is the board's to make, but it is
+// still performed from somewhere — a terminal agent operating the board. The
+// two were collapsed into one field, so every such verdict read as an
+// anonymous "local-board". Board-only: an agent must not claim to be another.
+const decideSchema = z.object({ optionId: z.string().trim().min(1).max(120), inputValues: z.record(z.string(), z.string().max(20_000)).optional(), idempotencyKey: z.string().trim().min(1).max(500).nullable().optional(), actingAgentId: z.string().guid().nullable().optional() }).strict();
 const dismissSchema = z.object({ reason: z.string().max(20_000).nullable().optional() }).strict();
 const statsQuerySchema = z.object({
   groupBy: z.literal("ruleKey"),
@@ -205,7 +210,30 @@ export function decisionRoutes(db: Db, options: DecisionServiceOptions) {
       return;
     }
     const userId = boardUserId(req);
-    res.json(await svc.decide({ id: decision.id, decidedByUserId: userId, userActor: req.actor, ...req.body }));
+    const { actingAgentId, ...decideBody } = req.body as z.infer<typeof decideSchema>;
+    // Record which terminal performed it alongside the board user who owns the
+    // call, so the card reads "<board user> · via <agent>" instead of dropping
+    // the operator. Same shape the issue list already uses for created-by.
+    let actingAgent: string | null = null;
+    if (actingAgentId) {
+      const agent = await db
+        .select({ id: agents.id })
+        .from(agents)
+        .where(and(eq(agents.id, actingAgentId), eq(agents.companyId, decision.companyId)))
+        .then((rows) => rows[0] ?? null);
+      if (!agent) {
+        res.status(422).json({ error: "actingAgentId does not belong to this company" });
+        return;
+      }
+      actingAgent = agent.id;
+    }
+    res.json(await svc.decide({
+      id: decision.id,
+      decidedByUserId: userId,
+      decidedByAgentId: actingAgent ?? undefined,
+      userActor: req.actor,
+      ...decideBody,
+    }));
   });
   router.post("/decisions/:id/dismiss", validate(dismissSchema), async (req, res) => {
     const userId = boardUserId(req);

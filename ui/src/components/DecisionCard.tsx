@@ -731,12 +731,19 @@ export function DecisionCard({
                 {decision.decidedAt && (
                   <span className="tabular-nums text-muted-foreground"> · {absoluteTimestamp(decision.decidedAt)}</span>
                 )}
-                {decision.decidedByAgentId && decidedByAgentName && (
+                {/* A board-policy decision belongs to the board but is still
+                    performed from a terminal, so both are shown: dropping the
+                    agent made every such verdict read as anonymous local-board. */}
+                {decision.decidedByUserId && decision.decidedByAgentId && decidedByAgentName ? (
+                  <span className="text-muted-foreground">
+                    {" · "}{t("by")} {decision.decidedByUserId}
+                    {" · via "}{decidedByAgentName}
+                  </span>
+                ) : decision.decidedByAgentId && decidedByAgentName ? (
                   <span className="text-muted-foreground"> · {t("by")} {decidedByAgentName}</span>
-                )}
-                {!decision.decidedByAgentId && decision.decidedByUserId && (
-                  <span className="text-muted-foreground"> · by {decision.decidedByUserId}</span>
-                )}
+                ) : decision.decidedByUserId ? (
+                  <span className="text-muted-foreground"> · {t("by")} {decision.decidedByUserId}</span>
+                ) : null}
                 <ChevronDown
                   className={cn(
                     "ml-auto h-4 w-4 shrink-0 text-muted-foreground transition-transform",
