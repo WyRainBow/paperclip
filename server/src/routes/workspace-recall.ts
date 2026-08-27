@@ -1,4 +1,4 @@
-import { and, eq, ilike, or, sql } from "drizzle-orm";
+import { and, asc, eq, ilike, or, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import { teamWikiPages, teamRuleNotes } from "@paperclipai/db";
 import { Router, type Request, type Response } from "express";
@@ -178,6 +178,24 @@ export function workspaceRecallRoutes(db: Db): Router {
       results,
       references,
     });
+  });
+
+  // Direct Team Rules access: full text, no search/budget — for agents
+  // that need the complete rules before starting work (user 2026-08-26).
+  r.get("/companies/:companyId/workspace/rules", async (req: Request, res: Response) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    const notes = await db
+      .select({
+        id: teamRuleNotes.id,
+        title: teamRuleNotes.title,
+        body: teamRuleNotes.body,
+        updatedAt: teamRuleNotes.updatedAt,
+              })
+      .from(teamRuleNotes)
+      .where(eq(teamRuleNotes.companyId, companyId))
+      .orderBy(asc(teamRuleNotes.position));
+    res.json(notes);
   });
 
   return r;
