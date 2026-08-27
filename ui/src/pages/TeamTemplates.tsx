@@ -1,12 +1,16 @@
 import { useState } from "react";
 import { cn } from "@/lib/utils";
-import { FileText, GitBranch, Scale, ClipboardList } from "lucide-react";
+import { FileText, GitBranch, Scale, ClipboardList, Send } from "lucide-react";
 
 /**
- * Team Templates tab inside TeamWorkSpace: the four standard document
- * templates (requirements / tech-proposal / spec / decision) rendered from
- * built-in constants (not wiki pages — user 2026-08-26 moved them out of
- * Team Wiki to here). Each shows the skeleton with a copy button.
+ * Team Templates tab inside TeamWorkSpace: the standard document templates,
+ * rendered from built-in constants rather than wiki pages (user 2026-08-26
+ * moved them out of Team Wiki, and 2026-08-27 folded the remaining wiki
+ * copies in here so there is exactly one home for them).
+ *
+ * Every section is a suggestion. Nothing here is enforced anywhere — the
+ * decision service validates its own inputs and nothing else reads these
+ * strings — so the templates say "参考" and never "必填" (user 2026-08-27).
  */
 const TEMPLATES = [
   {
@@ -16,7 +20,7 @@ const TEMPLATES = [
     desc: "为什么做、给谁做、边界在哪、怎么算做完",
     body: `# 需求底稿模板
 
-> Agent 照此填。每节必填，没有的写「无」，不许留空。
+> 参考骨架，按需裁剪。用不上的节直接删掉。
 
 ## 0. 原始诉求（用户原话，不改写）
 
@@ -36,13 +40,13 @@ const TEMPLATES = [
 - **谁在用**：
 - **什么时候用**：
 
-## 3. 需求清单（必须做）
+## 3. 需求清单
 
 - [ ] 核心需求
 
-## 4. 不做边界（必填，没有写「无」）
+## 4. 不做边界
 
-**明确不做什么**，防蔓延。留空读不出是「没边界」还是「没想」。
+明确不做什么，防蔓延。写得出来就写，写不出来说明范围还没想清楚。
 
 ## 5. 验收标准
 
@@ -66,19 +70,23 @@ const TEMPLATES = [
     desc: "怎么做、为什么不那样做、影响面",
     body: `# 技术方案模板
 
-> Agent 照此填。方案选项每条必须带代价——只写好处的方案等于在诱导。
+> 参考骨架，按需裁剪。
 
 ## 1. 现状与约束
 
 现有机制、技术约束、依赖。
 
+**先翻仓库再写**：现成的 service、表、端点、既有模式，拿到 file:line 证据再决定要不要新建。对着已有能力再实现一遍是评审最常抓的问题。
+
 ## 2. 方案选项
 
 **A · 方案 A** —— 做法
-*代价*：（必填，没有写「无」）
+*代价*：
 
 **B · 方案 B** —— 做法
-*代价*：（必填，没有写「无」）
+*代价*：
+
+代价这一栏值得每条都写。想不出代价通常意味着还没想清楚，不是这个方案真的没代价。
 
 ## 3. 被否掉的方案
 
@@ -108,7 +116,7 @@ const TEMPLATES = [
     desc: "照着做什么，实施前冻结的施工图",
     body: `# 实现 Spec 模板
 
-> Agent 照此填。实施前冻结（文档锁），改动需注明原因。
+> 参考骨架，按需裁剪。实施前冻结（文档锁），改动注明原因。
 
 ## 1. 改动清单
 
@@ -150,58 +158,112 @@ const TEMPLATES = [
     desc: "结构性拍板怎么写：三段正文+两槽理由",
     body: `# 决策卡模板
 
-> 结构性拍板走决策记录（不是文档）。以下是完整字段和页面形态。
+> 结构性拍板走决策记录（不是文档）。以下是建决策时各字段的写法，参考用。
 
-## 页面形态
+## API
 
-┌─────────────────────────────────────────┐
-│ [卡号] 问题一句话                         │
-│ rule-key                    [待裁决/已裁决] │
-│ 由 XX（Terminal）提案 · 时间               │
-│ 已由 XX 裁决：选了 A · 标签 · 时间          │
-│ XX 推荐 A · 标签 · 已采纳/未采纳            │
-│ ── 正文三段 ──                            │
-│ ## 背景 / ## 判断标准 / ## 方案（各带代价）    │
-│ ── 推荐理由 ──                            │
-│ （推荐理由正文）                            │
-│ ── 输入框 ──                              │
-│ 最后裁决理由（必填）*  [输入框]               │
-│ 附加约束（选填）      [输入框]               │
-│ ── 选项按钮 ──                            │
-│ [A · 标签]  [B · 标签]  [C · 标签]         │
-└─────────────────────────────────────────┘
+\`\`\`
+POST /api/companies/<companyId>/decisions
+\`\`\`
 
-## API 字段
+需要 agent run 上下文——board 身份和没有 run 的 agent key 都建不了。
 
-| 字段 | 必填 | 说明 |
-|---|---|---|
-| title | ✓ | [卡号] 问题一句话 |
-| body | ✓ | 三段正文 |
-| options | ✓ | 选项数组（含推荐字段） |
-| resolverPolicy | | board（默认）或 agents |
-| originIssueId | ✓ | 来源卡 |
+| 字段 | 说明 |
+|---|---|
+| title | [卡号] 问题一句话 |
+| body | 三段正文（见下） |
+| options | 数组，每项 {id, label, description, recommendedByAgentId?, recommendationReason?} |
+| resolverPolicy | "board"（默认，人裁）或 "agents"（agent 互裁） |
+| originIssueId | 来源卡 ID |
+| inputs | 服务端硬套裁决理由和附加约束两个输入框，不用自己传 |
 
 ## 正文三段
 
 ### 背景
-一两句。
+一两句，为什么现在要定。
 
 ### 判断标准
-拿什么尺子量方案。
+拿什么尺子量各个方案。缺了这段，裁决人只能凭感觉选。
 
 ### 方案
-每条**必须**带代价。
+**A · [标签]** —— [做法]。*代价*：
+**B · [标签]** —— [做法]。*代价*：
+
+每条都写代价。只写好处的方案等于在诱导。
 
 ## 两个理由分两槽
 
-- 推荐（recommendationReason）：为什么推它
-- 裁决（必填输入框）：为什么最终选它
+- **推荐理由**（\`recommendationReason\`，挂在选项上）：提案人答「为什么推它」
+- **最后裁决理由**（decide 时填 \`inputValues.rationale\`）：裁决人答「为什么最终选它」。这一个是服务端真的会拦的
 
-## 双 Agent 协作流程
+裁决：\`POST /api/decisions/<id>/decide\`，带 \`optionId\` + \`inputValues.rationale\`。未采纳推荐时界面会标黄。
 
-讨论 → 提案方建决策（选项+推荐+理由）→ 裁决方填裁决理由 → 按推荐执行 → progress 留痕
+## 注意
 
-详见 Agent Wiki [协作决策工作流]。`,
+- 推荐用 \`recommendedByAgentId\` 结构化字段，不写「（XX 推荐）」进选项文字。服务端校验它只能是提案人自己
+- 正文不写提案人 / 来源卡 / 时间——系统自动显示
+- 考虑过但否掉的方案进 tech-proposal 文档，正文末尾放链接`,
+  },
+  {
+    id: "cold-review",
+    title: "冷审派单",
+    icon: Send,
+    desc: "让另一个 Agent 独立评审：任务书怎么写、收到结论后做什么",
+    body: `# 跨 Agent 冷审派单模板
+
+> 沉淀自 2026-08 分段接力（MUL-44）连续七轮跨 Agent 评审实战。管三件事：派出去的任务书长什么样、接收方遵守什么、派单方收到结论后做什么。参考用，按任务裁剪。
+
+## 一、任务书三段式
+
+**① 已核事实与冻结约束**（只放查证过的事实，不放偏好）
+
+- 被审材料的**双源落点**：本地路径 + 平台文档号，字节一致性由接收方自己核
+- 上游冻结文本（需求底稿 / 方案）的自取命令
+- 源码基点：仓路径 + 分支 + SHA，工作树应处状态
+- 前手评审史的自取入口。**前手失败要如实告知**（额度耗尽中断在哪、上一个接手方伪造过证据），避免接收方误信残留结论
+
+**② 范围、问题与交付**
+
+- 审什么：全文冷审 / 增量复核 / 单探针。逐条对源码核实，「不以派单方自述为事实，包括本消息」
+- 重点清单 3-5 处：**派单方主动交出自己最不确定的薄弱点**。自报弱点是提高命中率最便宜的手段，历轮实测薄弱点自报全中
+- 交付格式：分级结论（Critical / Major / Minor / Nit）+ 每条「主张 → file:line」+ 结论词表（SPEC_READY / CODE_REVIEW_PASS / 问题清单 / STOP_FOR_HUMAN）
+
+**③ 待验证假设**（放最后，标明非穷尽、可推翻）
+
+派单方的猜测与倾向只进这段，不混进前两段——证据不会被措辞污染，注意力会。
+
+## 二、接收方纪律（写进每份任务书）
+
+1. 每条主张附 file:line，且来自接收方本会话实际 Read/grep 的工具输出
+2. 交付附「本次实际读过的文件清单」。清单为空、或主张无对应工具输出 = 违规交付
+3. 查不到、读不了，写「未核实」，不用流畅断言填空
+4. 派单方自述（含任务书里的映射表）一律当待验证主张
+
+## 三、派单方收到结论后
+
+- **抽查关键 file:line**：挑 2-4 条最重的主张亲自核。实录教训：某接收方 8 秒内交出编造的文件清单（列了仓里不存在的目录），并伪造带 shell 提示符的 grep 输出宣称「函数不存在」，实际就在 validate.go:642。发现伪造立即废弃该会话
+- **接收方结论 ≠ 终点**：与自己的判断冲突时反驳回去。评审是对抗收敛，不是传声筒
+- **多轮迭代**：每轮修订给接收方发**映射表**（它的第 N 条 → 你改了哪），下一轮它审改动后全文，而非只看映射
+
+## 四、归档三层（每轮结束）
+
+- **discussion**：该轮开一个讨论线程。问 = 审什么，答 = 结论清单，署接收方名
+- **progress**：一行终态。结论词 + 数量 + 指向讨论线程 + 下一步
+- **document**：定稿落 issue document，并**回读版本号确认写入**。平台 put 需带 base revision，静默失败实录发生过两次
+
+一条命令同时落讨论和文档：
+
+\`\`\`bash
+issue qa <卡> --question "审什么" --answer "结论行" \\
+  --answer-file <完整评审.md> --answer-doc-key review-r1 \\
+  --answer-agent "<接收方>" --label "主题 冷审 R1"
+\`\`\`
+
+## 五、模型分工经验（截至 2026-08）
+
+- **Codex**：深链路冷审首选，能自主扩 file:line 证据面、给最小改法。慢，额度有限
+- **GLM（ZCode）**：独立视角接力可用，平台运行时上下文最全（决策历史 API 只有它能写）。**每次派单前先核对页脚模型标识**——该 CLI 回答完可能被限流切走模型，切走后发的任务不是发给 GLM
+- **Grok**：只适合窄探针，且派单方全程盯着。结论快但证据可靠性最低，两次伪造实录见上。任务书必须点名具体文件与命令`,
   },
 ];
 
