@@ -1,125 +1,85 @@
 #!/usr/bin/env bash
-# Paperclip hook installer — three terminals (claude/codex/zcode), idempotent
-# merge with ownership markers (OV-style OPENVIKING_INTEGRATION_ID pattern,
-# mechanism 6 from MUL-40 tech-proposal).
-#
-# Usage: scripts/hooks/install-hooks.sh [--uninstall]
-# Env: PAPERCLIP_COMPANY_ID (required), PAPERCLIP_API_BASE (default localhost:3100)
-
+# Paperclip hook installer — three terminals, idempotent [paperclip] marker merge.
 set -euo pipefail
-
 HOOKS_DIR="$(cd "$(dirname "$0")" && pwd)"
 MARKER="[paperclip]"
 ACTION="install"
 [[ "${1:-}" == "--uninstall" ]] && ACTION="uninstall"
+CID="${PAPERCLIP_COMPANY_ID:?PAPERCLIP_COMPANY_ID required}"
+API="${PAPERCLIP_API_BASE:-http://localhost:3100}"
 
-if [ -z "${PAPERCLIP_COMPANY_ID:-}" ]; then
-  echo "Error: PAPERCLIP_COMPANY_ID is required" >&2
-  exit 1
-fi
-
-SESSION_START_CMD="PAPERCLIP_COMPANY_ID=${PAPERCLIP_COMPANY_ID} PAPERCLIP_API_BASE=${PAPERCLIP_API_BASE:-http://localhost:3100} ${HOOKS_DIR}/session-start.sh"
+SESSION_CMD="PAPERCLIP_COMPANY_ID=${CID} PAPERCLIP_API_BASE=${API} ${HOOKS_DIR}/session-start.sh"
 BRANCH_CMD="${HOOKS_DIR}/branch-register.sh"
 COMMIT_CMD="${HOOKS_DIR}/commit-progress.sh"
+SYNC_CMD="${HOOKS_DIR}/personal-file-sync.sh"
 
-# ─── Claude Code: ~/.claude/settings.json ───
-install_claude() {
-  local f="$HOME/.claude/settings.json"
-  [ -f "$f" ] || touch "$f"
-  python3 -c "
-import json, sys
-f = '$f'
-d = json.load(open(f))
-h = d.setdefault('hooks', {})
+export HOOKS_DIR MARKER ACTION SESSION_CMD BRANCH_CMD COMMIT_CMD SYNC_CMD
 
-def clean(arr):
-    return [g for g in arr if not any('$MARKER' in str(x.get('command','')) for x in (g.get('hooks',[]) if isinstance(g, dict) else []))]
+python3 <<'PYEOF'
+import json, os, sys
 
-if '$ACTION' == 'uninstall':
-    for evt in list(h.keys()):
-        h[evt] = clean(h[evt])
-        if not h[evt]: del h[evt]
-else:
-    def add(event, cmd, matcher=None):
-        h[event] = clean(h.get(event, []))
-        entry = {'hooks': [{'type': 'command', 'command': f'{cmd} # $MARKER', 'timeout': 10}]}
-        if matcher: entry['matcher'] = matcher
-        h[event].append(entry)
-    add('SessionStart', '''$SESSION_START_CMD''')
-    add('PreToolUse', '''$BRANCH_CMD''', 'Bash')
-    add('PostToolUse', '''$COMMIT_CMD''', 'Bash')
-
-json.dump(d, open(f, 'w'), indent=2, ensure_ascii=False)
-open(f, 'a').write('\n')
-print(f'claude: $ACTION done')
-"
-}
-
-# ─── Codex: ~/.codex/hooks.json ───
-install_codex() {
-  local f="$HOME/.codex/hooks.json"
-  [ -f "$f" ] || echo '{}' > "$f"
-  python3 -c "
-import json
-f = '$f'
-d = json.load(open(f))
-h = d.setdefault('hooks', {})
+ACTION = os.environ["ACTION"]
+MARKER = os.environ["MARKER"]
+SESSION_CMD = os.environ["SESSION_CMD"]
+BRANCH_CMD = os.environ["BRANCH_CMD"]
+COMMIT_CMD = os.environ["COMMIT_CMD"]
+SYNC_CMD = os.environ["SYNC_CMD"]
 
 def clean(arr):
-    return [g for g in arr if not any('$MARKER' in str(x.get('command','')) for x in (g.get('hooks',[]) if isinstance(g, dict) else []))]
+    return [g for g in arr if not any(MARKER in str(x.get("command","")) for x in (g.get("hooks",[]) if isinstance(g, dict) else []))]
 
-if '$ACTION' == 'uninstall':
-    for evt in list(h.keys()):
-        h[evt] = clean(h[evt])
-        if not h[evt]: del h[evt]
-else:
-    def add(event, cmd):
-        h[event] = clean(h.get(event, []))
-        h[event].append({'hooks': [{'type': 'command', 'command': f'{cmd} # $MARKER', 'timeout': 10}]})
-    add('SessionStart', '''$SESSION_START_CMD''')
-    add('PreToolUse', '''$BRANCH_CMD''')
-    add('PostToolUse', '''$COMMIT_CMD''')
+def install(path, fmt):
+    try:
+        d = json.load(open(path))
+    except:
+        d = {}
+    h = d.setdefault("hooks", {})
+    if "hooks" in h and isinstance(h["hooks"], dict):
+        h = h["hooks"]
+        d["hooks"] = h
 
-json.dump(d, open(f, 'w'), indent=2, ensure_ascii=False)
-open(f, 'a').write('\n')
-print(f'codex: $ACTION done')
-"
-}
+    if ACTION == "uninstall":
+        for evt in list(h.keys()):
+            h[evt] = clean(h[evt])
+            if not h[evt]: del h[evt]
+        json.dump(d, open(path, "w"), indent=2, ensure_ascii=False)
+        open(path, "a").write("\n")
+        return
 
-# ─── Zcode: ~/.zcode/settings.json (same format as Claude) ───
-install_zcode() {
-  local f="$HOME/.zcode/settings.json"
-  [ -f "$f" ] || echo '{}' > "$f"
-  python3 -c "
-import json
-f = '$f'
-d = json.load(open(f))
-h = d.setdefault('hooks', {})
+    def mk(cmd, matcher=None):
+        hooks = [{"type": "command", "command": f"{cmd} # {MARKER}", "timeout": 10}]
+        if fmt == "claude":
+            entry = {"hooks": hooks}
+            if matcher: entry["matcher"] = matcher
+        else:
+            entry = {"hooks": hooks}
+        return entry
 
-def clean(arr):
-    return [g for g in arr if not any('$MARKER' in str(x.get('command','')) for x in (g.get('hooks',[]) if isinstance(g, dict) else []))]
+    # SessionStart
+    h["SessionStart"] = clean(h.get("SessionStart", []))
+    h["SessionStart"].append(mk(SESSION_CMD))
 
-if '$ACTION' == 'uninstall':
-    for evt in list(h.keys()):
-        h[evt] = clean(h[evt])
-        if not h[evt]: del h[evt]
-else:
-    def add(event, cmd, matcher=None):
-        h[event] = clean(h.get(event, []))
-        entry = {'hooks': [{'type': 'command', 'command': f'{cmd} # $MARKER', 'timeout': 10}]}
-        if matcher: entry['matcher'] = matcher
-        h[event].append(entry)
-    add('SessionStart', '''$SESSION_START_CMD''')
-    add('PreToolUse', '''$BRANCH_CMD''', 'Bash')
-    add('PostToolUse', '''$COMMIT_CMD''', 'Bash')
+    # PreToolUse (Bash only for claude/zcode)
+    h["PreToolUse"] = clean(h.get("PreToolUse", []))
+    h["PreToolUse"].append(mk(BRANCH_CMD, matcher="Bash" if fmt == "claude" else None))
 
-json.dump(d, open(f, 'w'), indent=2, ensure_ascii=False)
-open(f, 'a').write('\n')
-print(f'zcode: $ACTION done')
-"
-}
+    # PostToolUse — two hooks, clean ONCE then append both
+    h["PostToolUse"] = clean(h.get("PostToolUse", []))
+    h["PostToolUse"].append(mk(COMMIT_CMD, matcher="Bash" if fmt == "claude" else None))
+    h["PostToolUse"].append(mk(SYNC_CMD, matcher="Write|Edit" if fmt == "claude" else None))
 
-install_claude
-install_codex
-install_zcode
+    json.dump(d, open(path, "w"), indent=2, ensure_ascii=False)
+    open(path, "a").write("\n")
+
+for path, fmt, label in [
+    (os.path.expanduser("~/.claude/settings.json"), "claude", "claude"),
+    (os.path.expanduser("~/.codex/hooks.json"), "codex", "codex"),
+    (os.path.expanduser("~/.zcode/settings.json"), "claude", "zcode"),
+]:
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    if not os.path.exists(path):
+        open(path, "w").write("{}")
+    install(path, fmt)
+    print(f"{label}: {ACTION} done")
+PYEOF
 echo "Paperclip hooks ${ACTION} complete (claude/codex/zcode)."
