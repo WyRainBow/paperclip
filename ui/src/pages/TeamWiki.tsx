@@ -4,6 +4,7 @@ import { BookOpen, History, Pencil, RotateCcw, Save, Search, Trash2, X } from "l
 import { useNavigate, useParams } from "@/lib/router";
 import { api } from "@/api/client";
 import { agentsApi } from "@/api/agents";
+import { agentCustomIcon } from "@/components/AgentIconPicker";
 import { queryKeys } from "@/lib/queryKeys";
 import { useCompany } from "@/context/CompanyContext";
 import { useToastActions } from "@/context/ToastContext";
@@ -41,9 +42,55 @@ const TOOL_COLORS: Record<string, string> = {
   grok: "#6366f1",
   zcode: "#2563eb",
 };
-function ToolBrandIcon({ tool }: { tool: string }) {
-  if (!TOOL_COLORS[tool]) return null;
-  return <img src={`/brands/${tool}.svg`} alt="" className="inline-block h-4 w-4 shrink-0 rounded-full" aria-hidden />;
+
+/**
+ * Personal-file tabs are derived from path prefixes (`claude/CLAUDE.md`), not
+ * from agent records, so the tool has to be matched back to its agent by name
+ * to reach the real provider logo the agent already carries. The previous
+ * /brands/*.svg files were only lettered discs standing in for logos, so a
+ * tool with no matching agent now gets a plain colour dot instead of a
+ * made-up wordmark.
+ */
+function useToolBrandIcons(companyId: string | null) {
+  const agentsQuery = useQuery({
+    queryKey: companyId ? [...queryKeys.agents.list(companyId), "tool-brands"] : ["agents", "tool-brands", "none"],
+    queryFn: () => agentsApi.list(companyId!, { includeTerminated: true }),
+    enabled: Boolean(companyId),
+  });
+  return useMemo(() => {
+    const map = new Map<string, string>();
+    for (const agent of agentsQuery.data ?? []) {
+      const icon = agentCustomIcon(agent);
+      if (!icon) continue;
+      const name = agent.name.toLowerCase();
+      for (const tool of Object.keys(TOOL_COLORS)) {
+        if (name.startsWith(tool) && !map.has(tool)) map.set(tool, icon);
+      }
+    }
+    return map;
+  }, [agentsQuery.data]);
+}
+
+function ToolBrandIcon({ tool, iconUrl }: { tool: string; iconUrl?: string | null }) {
+  const color = TOOL_COLORS[tool];
+  if (!color) return null;
+  if (iconUrl) {
+    return (
+      <img
+        src={iconUrl}
+        alt=""
+        className="mr-1.5 inline-block h-4 w-4 shrink-0 rounded-full object-cover align-text-bottom"
+        aria-hidden
+      />
+    );
+  }
+  return (
+    <span
+      className="mr-1.5 inline-block h-2 w-2 shrink-0 rounded-full align-middle"
+      style={{ backgroundColor: color }}
+      aria-hidden
+    />
+  );
 }
 
 const SPACE_META: Record<Space, { label: string; blurb: string }> = {
@@ -127,6 +174,7 @@ export function TeamWiki({ fixedSpace }: { fixedSpace?: Space } = {}) {
   const queryClient = useQueryClient();
   const { pushToast } = useToastActions();
   const agentNames = useAgentNames(selectedCompanyId);
+  const toolBrandIcons = useToolBrandIcons(selectedCompanyId);
 
   const space: Space = fixedSpace ?? (isSpace(params.space) ? params.space : "paperclip");
   const [search, setSearch] = useState("");
@@ -321,7 +369,9 @@ export function TeamWiki({ fixedSpace }: { fixedSpace?: Space } = {}) {
                 onClick={() => setToolTab(t.id)}
                 className={`rounded-md px-3 py-1 text-sm transition-colors ${toolTab === t.id ? "bg-accent font-medium text-foreground" : "text-muted-foreground hover:text-foreground"}`}
               >
-                {"tool" in t && t.tool ? <ToolBrandIcon tool={t.tool as string} /> : null}
+                {"tool" in t && t.tool ? (
+                  <ToolBrandIcon tool={t.tool as string} iconUrl={toolBrandIcons.get(t.tool as string)} />
+                ) : null}
                 {t.label}
               </button>
             ))}
