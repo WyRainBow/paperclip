@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { and, desc, eq, gte, inArray, lt, ne, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, lt, ne, or, sql, isNull } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import {
   agents,
@@ -1117,6 +1117,26 @@ export function agentService(db: Db) {
       }
       if (existing.status === "terminated") {
         throw conflict("Cannot create keys for terminated agents");
+      }
+
+      // One live standard key per agent, enforced (user 2026-08-27). A standard
+      // key IS the agent's terminal credential — every session shares the one
+      // key, and each "just mint another" left the old plaintext live in
+      // someone's dotfiles while the roster filled with parallel credentials
+      // (six in two days). Scoped keys (task_bridge / skill_test) are
+      // short-lived machinery, not identity, and stay unlimited.
+      if (scope.kind === "standard") {
+        const liveStandard = (await db
+          .select({ id: agentApiKeys.id, name: agentApiKeys.name, scopeConfig: agentApiKeys.scopeConfig })
+          .from(agentApiKeys)
+          .where(and(eq(agentApiKeys.agentId, id), isNull(agentApiKeys.revokedAt))))
+          .filter((key) => normalizeAgentApiKeyScope(key.scopeConfig).kind === "standard");
+        if (liveStandard.length > 0) {
+          throw conflict(
+            `Agent already has a live standard key ("${liveStandard[0].name}"). One credential per agent: revoke it first (DELETE /api/agents/${id}/keys/${liveStandard[0].id}) if it is lost, or keep using it — the plaintext lives in the terminal's ~/.zshenv.`,
+            { code: "agent_standard_key_exists", keyId: liveStandard[0].id, keyName: liveStandard[0].name },
+          );
+        }
       }
 
       const token = createToken();
