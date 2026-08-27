@@ -309,6 +309,37 @@ describe("IssueDocumentsSection", () => {
     container.remove();
   });
 
+  it("folds every document by default when the reader has no stored preference", async () => {
+    // The default is the whole point: one long spec otherwise pushes every
+    // other document, and the rest of the page, off the screen.
+    window.localStorage.clear();
+    const issue = createIssue();
+    const root = createRoot(container);
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    mockIssuesApi.listDocuments.mockResolvedValue([
+      createIssueDocument({ key: "plan", body: "# Plan" }),
+    ]);
+
+    await act(async () => {
+      root.render(
+        <QueryClientProvider client={queryClient}>
+          <IssueDocumentsSection issue={issue} canDeleteDocuments={false} />
+        </QueryClientProvider>,
+      );
+    });
+    await flush();
+    await flush();
+
+    // Header still visible, body not.
+    expect(container.textContent).toContain("plan");
+    expect(container.textContent).not.toContain("# Plan");
+
+    await act(async () => { root.unmount(); });
+    queryClient.clear();
+  });
+
   it("keeps system handoff documents out of the normal document surface", async () => {
     const issue = createIssue();
     const root = createRoot(container);
