@@ -45,6 +45,8 @@ export const issues = pgTable(
     createdByUserId: text("created_by_user_id"),
     createdBySession: text("created_by_session"),
     drivingSession: text("driving_session"),
+    /** Git branch registered by `issue start` — structured, not comment prose. */
+    workingBranch: text("working_branch"),
     drivingAgentId: uuid("driving_agent_id").references(() => agents.id, { onDelete: "set null" }),
     drivingSessionAt: timestamp("driving_session_at", { withTimezone: true }),
     responsibleUserId: text("responsible_user_id"),

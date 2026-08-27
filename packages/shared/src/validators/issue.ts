@@ -614,6 +614,7 @@ export const updateIssueSchema = objectWithoutDefaults(
   // MUL-35 driving slot: one per issue, overwritten on start/handoff.
   // Server stamps drivingSessionAt; clients never send it.
   drivingSession: z.string().trim().max(200).nullable().optional(),
+  workingBranch: z.string().trim().max(200).nullable().optional(),
   drivingAgentId: z.string().guid().nullable().optional(),
   // Correcting authorship after the fact. Board-only (enforced in the route):
   // an agent must not be able to rewrite who opened a card, but a human fixing

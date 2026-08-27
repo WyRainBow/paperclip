@@ -809,6 +809,7 @@ export interface Issue {
   createdByUserId: string | null;
   createdBySession: string | null;
   drivingSession: string | null;
+  workingBranch?: string | null;
   drivingAgentId: string | null;
   drivingSessionAt: Date | null;
   responsibleUserId: string | null;

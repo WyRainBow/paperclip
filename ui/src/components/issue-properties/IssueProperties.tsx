@@ -2240,6 +2240,11 @@ export function IssueProperties({
             <span className="text-sm text-muted-foreground">{t("Unclaimed")}</span>
           )}
         </PropertyRow>
+        {issue.workingBranch ? (
+          <PropertyRow label="分支">
+            <span className="font-mono text-xs" title={issue.workingBranch}>{issue.workingBranch}</span>
+          </PropertyRow>
+        ) : null}
       </PropertySection>
 
       {/* Pull request — display-only, from work products already stored on the

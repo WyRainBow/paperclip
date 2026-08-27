@@ -657,6 +657,9 @@ export function registerIssueCommands(program: Command): void {
             process.env.CODEX_SESSION_ID?.trim() ||
             null;
           const drivingPatch: Record<string, unknown> = {};
+          // Structured branch column (MUL-59): the branch used to live only in
+          // the opening comment's prose.
+          drivingPatch.workingBranch = opts.branch;
           if (drivingSession) {
             drivingPatch.drivingSession = drivingSession;
             // /agents/me only answers for an agent key, and an agent key cannot

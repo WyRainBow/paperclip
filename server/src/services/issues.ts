@@ -3217,6 +3217,7 @@ const issueListSelect = {
   createdByUserId: issues.createdByUserId,
   createdBySession: issues.createdBySession,
   drivingSession: issues.drivingSession,
+  workingBranch: issues.workingBranch,
   drivingAgentId: issues.drivingAgentId,
   drivingSessionAt: issues.drivingSessionAt,
   responsibleUserId: issues.responsibleUserId,
