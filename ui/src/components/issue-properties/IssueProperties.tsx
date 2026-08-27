@@ -2220,7 +2220,10 @@ export function IssueProperties({
           />
         </PropertyRow>
         <PropertyRow label={t("Driving")}>
-          {issue.drivingSession ? (
+          {/* Driving = the claiming agent (MUL-72): the agent alone counts. A
+              CLI claim carries no terminal session env, and "Unclaimed" for a
+              card with drivingAgentId set contradicts the claim flow. */}
+          {issue.drivingSession || issue.drivingAgentId ? (
             <SessionIdentity
               agentId={issue.drivingAgentId ?? null}
               agentName={(agentById.get(issue.drivingAgentId ?? "") ?? null)?.name ?? null}
@@ -2230,9 +2233,10 @@ export function IssueProperties({
                 return driver ? agentCustomIcon(driver) : null;
               })()}
               userId={null}
-              sessionId={issue.drivingSession}
+              sessionId={issue.drivingSession ?? null}
               live={Boolean(
-                issue.drivingSessionAt
+                issue.drivingSession
+                  && issue.drivingSessionAt
                   && Date.now() - new Date(issue.drivingSessionAt).getTime() < 2 * 60 * 60 * 1000,
               )}
             />
