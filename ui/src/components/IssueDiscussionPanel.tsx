@@ -3,6 +3,15 @@ import { useCompany } from "@/context/CompanyContext";
 import { issuesApi } from "@/api/issues";
 import { cn, chineseTimestamp } from "@/lib/utils";
 import { AgentIcon, agentCustomIcon } from "@/components/AgentIconPicker";
+
+const AGENT_BRAND_COLORS: Record<string, string> = {
+  "Claude（Terminal）": "#D97757",
+  "Codex（Terminal）": "#10A37F",
+  "Codex Review": "#10A37F",
+  "Zcode（Terminal）": "#2563eb",
+  "Grok": "#6366f1",
+  "Grok（Terminal）": "#6366f1",
+};
 import { agentsApi } from "@/api/agents";
 import type { Agent } from "@paperclipai/shared";
 import { useMemo } from "react";
@@ -127,9 +136,15 @@ export function IssueDiscussionPanel({ issueId }: { issueId: string }) {
                       <>
                         <AgentIcon icon={agent.icon} customIconUrl={agentCustomIcon(agent)} className="h-3 w-3" />
                         {agent.name}
+                        {AGENT_BRAND_COLORS[agent.name] ? (
+                          <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: AGENT_BRAND_COLORS[agent.name] }} aria-label={agent.name} />
+                        ) : null}
                       </>
                     ) : isAgent && answerAgentName ? (
-                      answerAgentName
+                      <>
+                        <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: AGENT_BRAND_COLORS[answerAgentName] ?? "#64748b" }} aria-hidden />
+                        {answerAgentName}
+                      </>
                     ) : (
                       displayName
                     )}
