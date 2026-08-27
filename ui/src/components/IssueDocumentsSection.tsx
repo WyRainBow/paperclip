@@ -87,15 +87,15 @@ const DOCUMENT_AUTOSAVE_DEBOUNCE_MS = 900;
 const DOCUMENT_KEY_PATTERN = /^[a-z0-9][a-z0-9_-]*$/;
 const getFoldedDocumentsStorageKey = (issueId: string) => `paperclip:issue-document-folds:${issueId}`;
 
-function loadFoldedDocumentKeys(issueId: string) {
-  if (typeof window === "undefined") return [];
+function loadFoldedDocumentKeys(issueId: string): string[] | null {
+  if (typeof window === "undefined") return null;
   try {
     const raw = window.localStorage.getItem(getFoldedDocumentsStorageKey(issueId));
-    if (!raw) return [];
+    if (!raw) return null;
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === "string") : [];
+    return Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === "string") : null;
   } catch {
-    return [];
+    return null;
   }
 }
 
@@ -307,7 +307,12 @@ export function IssueDocumentsSection({
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState<DraftState | null>(null);
   const [documentConflict, setDocumentConflict] = useState<DocumentConflictState | null>(null);
-  const [foldedDocumentKeys, setFoldedDocumentKeys] = useState<string[]>(() => loadFoldedDocumentKeys(documentSubject.id));
+  // null = this reader has never folded/unfolded anything here, which is the
+  // signal to start every document folded. A stored [] means they deliberately
+  // opened them all, so it must not be treated the same way.
+  const [foldedDocumentKeys, setFoldedDocumentKeys] = useState<string[] | null>(
+    () => loadFoldedDocumentKeys(documentSubject.id),
+  );
   const [annotationPanelOpenKeys, setAnnotationPanelOpenKeys] = useState<string[]>(
     () => (defaultAnnotationPanelOpenKeys ?? []),
   );
@@ -482,11 +487,21 @@ export function IssueDocumentsSection({
     setError(null);
   };
 
+  // A null fold state means "everything folded, reader hasn't chosen yet", so
+  // acting on one document has to materialise the rest as folded first.
+  const foldedKeysOrAll = useCallback(
+    (current: string[] | null) => current ?? sortedDocuments.map((doc) => doc.key),
+    [sortedDocuments],
+  );
+  const unfoldDocument = useCallback((key: string) => {
+    setFoldedDocumentKeys((current) => foldedKeysOrAll(current).filter((entry) => entry !== key));
+  }, [foldedKeysOrAll]);
+
   const beginEdit = (key: string) => {
     const doc = sortedDocuments.find((entry) => entry.key === key);
     if (!doc) return;
     const conflictedDraft = documentConflict?.key === key ? documentConflict.localDraft : null;
-    setFoldedDocumentKeys((current) => current.filter((entry) => entry !== key));
+    unfoldDocument(key);
     resetAutosaveState();
     setDocumentConflict((current) => current?.key === key ? current : null);
     setDraft({
@@ -630,7 +645,7 @@ export function IssueDocumentsSection({
             },
             showRemote: true,
           });
-          setFoldedDocumentKeys((current) => current.filter((key) => key !== normalizedKey));
+          unfoldDocument(normalizedKey);
           setError(null);
           resetAutosaveState();
           return false;
@@ -731,7 +746,7 @@ export function IssueDocumentsSection({
     resetAutosaveState();
     setDraft((current) => current?.key === doc.key ? null : current);
     setDocumentConflict((current) => current?.key === doc.key ? null : current);
-    setFoldedDocumentKeys((current) => current.filter((entry) => entry !== doc.key));
+    unfoldDocument(doc.key);
     setSelectedRevisionIds((current) => ({ ...current, [doc.key]: selectedRevision.id }));
     setError(null);
   }, [documentConflict, draft, getDocumentRevisions, resetAutosaveState, returnToLatestRevision]);
@@ -779,6 +794,7 @@ export function IssueDocumentsSection({
   useEffect(() => {
     const validKeys = new Set(sortedDocuments.map((doc) => doc.key));
     setFoldedDocumentKeys((current) => {
+      if (current === null) return current;
       const next = current.filter((key) => validKeys.has(key));
       if (next.length !== current.length) {
         saveFoldedDocumentKeys(documentSubject.id, next);
@@ -788,6 +804,7 @@ export function IssueDocumentsSection({
   }, [documentSubject.id, sortedDocuments]);
 
   useEffect(() => {
+    if (foldedDocumentKeys === null) return;
     saveFoldedDocumentKeys(documentSubject.id, foldedDocumentKeys);
   }, [documentSubject.id, foldedDocumentKeys]);
 
@@ -809,7 +826,7 @@ export function IssueDocumentsSection({
     const targetExists = sortedDocuments.some((doc) => doc.key === documentKey)
       || (documentKey === "plan" && Boolean(documentSubject.legacyPlanDocument));
     if (!targetExists || hasScrolledToHashRef.current) return;
-    setFoldedDocumentKeys((current) => current.filter((key) => key !== documentKey));
+    unfoldDocument(documentKey);
     const element = document.getElementById(`document-${documentKey}`);
     if (!element) return;
     hasScrolledToHashRef.current = true;
@@ -863,10 +880,12 @@ export function IssueDocumentsSection({
   const documentBodyPaddingClassName = "";
   const documentBodyContentClassName = "paperclip-edit-in-place-content min-h-(--sz-220px) text-sm leading-7";
   const toggleFoldedDocument = (key: string) => {
-    setFoldedDocumentKeys((current) =>
-      current.includes(key)
-        ? current.filter((entry) => entry !== key)
-        : [...current, key],
+    setFoldedDocumentKeys((current) => {
+      const folded = foldedKeysOrAll(current);
+      return folded.includes(key)
+        ? folded.filter((entry) => entry !== key)
+        : [...folded, key];
+    },
     );
   };
   const setAnnotationPanelOpen = useCallback((key: string, nextOpen: boolean) => {
@@ -877,16 +896,16 @@ export function IssueDocumentsSection({
       return current;
     });
     if (nextOpen) {
-      setFoldedDocumentKeys((current) => current.filter((entry) => entry !== key));
+      unfoldDocument(key);
     }
-  }, []);
+  }, [unfoldDocument]);
   const toggleAnnotationPanel = useCallback((key: string) => {
     setAnnotationPanelOpenKeys((current) => {
       if (current.includes(key)) return current.filter((entry) => entry !== key);
-      setFoldedDocumentKeys((folded) => folded.filter((entry) => entry !== key));
+      unfoldDocument(key);
       return [...current, key];
     });
-  }, []);
+  }, [unfoldDocument]);
 
   return (
     <div className="space-y-3">
@@ -995,7 +1014,9 @@ export function IssueDocumentsSection({
           const isLocked = Boolean(doc.lockedAt);
           const activeDraft = !isLocked && draft?.key === doc.key && !draft.isNew ? draft : null;
           const activeConflict = !isLocked && documentConflict?.key === doc.key ? documentConflict : null;
-          const isFolded = foldedDocumentKeys.includes(doc.key);
+          // Documents open folded until this reader says otherwise: a long
+          // spec pushed everything below it off the screen.
+          const isFolded = foldedDocumentKeys === null || foldedDocumentKeys.includes(doc.key);
           const rawRevisionHistory = getDocumentRevisions(doc.key);
           const revisionState = deriveDocumentRevisionState(doc, rawRevisionHistory);
           const revisionHistory = revisionState.revisions;

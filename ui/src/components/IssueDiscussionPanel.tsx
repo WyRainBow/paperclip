@@ -19,6 +19,20 @@ import { agentsApi } from "@/api/agents";
 import type { Agent } from "@paperclipai/shared";
 import { useMemo } from "react";
 
+/**
+ * Names stored on old bubbles are free text ("ZCode", "Codex Review") while
+ * agents are registered with a suffix ("Zcode（Terminal）"). Drop case and any
+ * bracketed qualifier so the two forms meet.
+ */
+function normalizeAgentNameKey(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/[（(][^）)]*[）)]/g, "")
+    .replace(/\s+/g, "")
+    .trim();
+}
+
 interface DiscussionComment {
   id: string;
   body: string;
@@ -75,9 +89,20 @@ export function IssueDiscussionPanel({ issueId, issueIdentifier }: { issueId: st
 
   // Older answers carry only presentation.answerAgent (a name string), so the
   // agent record — and with it the provider logo — has to be found by name.
+  // The stored names are what a human typed at the time ("ZCode"), not the
+  // agent's registered name ("Zcode（Terminal）"), so an exact match misses
+  // most of the history. Compare on a lowercased, suffix-stripped key and
+  // register both spellings.
   const agentByName = useMemo(() => {
     const map = new Map<string, Agent>();
-    for (const agent of agentsQuery.data ?? []) map.set(agent.name, agent);
+    const register = (key: string, agent: Agent) => {
+      const normalized = normalizeAgentNameKey(key);
+      if (normalized && !map.has(normalized)) map.set(normalized, agent);
+    };
+    for (const agent of agentsQuery.data ?? []) {
+      register(agent.name, agent);
+      register(agent.urlKey ?? "", agent);
+    }
     return map;
   }, [agentsQuery.data]);
 
@@ -133,7 +158,7 @@ export function IssueDiscussionPanel({ issueId, issueIdentifier }: { issueId: st
             const isAgent = Boolean(msg.authorAgentId) || Boolean(answerAgentName) || Boolean(attributedAgentId);
             const agent = (attributedAgentId ? agentMap.get(attributedAgentId) : null)
               ?? (msg.authorAgentId ? agentMap.get(msg.authorAgentId) : null)
-              ?? (answerAgentName ? agentByName.get(answerAgentName) : null)
+              ?? (answerAgentName ? agentByName.get(normalizeAgentNameKey(answerAgentName)) : null)
               ?? null;
             const displayName = agent?.name ?? answerAgentName ?? msg.authorUserId ?? "board";
             return (

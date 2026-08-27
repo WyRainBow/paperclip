@@ -295,6 +295,12 @@ describe("IssueDocumentsSection", () => {
     document.body.appendChild(container);
     ensureLocalStorageMock();
     window.localStorage.clear();
+    // Documents open folded for a reader who has never chosen (a long spec
+    // otherwise buries everything under it). These tests assert on rendered
+    // bodies, so they stand in for a reader who already unfolded them.
+    for (const subjectId of ["issue-1", "case-1"]) {
+      window.localStorage.setItem(`paperclip:issue-document-folds:${subjectId}`, "[]");
+    }
     vi.clearAllMocks();
     markdownEditorMockState.emitMountEmptyChange = false;
   });
