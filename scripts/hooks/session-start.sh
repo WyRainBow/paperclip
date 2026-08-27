@@ -12,7 +12,7 @@ set -euo pipefail
 
 API_BASE="${PAPERCLIP_API_BASE:-http://localhost:3100}"
 COMPANY_ID="${PAPERCLIP_COMPANY_ID:-}"
-BUDGET="${PAPERCLIP_INJECT_BUDGET:-2000}"
+BUDGET="${PAPERCLIP_INJECT_BUDGET:-5000}"
 
 if [ -z "$COMPANY_ID" ]; then
   exit 0

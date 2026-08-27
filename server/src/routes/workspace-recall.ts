@@ -42,23 +42,26 @@ export function workspaceRecallRoutes(db: Db): Router {
       : DEFAULT_BUDGET_CHARS;
 
     if (mode === "directory") {
+      // Team Rules full text + asset directory needs more budget than
+      // search snippets (user 2026-08-26: rules are mandatory reading)
       const wikiPages = await db
         .select({ space: teamWikiPages.space, path: teamWikiPages.path, title: teamWikiPages.title })
         .from(teamWikiPages)
         .where(eq(teamWikiPages.companyId, companyId))
         .limit(100);
       const ruleNotes = await db
-        .select({ title: teamRuleNotes.title })
+        .select({ title: teamRuleNotes.title, body: teamRuleNotes.body })
         .from(teamRuleNotes)
         .where(eq(teamRuleNotes.companyId, companyId))
         .limit(20);
 
       const lines: string[] = [];
-      lines.push("=== TeamWorkSpace 资产目录 ===");
-      if (ruleNotes.length > 0) {
-        lines.push("Team Rules:");
-        for (const note of ruleNotes) lines.push(`  - ${note.title}`);
+      lines.push("=== Team Rules（全文） ===");
+      for (const note of ruleNotes) {
+        lines.push(note.body);
+        lines.push("");
       }
+      lines.push("=== TeamWorkSpace 资产目录 ===");
       for (const space of ["paperclip", "agent", "personal"]) {
         const pages = wikiPages.filter((p) => p.space === space);
         if (pages.length > 0) {
