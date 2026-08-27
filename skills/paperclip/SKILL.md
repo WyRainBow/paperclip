@@ -168,6 +168,8 @@ Because of that, follow these rules:
 
 **Step 9 — Delegate if needed.** Create subtasks with `POST /api/companies/{companyId}/issues`. Always set `parentId` and `goalId`. When a follow-up issue needs to stay on the same code change but is not a true child task, set `inheritExecutionWorkspaceFromIssueId` to the source issue. Set `billingCode` for cross-team work.
 
+**Before creating any issue, sweep for existing ones.** `paperclipai issue list -C <companyId> --match <keywords>` (local match on identifier/title/description). The CLI's create-time duplicate gate only catches near-identical *titles* — semantically overlapping cards slip through. If a live card covers the same problem, prefer attaching: file as its child (`--parent-id`), or comment on the existing card, instead of creating a sibling duplicate.
+
 ### Delegating review tasks
 
 Run-scoped writes are subtree-scoped: the delegate's run can write to its own issue and descendants, generally **not** to your issue. Write review-task descriptions accordingly:
