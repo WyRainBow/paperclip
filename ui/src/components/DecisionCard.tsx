@@ -21,6 +21,14 @@ import type {
 } from "../api/decisions";
 import { t } from "../i18n";
 import { absoluteTimestamp, chineseTimestamp, cn } from "../lib/utils";
+
+const BRAND_COLORS: Record<string, string> = {
+  "Claude（Terminal）": "#D97757",
+  "Codex（Terminal）": "#10A37F",
+  "Codex Review": "#10A37F",
+  "Zcode（Terminal）": "#2563eb",
+  Grok: "#6366f1",
+};
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
@@ -397,7 +405,16 @@ export function DecisionCard({
             reader can act on the card they are looking at without a lookup. */}
         <span className="font-mono" title={decision.id}>decision:{decision.id.slice(0, 8)}</span>
         {" · "}
-        Proposed by <span className="font-medium text-foreground">{originAgentName ?? "an agent"}</span>
+        Proposed by{" "}
+        {(() => {
+          // Brand icon for known terminal agents
+          const name = originAgentName ?? "";
+          const brand = BRAND_COLORS[name];
+          return brand ? (
+            <span className="inline-block h-3 w-3 rounded-full align-middle" style={{ backgroundColor: brand }} aria-hidden />
+          ) : null;
+        })()}{" "}
+        <span className="font-medium text-foreground">{originAgentName ?? "an agent"}</span>
         {originIssue && (
           <>
             {" "}while running{" "}
@@ -407,7 +424,7 @@ export function DecisionCard({
           </>
         )}
         {decision.createdAt && (
-          <span className="tabular-nums"> · {chineseTimestamp(decision.createdAt)}</span>
+          <span className="tabular-nums">&ensp;·&ensp;{chineseTimestamp(decision.createdAt)}</span>
         )}
         {targetRefs.length > 0 && (
           <>
@@ -438,7 +455,7 @@ export function DecisionCard({
           to answer "which one, by whom, and what was recommended"; that one
           line is exactly what a reader scanning decision history wants. */}
       {isCollapsed && (chosenOption || recommendedOption) && (
-        <div className="mt-2 space-y-1">
+        <div className="mt-2">
           {chosenOption && (
             <p className="text-sm">
               {decidedByAgentName ? (
@@ -451,21 +468,21 @@ export function DecisionCard({
                 <span className="text-muted-foreground">选了 </span>
               )}
               <span className="font-medium text-foreground">{chosenOption.label}</span>
+              {recommendedOption && (
+                <span className="text-muted-foreground">
+                  {" "}({recommendedBy?.name ?? "提案 agent"} 推荐
+                  {chosenOption.id === recommendedOption.id
+                    ? <span className="text-emerald-700 dark:text-emerald-300"> · 已采纳</span>
+                    : <span className="text-amber-700 dark:text-amber-300"> · 未采纳</span>}
+                  )
+                </span>
+              )}
               {decision.decidedAt && (
                 <span className="tabular-nums text-muted-foreground"> · {absoluteTimestamp(decision.decidedAt)}</span>
               )}
             </p>
           )}
-          {recommendedOption && (
-            <p className="text-(length:--text-micro) text-muted-foreground">
-              {recommendedBy?.name ?? "提案 agent"} 推荐 {recommendedOption.label}
-              {chosenOption
-                ? chosenOption.id === recommendedOption.id
-                  ? <span className="text-emerald-700 dark:text-emerald-300"> · 已采纳</span>
-                  : <span className="text-amber-700 dark:text-amber-300"> · 裁决未采纳</span>
-                : null}
-            </p>
-          )}
+
         </div>
       )}
 
@@ -523,7 +540,12 @@ export function DecisionCard({
           decisions proposed before the structured field existed. */}
       {open && recommendedOption && (recommendedOption.recommendationReason ?? recommendedOption.description)?.trim() && (
         <div className="mt-3 rounded-lg border border-border bg-muted/30 px-3 py-2">
-          <p className="text-(length:--text-micro) font-medium text-muted-foreground">
+          <p className="text-(length:--text-micro) flex items-center gap-1 font-medium text-muted-foreground">
+            {(() => {
+              const name = recommendedBy?.name ?? "";
+              const brand = BRAND_COLORS[name];
+              return brand ? <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: brand }} aria-hidden /> : null;
+            })()}
             推荐理由 · {recommendedBy?.name ?? "提案 agent"}
           </p>
           <p className="mt-1 text-sm leading-6 text-foreground/90">
