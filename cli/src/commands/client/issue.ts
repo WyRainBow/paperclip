@@ -66,6 +66,7 @@ interface IssueCreateOptions extends BaseClientOptions {
   billingCode?: string;
   session?: string;
   allowDuplicate?: boolean;
+  asBoard?: boolean;
 }
 
 interface IssueUpdateOptions extends BaseClientOptions {
@@ -332,6 +333,7 @@ export function registerIssueCommands(program: Command): void {
         "Session id to record on the card — which CLI/agent session filed it (navigation aid, not identity). Defaults to $CLAUDE_CODE_SESSION_ID / $CODEX_SESSION_ID",
       )
       .option("--allow-duplicate", "Create even when an active issue with the same title exists")
+      .option("--as-board", "File as the board instead of an agent — the card gets no agent author and that cannot be corrected later")
       .option("--branch <name>", "Working branch name (optional at creation; use issue start to register it)")
       .action(async (opts: IssueCreateOptions) => {
         try {
@@ -368,6 +370,23 @@ export function registerIssueCommands(program: Command): void {
             throw new Error(
               `project is required: every issue belongs to a project — pass --project <name>. This company has: ${describeProjects(projects)}`,
             );
+          }
+          // Cards are filed from terminal agents, and authorship is stamped
+          // from the authenticated caller at create time — a card opened
+          // without an agent key reads as "local-board" and cannot be
+          // corrected by the agent afterwards. Fail before writing rather
+          // than leave an unattributable card behind. A human filing from
+          // their own shell passes --as-board to say so deliberately.
+          if (!opts.asBoard) {
+            const me = await ctx.api
+              .get<{ id: string; name?: string } | null>("/api/agents/me")
+              .catch(() => null);
+            if (!me?.id) {
+              throw new Error(
+                "no agent identity — this card would be filed as local-board and the author could not be fixed afterwards.\n"
+                + "  set PAPERCLIP_API_KEY (see `paperclipai agent local-cli <agent>`), or pass --as-board if you really are filing it yourself",
+              );
+            }
           }
           if (opts.description) {
             const firstContentLine = opts.description.split("\n").find((line) => line.trim().length > 0);
@@ -422,25 +441,10 @@ export function registerIssueCommands(program: Command): void {
           // 2. Backfill createdByAgentId if we can identify the agent
           // 3. Auto-assign so in_progress won't be blocked
           if (created) {
-            const detectedAgentName = process.env.CLAUDE_CODE_SESSION_ID
-              ? "Claude（Terminal）"
-              : process.env.CODEX_SESSION_ID
-                ? "Codex（Terminal）"
-                : null;
-            if (!created.createdByAgentId && detectedAgentName) {
-              try {
-                const agents = (await ctx.api.get<Array<{ id: string; name: string }>>(
-                  apiPath`/api/companies/${ctx.companyId}/agents`,
-                )) ?? [];
-                const agent = agents.find((a) => a.name === detectedAgentName);
-                if (agent) {
-                  await ctx.api.patch(apiPath`/api/issues/${created.id}`, { createdByAgentId: agent.id });
-                  created.createdByAgentId = agent.id;
-                }
-              } catch { /* best-effort enrichment */ }
-            }
-            if (!session && !created.createdByAgentId) {
-              console.error("⚠ 未识别到 agent 身份与会话——卡无归属。设 CLAUDE_CODE_SESSION_ID / CODEX_SESSION_ID 或传 --session。");
+            if (!created.createdByAgentId) {
+              // Only reachable via --as-board now; say so plainly rather than
+              // leaving the reader to notice "local-board" on the card later.
+              console.error("⚠ 这张卡没有 agent 作者（--as-board），Opened by 会显示 local-board。");
             }
             if (!created.assigneeAgentId && !created.assigneeUserId) {
               try {
