@@ -1,6 +1,5 @@
 import type { Command } from "commander";
 import { addCommonClientOptions, apiPath, assertDecisionBodyTemplate, handleCommandError, printOutput, resolveCommandContext, type BaseClientOptions } from "./common.js";
-import { readFile } from "node:fs/promises";
 
 interface DecisionOptionRow { id: string; label: string; description?: string | null; recommendedByAgentId?: string | null; recommendationReason?: string | null }
 interface DecisionRow {
@@ -13,10 +12,9 @@ interface DecisionRow {
 interface DecisionListOptions extends BaseClientOptions { status?: string; originIssue?: string; limit?: string }
 interface DecisionDecideOptions extends BaseClientOptions { option: string; rationale: string; constraints?: string }
 interface DecisionCreateOptions extends BaseClientOptions {
-  payloadFile?: string;
   originIssue: string;
-  title?: string;
-  body?: string;
+  title: string;
+  body: string;
   option: string[];
   recommend: string;
   recommendReason: string;
@@ -79,14 +77,13 @@ export function registerDecisionCommands(program: Command): void {
   addCommonClientOptions(
     decision
       .command("create")
-      .description("Create a decision — flags (--title/--body/--option) or --payload-file, one command for both. A recommended option with its reason is mandatory")
+      .description("Create a decision. A recommended option with its reason is mandatory")
       .requiredOption("--origin-issue <idOrIdentifier>", "Issue this decision was raised on")
-      .option("--payload-file <path>", "JSON with title/body/options (effects auto-filled; decidedOptionId honoured with --rationale)")
-      .option("--title <text>", "What is being decided (flags path)")
-      .option("--body <text>", "背景 / 判断标准 / 方案 — the prose a later reader sees (flags path)")
+      .requiredOption("--title <text>", "What is being decided")
+      .requiredOption("--body <text>", "背景 / 判断标准 / 方案 — the prose a later reader sees")
       .option(
         "--option <id|label>",
-        'An option, repeatable: --option "a|保持现状" --option "b|改成 X" (flags path)',
+        'An option, repeatable: --option "a|保持现状" --option "b|改成 X"',
         (value: string, previous: string[] = []) => [...previous, value],
         [] as string[],
       )
@@ -94,7 +91,7 @@ export function registerDecisionCommands(program: Command): void {
       .requiredOption("--recommend-reason <text>", "推荐理由（必填，写进 recommendationReason，答「为什么推它」）")
       .option("--rule-key <key>", "Idempotent rule key")
       .option("--resolver <policy>", "board | agents", "board")
-      .option("--rationale <text>", "Decide immediately with this 裁决理由 (uses payload decidedOptionId unless --decide given)")
+      .option("--rationale <text>", "Decide immediately with this 裁决理由 (pairs with --decide)")
       .option("--decide <optionId>", "Option to choose when deciding immediately")
       .option("--constraints <text>", "附加约束 for the immediate decide")
       .option("--created-by-agent <nameOrId>", "Board path only: agent the record is attributed to (defaults to $PAPERCLIP_AGENT_ID)")
@@ -103,37 +100,25 @@ export function registerDecisionCommands(program: Command): void {
           const ctx = resolveCommandContext(opts, { requireCompany: true });
           const issue = await ctx.api.get<{ id: string }>(apiPath`/api/issues/${opts.originIssue}`);
           if (!issue?.id) throw new Error(`Issue not found: ${opts.originIssue}`);
-          let payload: {
-            title: string; body: string; decidedOptionId?: string;
-            options: Array<DecisionOptionRow & { effects?: unknown[]; style?: string }>;
-          };
-          if (opts.payloadFile) {
-            payload = JSON.parse(await readFile(opts.payloadFile, "utf8"));
-          } else {
-            if (!opts.title?.trim() || !opts.body?.trim() || opts.option.length === 0) {
-              throw new Error('flags path needs --title, --body and at least one --option "<id>|<label>" (or pass --payload-file)');
-            }
-            // Flags path: every option lands a comment back on the origin issue
-            // when chosen — the verdict belongs where the reader came from.
-            payload = {
-              title: opts.title,
-              body: opts.body,
-              options: opts.option.map(parseDecisionOption).map((option) => ({
-                ...option,
-                effects: [{
-                  type: "comment_on_issue",
-                  targetIssueId: issue.id,
-                  staleness: "lenient",
-                  bodyMarkdown: `决策「${opts.title}」：采纳「${option.label}」`,
-                }],
-              })),
-            };
+          if (opts.option.length === 0) {
+            throw new Error('at least one --option "<id>|<label>" is required');
           }
-          assertDecisionBodyTemplate(payload.body);
-          if (!payload.options.some((option) => option.id === opts.recommend)) {
-            throw new Error(`--recommend ${opts.recommend} is not one of the options: ${payload.options.map((option) => option.id).join(", ")}`);
+          assertDecisionBodyTemplate(opts.body!);
+          const parsed = opts.option.map(parseDecisionOption);
+          if (!parsed.some((option) => option.id === opts.recommend)) {
+            throw new Error(`--recommend ${opts.recommend} is not one of the options: ${parsed.map((option) => option.id).join(", ")}`);
           }
-          const options = payload.options.map((option) => ({ ...option, effects: option.effects ?? [] }));
+          // Every option lands a comment back on the origin issue when chosen —
+          // the verdict belongs where the reader came from.
+          const options = parsed.map((option) => ({
+            ...option,
+            effects: [{
+              type: "comment_on_issue",
+              targetIssueId: issue.id,
+              staleness: "lenient",
+              bodyMarkdown: `决策「${opts.title}」：采纳「${option.label}」`,
+            }],
+          }));
           // Board shells hold no agent identity, so the server's board path
           // wants createdByAgentId naming the agent the record belongs to.
           // Peer review caught this command only working over the agent-key
@@ -153,13 +138,13 @@ export function registerDecisionCommands(program: Command): void {
             ? { ...option, recommendedByAgentId: proposerId, recommendationReason: opts.recommendReason }
             : { ...option, recommendedByAgentId: undefined, recommendationReason: undefined });
           const created = (await ctx.api.post<DecisionRow>(apiPath`/api/companies/${ctx.companyId}/decisions`, {
-            title: payload.title, body: payload.body, options: stampedOptions,
+            title: opts.title, body: opts.body, options: stampedOptions,
             resolverPolicy: opts.resolver, originIssueId: issue.id,
             ...(createdByAgentId ? { createdByAgentId } : {}),
             ...(opts.ruleKey ? { ruleKey: opts.ruleKey, idempotencyKey: `decision:${opts.ruleKey}` } : {}),
           }))!;
           let decided: DecisionRow | null = null;
-          const chosen = opts.decide ?? payload.decidedOptionId;
+          const chosen = opts.decide;
           if (opts.rationale && chosen) {
             const inputValues: Record<string, string> = { rationale: opts.rationale };
             if (opts.constraints) inputValues.constraints = opts.constraints;
