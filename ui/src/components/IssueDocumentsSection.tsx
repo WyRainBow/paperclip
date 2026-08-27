@@ -37,6 +37,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Check, Copy, Diff, Download, FilePenLine, FileText, Lock, MoreHorizontal, Plus, Trash2, Unlock, X } from "lucide-react";
 import { DocumentDiffModal } from "./DocumentDiffModal";
+import { agentCustomIcon } from "@/components/AgentIconPicker";
 import { DocumentFrameHeader, type DocumentFrameHeaderRevisionActor } from "./DocumentFrameHeader";
 import { SourceTrustBadge } from "./SourceTrustBadge";
 import { Badge } from "@/components/ui/badge";
@@ -153,7 +154,7 @@ function downloadDocumentFile(key: string, body: string) {
 function getRevisionActor(
   revision: DocumentRevision,
   maps: {
-    agentMap?: ReadonlyMap<string, Pick<Agent, "id" | "name"> & Partial<Pick<Agent, "icon">>>;
+    agentMap?: ReadonlyMap<string, Pick<Agent, "id" | "name"> & Partial<Pick<Agent, "icon" | "metadata">>>;
     userProfileMap?: ReadonlyMap<string, CompanyUserProfile>;
   },
 ): DocumentFrameHeaderRevisionActor {
@@ -163,6 +164,7 @@ function getRevisionActor(
       kind: "agent",
       name: agent?.name ?? revision.createdByAgentId.slice(0, 8),
       agentIcon: agent?.icon ?? null,
+      agentIconUrl: agentCustomIcon(agent ?? null),
     };
   }
   if (revision.createdByUserId) {
@@ -1052,6 +1054,11 @@ export function IssueDocumentsSection({
             >
               <DocumentFrameHeader
                 documentKey={doc.key}
+                documentId={doc.id ?? null}
+                createdBy={getRevisionActor(
+                  { createdByAgentId: doc.createdByAgentId, createdByUserId: doc.createdByUserId } as DocumentRevision,
+                  { agentMap, userProfileMap },
+                )}
                 folded={isFolded}
                 onToggleFolded={() => toggleFoldedDocument(doc.key)}
                 sourceTrustSlot={<SourceTrustBadge sourceTrust={doc.sourceTrust} artifactLabel="document" />}

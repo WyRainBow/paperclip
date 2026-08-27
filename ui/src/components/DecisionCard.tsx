@@ -385,6 +385,10 @@ export function DecisionCard({
 
       {/* Provenance */}
       <p className="mt-1 text-xs text-muted-foreground">
+        {/* The id is the handle the CLI and API address this decision by, so a
+            reader can act on the card they are looking at without a lookup. */}
+        <span className="font-mono" title={decision.id}>decision:{decision.id.slice(0, 8)}</span>
+        {" · "}
         Proposed by <span className="font-medium text-foreground">{originAgentName ?? "an agent"}</span>
         {originIssue && (
           <>
@@ -752,6 +756,21 @@ export function DecisionCard({
                   aria-hidden
                 />
               </button>
+              {/* The rationale is collected as a required input and then was
+                  never shown again — the one sentence a reader comes back for
+                  was write-only. Rendered under the verdict, above options. */}
+              {(decision.inputs ?? []).map((field) => {
+                const value = (decision.inputValues ?? {})[field.id]?.trim();
+                if (!value) return null;
+                return (
+                  <div key={field.id} className="rounded-sm border border-border/60 bg-muted/30 px-3 py-2">
+                    <p className="text-(length:--text-micro) font-medium text-muted-foreground">
+                      {field.label}
+                    </p>
+                    <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-foreground">{value}</p>
+                  </div>
+                );
+              })}
               {optionsExpanded && (
                 <ul className="space-y-1.5">
                   {decision.options.map((option) => {

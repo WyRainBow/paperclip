@@ -20,6 +20,8 @@ export type DocumentFrameHeaderRevisionActor = {
   kind: "agent" | "user" | "system";
   name: string;
   agentIcon?: string | null;
+  /** Provider logo (metadata.customIcon); the lucide icon is the fallback. */
+  agentIconUrl?: string | null;
   imageUrl?: string | null;
 };
 
@@ -50,6 +52,10 @@ export interface DocumentFrameHeaderProps {
   revisionMenu?: DocumentFrameHeaderRevisionMenu;
   updatedAt?: string | Date | null;
   updatedHref?: string;
+  /** Short document id — the handle the CLI addresses this document by. */
+  documentId?: string | null;
+  /** Who filed it. Shown here so the Artifacts panel need not repeat it. */
+  createdBy?: DocumentFrameHeaderRevisionActor | null;
   sourceTrustSlot?: ReactNode;
   annotationSlot?: ReactNode;
   titleSlot?: ReactNode;
@@ -61,7 +67,7 @@ function RevisionActorAvatar({ actor }: { actor: DocumentFrameHeaderRevisionActo
     <Avatar size="xs" shape={actor.kind === "agent" ? "square" : "circle"} className="shrink-0">
       {actor.kind === "agent" ? (
         <AvatarFallback>
-          <AgentIcon icon={actor.agentIcon} className="h-3 w-3" />
+          <AgentIcon icon={actor.agentIcon} customIconUrl={actor.agentIconUrl} className="h-3 w-3" />
         </AvatarFallback>
       ) : (
         <>
@@ -81,6 +87,8 @@ export function DocumentFrameHeader({
   revisionMenu,
   updatedAt,
   updatedHref,
+  documentId,
+  createdBy,
   sourceTrustSlot,
   annotationSlot,
   titleSlot,
@@ -167,6 +175,20 @@ export function DocumentFrameHeader({
                 )}
               </DropdownMenuContent>
             </DropdownMenu>
+          ) : null}
+          {documentId ? (
+            <span
+              className="shrink-0 font-mono text-(length:--text-micro) text-muted-foreground"
+              title={documentId}
+            >
+              doc:{documentId.slice(0, 8)}
+            </span>
+          ) : null}
+          {createdBy ? (
+            <span className="flex shrink-0 items-center gap-1 text-(length:--text-micro) text-muted-foreground">
+              <RevisionActorAvatar actor={createdBy} />
+              <span className="truncate">{createdBy.name}</span>
+            </span>
           ) : null}
           {updatedAt ? (
             <a
