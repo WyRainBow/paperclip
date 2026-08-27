@@ -55,7 +55,6 @@ interface IssueBaseOptions extends BaseClientOptions {
 }
 
 interface IssueCreateOptions extends BaseClientOptions {
-  agent?: string;
   title: string;
   description?: string;
   status?: string;
@@ -395,7 +394,6 @@ export function registerIssueCommands(program: Command): void {
       )
       .option("--allow-duplicate", "Create even when an active issue with the same title exists")
       .option("--as-board", "File as the board instead of an agent — the card gets no agent author and that cannot be corrected later")
-      .option("--agent <name>", "Agent name for attribution (e.g. Zcode). Overrides env var detection")
       .option("--branch <name>", "Working branch name (optional at creation; use issue start to register it)")
       .action(async (opts: IssueCreateOptions) => {
         try {
@@ -499,47 +497,10 @@ export function registerIssueCommands(program: Command): void {
           });
 
           const created = await ctx.api.post<Issue>(apiPath`/api/companies/${ctx.companyId}/issues`, payload);
-          // 建卡=认领（user 2026-08-26）：
-          // 1. Detect agent identity from env — which terminal tool is running
-          // 2. Backfill createdByAgentId if we can identify the agent
-          // 3. Auto-assign so in_progress won't be blocked
-          if (created) {
-            // Auto-detect agent from env vars and backfill attribution (MUL-63).
-            // Local dev: board anonymous + env var inference = no key needed.
-            if (!created.createdByAgentId) {
-              const detectedAgentName = opts.agent
-                ? opts.agent
-                : process.env.CLAUDE_CODE_SESSION_ID
-                ? "Claude（Terminal）"
-                : process.env.CODEX_SESSION_ID
-                  ? "Codex（Terminal）"
-                  : process.env.ZCODE_SESSION_ID || process.env.ZCODE_SESSION
-                    ? "Zcode（Terminal）"
-                    : null;
-              if (detectedAgentName) {
-                try {
-                  const agents = (await ctx.api.get<Array<{ id: string; name: string }>>(
-                    apiPath`/api/companies/${ctx.companyId}/agents`,
-                  )) ?? [];
-                  const agent = agents.find((a) => a.name === detectedAgentName);
-                  if (agent) {
-                    await ctx.api.patch(apiPath`/api/issues/${created.id}`, { createdByAgentId: agent.id, createdByUserId: null });
-                    created.createdByAgentId = agent.id;
-                    created.createdByUserId = null;
-                  }
-                } catch { /* best-effort */ }
-              }
-            }
-            if (!created.createdByAgentId) {
-              console.error("⚠ 这张卡没有 agent 作者，Opened by 会显示 local-board。设 CLAUDE_CODE_SESSION_ID / CODEX_SESSION_ID / ZCODE_SESSION_ID 可自动识别。");
-            }
-            if (!created.assigneeAgentId && !created.assigneeUserId) {
-              try {
-                await ctx.api.patch(apiPath`/api/issues/${created.id}`, { assigneeUserId: "local-board" });
-                created.assigneeUserId = "local-board";
-              } catch { /* non-fatal */ }
-            }
-          }
+          // Attribution is stamped server-side from the authenticated caller at
+          // create time (agent key => createdByAgentId, board => createdByUserId).
+          // No client-side backfill: a card is attributed correctly on the first
+          // write or not at all — the pre-write identity gate above enforces it.
           printOutput(created, { json: ctx.json });
         } catch (err) {
           handleCommandError(err);
