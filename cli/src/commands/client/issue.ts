@@ -55,6 +55,7 @@ interface IssueBaseOptions extends BaseClientOptions {
 }
 
 interface IssueCreateOptions extends BaseClientOptions {
+  agent?: string;
   title: string;
   description?: string;
   status?: string;
@@ -394,6 +395,7 @@ export function registerIssueCommands(program: Command): void {
       )
       .option("--allow-duplicate", "Create even when an active issue with the same title exists")
       .option("--as-board", "File as the board instead of an agent — the card gets no agent author and that cannot be corrected later")
+      .option("--agent <name>", "Agent name for attribution (e.g. Zcode). Overrides env var detection")
       .option("--branch <name>", "Working branch name (optional at creation; use issue start to register it)")
       .action(async (opts: IssueCreateOptions) => {
         try {
@@ -505,7 +507,9 @@ export function registerIssueCommands(program: Command): void {
             // Auto-detect agent from env vars and backfill attribution (MUL-63).
             // Local dev: board anonymous + env var inference = no key needed.
             if (!created.createdByAgentId) {
-              const detectedAgentName = process.env.CLAUDE_CODE_SESSION_ID
+              const detectedAgentName = opts.agent
+                ? opts.agent
+                : process.env.CLAUDE_CODE_SESSION_ID
                 ? "Claude（Terminal）"
                 : process.env.CODEX_SESSION_ID
                   ? "Codex（Terminal）"
