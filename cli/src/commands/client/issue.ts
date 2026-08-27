@@ -413,6 +413,38 @@ export function registerIssueCommands(program: Command): void {
           });
 
           const created = await ctx.api.post<Issue>(apiPath`/api/companies/${ctx.companyId}/issues`, payload);
+          // 建卡=认领（user 2026-08-26）：
+          // 1. Detect agent identity from env — which terminal tool is running
+          // 2. Backfill createdByAgentId if we can identify the agent
+          // 3. Auto-assign so in_progress won't be blocked
+          if (created) {
+            const detectedAgentName = process.env.CLAUDE_CODE_SESSION_ID
+              ? "Claude（Terminal）"
+              : process.env.CODEX_SESSION_ID
+                ? "Codex（Terminal）"
+                : null;
+            if (!created.createdByAgentId && detectedAgentName) {
+              try {
+                const agents = (await ctx.api.get<Array<{ id: string; name: string }>>(
+                  apiPath`/api/companies/${ctx.companyId}/agents`,
+                )) ?? [];
+                const agent = agents.find((a) => a.name === detectedAgentName);
+                if (agent) {
+                  await ctx.api.patch(apiPath`/api/issues/${created.id}`, { createdByAgentId: agent.id });
+                  created.createdByAgentId = agent.id;
+                }
+              } catch { /* best-effort enrichment */ }
+            }
+            if (!session && !created.createdByAgentId) {
+              console.error("⚠ 未识别到 agent 身份与会话——卡无归属。设 CLAUDE_CODE_SESSION_ID / CODEX_SESSION_ID 或传 --session。");
+            }
+            if (!created.assigneeAgentId && !created.assigneeUserId) {
+              try {
+                await ctx.api.patch(apiPath`/api/issues/${created.id}`, { assigneeUserId: "local-board" });
+                created.assigneeUserId = "local-board";
+              } catch { /* non-fatal */ }
+            }
+          }
           printOutput(created, { json: ctx.json });
         } catch (err) {
           handleCommandError(err);
