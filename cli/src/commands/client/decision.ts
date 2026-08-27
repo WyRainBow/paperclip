@@ -12,7 +12,28 @@ interface DecisionRow {
 
 interface DecisionListOptions extends BaseClientOptions { status?: string; originIssue?: string; limit?: string }
 interface DecisionDecideOptions extends BaseClientOptions { option: string; rationale: string; constraints?: string }
-interface DecisionCreateOptions extends BaseClientOptions { payloadFile: string; originIssue: string; ruleKey?: string; resolver?: string; rationale?: string; decide?: string; constraints?: string; createdByAgent?: string }
+interface DecisionCreateOptions extends BaseClientOptions {
+  payloadFile?: string;
+  originIssue: string;
+  title?: string;
+  body?: string;
+  option: string[];
+  recommend: string;
+  recommendReason: string;
+  ruleKey?: string;
+  resolver?: string;
+  rationale?: string;
+  decide?: string;
+  constraints?: string;
+  createdByAgent?: string;
+}
+
+function parseDecisionOption(spec: string): { id: string; label: string } {
+  const [id, ...rest] = spec.split("|");
+  const label = rest.join("|").trim();
+  if (!id?.trim() || !label) throw new Error(`--option must look like "<id>|<label>", got: ${spec}`);
+  return { id: id.trim(), label };
+}
 
 function shortLine(d: DecisionRow): string {
   const who = d.decidedByAgentId ? `agent:${d.decidedByAgentId.slice(0, 8)}` : d.decidedByUserId ?? "";
@@ -58,9 +79,19 @@ export function registerDecisionCommands(program: Command): void {
   addCommonClientOptions(
     decision
       .command("create")
-      .description("Create a decision from a payload file. Flags-based sibling: `issue decision:create` — same server contract, pick by input shape")
-      .requiredOption("--payload-file <path>", "JSON with title/body/options (effects auto-filled; decidedOptionId honoured with --rationale)")
+      .description("Create a decision — flags (--title/--body/--option) or --payload-file, one command for both. A recommended option with its reason is mandatory")
       .requiredOption("--origin-issue <idOrIdentifier>", "Issue this decision was raised on")
+      .option("--payload-file <path>", "JSON with title/body/options (effects auto-filled; decidedOptionId honoured with --rationale)")
+      .option("--title <text>", "What is being decided (flags path)")
+      .option("--body <text>", "背景 / 判断标准 / 方案 — the prose a later reader sees (flags path)")
+      .option(
+        "--option <id|label>",
+        'An option, repeatable: --option "a|保持现状" --option "b|改成 X" (flags path)',
+        (value: string, previous: string[] = []) => [...previous, value],
+        [] as string[],
+      )
+      .requiredOption("--recommend <optionId>", "推荐的方案 id（必填——没有推荐的提案不收）")
+      .requiredOption("--recommend-reason <text>", "推荐理由（必填，写进 recommendationReason，答「为什么推它」）")
       .option("--rule-key <key>", "Idempotent rule key")
       .option("--resolver <policy>", "board | agents", "board")
       .option("--rationale <text>", "Decide immediately with this 裁决理由 (uses payload decidedOptionId unless --decide given)")
@@ -70,13 +101,38 @@ export function registerDecisionCommands(program: Command): void {
       .action(async (opts: DecisionCreateOptions) => {
         try {
           const ctx = resolveCommandContext(opts, { requireCompany: true });
-          const payload = JSON.parse(await readFile(opts.payloadFile, "utf8")) as {
+          const issue = await ctx.api.get<{ id: string }>(apiPath`/api/issues/${opts.originIssue}`);
+          if (!issue?.id) throw new Error(`Issue not found: ${opts.originIssue}`);
+          let payload: {
             title: string; body: string; decidedOptionId?: string;
             options: Array<DecisionOptionRow & { effects?: unknown[]; style?: string }>;
           };
+          if (opts.payloadFile) {
+            payload = JSON.parse(await readFile(opts.payloadFile, "utf8"));
+          } else {
+            if (!opts.title?.trim() || !opts.body?.trim() || opts.option.length === 0) {
+              throw new Error('flags path needs --title, --body and at least one --option "<id>|<label>" (or pass --payload-file)');
+            }
+            // Flags path: every option lands a comment back on the origin issue
+            // when chosen — the verdict belongs where the reader came from.
+            payload = {
+              title: opts.title,
+              body: opts.body,
+              options: opts.option.map(parseDecisionOption).map((option) => ({
+                ...option,
+                effects: [{
+                  type: "comment_on_issue",
+                  targetIssueId: issue.id,
+                  staleness: "lenient",
+                  bodyMarkdown: `决策「${opts.title}」：采纳「${option.label}」`,
+                }],
+              })),
+            };
+          }
           assertDecisionBodyTemplate(payload.body);
-          const issue = await ctx.api.get<{ id: string }>(apiPath`/api/issues/${opts.originIssue}`);
-          if (!issue?.id) throw new Error(`Issue not found: ${opts.originIssue}`);
+          if (!payload.options.some((option) => option.id === opts.recommend)) {
+            throw new Error(`--recommend ${opts.recommend} is not one of the options: ${payload.options.map((option) => option.id).join(", ")}`);
+          }
           const options = payload.options.map((option) => ({ ...option, effects: option.effects ?? [] }));
           // Board shells hold no agent identity, so the server's board path
           // wants createdByAgentId naming the agent the record belongs to.
@@ -89,8 +145,15 @@ export function registerDecisionCommands(program: Command): void {
           if (!me?.id && !createdByAgentId) {
             throw new Error("no identity for the decision — authenticate with an agent key, pass --created-by-agent, or set PAPERCLIP_AGENT_ID");
           }
+          // The recommendation is stamped from --recommend/--recommend-reason,
+          // overriding whatever the payload carried: one recommended option,
+          // attributed to the proposer (the server rejects anyone else).
+          const proposerId = me?.id ?? createdByAgentId;
+          const stampedOptions = options.map((option) => option.id === opts.recommend
+            ? { ...option, recommendedByAgentId: proposerId, recommendationReason: opts.recommendReason }
+            : { ...option, recommendedByAgentId: undefined, recommendationReason: undefined });
           const created = (await ctx.api.post<DecisionRow>(apiPath`/api/companies/${ctx.companyId}/decisions`, {
-            title: payload.title, body: payload.body, options,
+            title: payload.title, body: payload.body, options: stampedOptions,
             resolverPolicy: opts.resolver, originIssueId: issue.id,
             ...(createdByAgentId ? { createdByAgentId } : {}),
             ...(opts.ruleKey ? { ruleKey: opts.ruleKey, idempotencyKey: `decision:${opts.ruleKey}` } : {}),

@@ -208,16 +208,6 @@ interface TreeHoldListOptions extends BaseClientOptions {
   includeMembers?: boolean;
 }
 
-interface IssueDecisionCreateOptions extends BaseClientOptions {
-  title: string;
-  body: string;
-  option: string[];
-  decided?: string;
-  rationale?: string;
-  constraints?: string;
-  createdByAgent?: string;
-}
-
 /**
  * A name is not an identity: agents get renamed and the same seat is Codex
  * today and something else tomorrow, so a `--*-agent` flag is resolved to a
@@ -246,13 +236,6 @@ function agentIdResolver(ctx: ResolvedClientContext, companyId: string | undefin
 }
 
 /** `--option "id|Label"` — the pipe keeps the flag typable without shell-quoting JSON. */
-function parseDecisionOption(spec: string): { id: string; label: string } {
-  const [rawId, ...rest] = spec.split("|");
-  const id = rawId?.trim() ?? "";
-  const label = rest.join("|").trim();
-  if (!id || !label) throw new Error(`--option must look like "<id>|<label>", got: ${spec}`);
-  return { id, label };
-}
 
 /**
  * 认领防漏（MUL-72）: an agent writing progress or advancing status on an
@@ -817,91 +800,6 @@ export function registerIssueCommands(program: Command): void {
             questionAgentId,
             answerDocKey: docKey,
             issue: issue.identifier,
-          }, { json: ctx.json });
-        } catch (err) {
-          handleCommandError(err);
-        }
-      }),
-  );
-
-  addCommonClientOptions(
-    issue
-      .command("decision:create")
-      .description("Record a decision on an issue — flags build the payload, no hand-written JSON. Payload-file sibling: `decision create` — same server contract, pick by input shape")
-      .argument("<issueId>", "Issue ID or identifier the decision was raised on")
-      .requiredOption("--title <text>", "What is being decided")
-      .requiredOption("--body <text>", "背景 / 判断标准 / 方案 — the prose a later reader sees")
-      .option(
-        "--option <id|label>",
-        'An option, repeatable: --option "a|保持现状" --option "b|改成 X". Each one lands a comment on this issue when chosen.',
-        (value: string, previous: string[] = []) => [...previous, value],
-        [] as string[],
-      )
-      .option("--decided <optionId>", "Settle it right away with this option — the historical-backfill path")
-      .option("--rationale <text>", "最后裁决理由，required with --decided（写进决策历史）")
-      .option("--constraints <text>", "附加约束 for --decided")
-      .option("--created-by-agent <nameOrId>", "Agent the decision is attributed to. Defaults to $PAPERCLIP_AGENT_ID")
-      .action(async (issueId: string, opts: IssueDecisionCreateOptions) => {
-        try {
-          const ctx = resolveCommandContext(opts);
-          const issue = await ctx.api.get<Issue>(apiPath`/api/issues/${issueId}`);
-          if (!issue) throw new Error(`Issue not found: ${issueId}`);
-          const companyId = (issue as { companyId?: string }).companyId ?? ctx.companyId;
-          assertDecisionBodyTemplate(opts.body);
-          if (!opts.option.length) throw new Error('at least one --option "<id>|<label>" is required');
-          const parsed = opts.option.map(parseDecisionOption);
-          if (opts.decided && !parsed.some((option) => option.id === opts.decided)) {
-            throw new Error(`--decided ${opts.decided} is not one of the options: ${parsed.map((option) => option.id).join(", ")}`);
-          }
-          if (opts.decided && !opts.rationale?.trim()) {
-            throw new Error("--decided needs --rationale: a verdict with no reason is what the decision record exists to prevent");
-          }
-
-          // The board holds no agent identity of its own, so the create call
-          // names the agent the record belongs to. Without it the server keeps
-          // refusing with 403, same as before this command existed.
-          const createdByAgentRef = opts.createdByAgent?.trim() || process.env.PAPERCLIP_AGENT_ID?.trim() || null;
-          const createdByAgentId = await agentIdResolver(ctx, companyId)(createdByAgentRef, "--created-by-agent");
-          if (!createdByAgentId) {
-            throw new Error("no agent identity for the decision — pass --created-by-agent or set PAPERCLIP_AGENT_ID");
-          }
-
-          // Every option carries one comment_on_issue effect back to this card:
-          // effects are mandatory, and the verdict belongs on the issue anyone
-          // reading the decision came from.
-          const options = parsed.map((option) => ({
-            ...option,
-            effects: [{
-              type: "comment_on_issue" as const,
-              targetIssueId: issue.id,
-              staleness: "lenient" as const,
-              bodyMarkdown: `决策「${opts.title}」：采纳「${option.label}」`,
-            }],
-          }));
-          const created = await ctx.api.post<{ id: string }>(
-            apiPath`/api/companies/${companyId}/decisions`,
-            { title: opts.title, body: opts.body, options, originIssueId: issue.id, createdByAgentId },
-          );
-          if (!created?.id) throw new Error("decision create returned no id");
-
-          let settled: Record<string, unknown> | null = null;
-          if (opts.decided) {
-            const inputValues: Record<string, string> = { rationale: opts.rationale!.trim() };
-            if (opts.constraints?.trim()) inputValues.constraints = opts.constraints.trim();
-            settled = await ctx.api.post<Record<string, unknown>>(
-              apiPath`/api/decisions/${created.id}/decide`,
-              // Same agent on both halves: it proposed the record and, from the
-              // board, performed the verdict.
-              { optionId: opts.decided, inputValues, actingAgentId: createdByAgentId },
-            );
-          }
-          const final = (settled ?? created) as Record<string, unknown>;
-          printOutput(ctx.json ? final : {
-            decisionId: created.id,
-            issue: issue.identifier,
-            status: final.status ?? "open",
-            chosenOptionId: final.chosenOptionId ?? null,
-            originAgentId: final.originAgentId ?? createdByAgentId,
           }, { json: ctx.json });
         } catch (err) {
           handleCommandError(err);
