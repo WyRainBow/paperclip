@@ -331,6 +331,7 @@ export function DecisionCard({
     recommendedOption?.recommendedByAgentId
       ? resolveAgent?.(recommendedOption.recommendedByAgentId) ?? null
       : null;
+  const decidedAgent = decision.decidedByAgentId ? resolveAgent?.(decision.decidedByAgentId) ?? null : null;
 
   const requiredUnmet = (decision.inputs ?? []).some(
     (field) => field.required && !(inputValues[field.id] ?? "").trim(),
@@ -740,20 +741,43 @@ export function DecisionCard({
                     decision.chosenOptionId}
                 </span>
                 {decision.decidedAt && (
-                  <span className="tabular-nums text-muted-foreground"> · {absoluteTimestamp(decision.decidedAt)}</span>
+                  <>
+                    <span className="text-muted-foreground" aria-hidden>·</span>
+                    <span className="tabular-nums text-muted-foreground">{absoluteTimestamp(decision.decidedAt)}</span>
+                  </>
                 )}
                 {/* A board-policy decision belongs to the board but is still
                     performed from a terminal, so both are shown: dropping the
                     agent made every such verdict read as anonymous local-board. */}
                 {decision.decidedByUserId && decision.decidedByAgentId && decidedByAgentName ? (
-                  <span className="text-muted-foreground">
-                    {" · "}{t("by")} {decidedByUserName ?? decision.decidedByUserId}
-                    {" · via "}{decidedByAgentName}
-                  </span>
+                  <>
+                    <span className="text-muted-foreground" aria-hidden>·</span>
+                    <span className="flex items-center gap-1.5 text-muted-foreground">
+                      {t("by")} {decidedByUserName ?? decision.decidedByUserId}
+                      <span aria-hidden>·</span>
+                      via
+                      {decidedAgent && (
+                        <AgentIcon icon={decidedAgent.icon} customIconUrl={decidedAgent.customIconUrl} className="h-3.5 w-3.5 shrink-0" />
+                      )}
+                      {decidedByAgentName}
+                    </span>
+                  </>
                 ) : decision.decidedByAgentId && decidedByAgentName ? (
-                  <span className="text-muted-foreground"> · {t("by")} {decidedByAgentName}</span>
+                  <>
+                    <span className="text-muted-foreground" aria-hidden>·</span>
+                    <span className="flex items-center gap-1.5 text-muted-foreground">
+                      {t("by")}
+                      {decidedAgent && (
+                        <AgentIcon icon={decidedAgent.icon} customIconUrl={decidedAgent.customIconUrl} className="h-3.5 w-3.5 shrink-0" />
+                      )}
+                      {decidedByAgentName}
+                    </span>
+                  </>
                 ) : decision.decidedByUserId ? (
-                  <span className="text-muted-foreground"> · {t("by")} {decidedByUserName ?? decision.decidedByUserId}</span>
+                  <>
+                    <span className="text-muted-foreground" aria-hidden>·</span>
+                    <span className="text-muted-foreground">{t("by")} {decidedByUserName ?? decision.decidedByUserId}</span>
+                  </>
                 ) : null}
                 <ChevronDown
                   className={cn(
