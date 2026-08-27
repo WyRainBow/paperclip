@@ -41,7 +41,7 @@ export function TeamSkills() {
   return (
     <div className="space-y-4 p-6">
       <div>
-        <h1 className="text-xl font-semibold text-foreground">TeamSkill</h1>
+        <h1 className="text-xl font-semibold text-foreground">Team Skills</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           公司技能库（团队共同资产）。完整管理（版本/测试/挂载到 agent）在 <Link to="/skills" className="text-primary underline-offset-2 hover:underline">Skills</Link>。
         </p>

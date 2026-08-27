@@ -51,10 +51,12 @@ import { collectSubtreeLiveCounts } from "../lib/liveIssueIds";
 import {
   InboxIssueMetaLeading,
   InboxIssueTrailingColumns,
+  InboxIssueTrailingColumnsHeader,
   IssueColumnPicker,
   issueActivityText,
   issueTrailingColumns,
 } from "./IssueColumns";
+import { agentCustomIcon } from "./AgentIconPicker";
 import { StatusIcon } from "./StatusIcon";
 import { EmptyState } from "./EmptyState";
 import { useTranslation } from "@/i18n";
@@ -444,6 +446,9 @@ function shouldSuppressSinglePreviousSiblingBlockerChip(
 interface Agent {
   id: string;
   name: string;
+  /** Provider logo lives on metadata.customIcon (see agentCustomIcon). */
+  icon?: string | null;
+  metadata?: Record<string, unknown> | null;
 }
 
 type CreatorOption = {
@@ -875,6 +880,14 @@ export function IssuesList({
   const agentName = useCallback((id: string | null) => {
     if (!id || !agents) return null;
     return agents.find((a) => a.id === id)?.name ?? null;
+  }, [agents]);
+
+  // Agents carry their provider logo on metadata.customIcon; the list rows only
+  // had names, so every agent fell back to two-letter initials and Claude,
+  // Codex and GLM were indistinguishable at a glance.
+  const agentIconUrl = useCallback((id: string | null) => {
+    if (!id || !agents) return null;
+    return agentCustomIcon(agents.find((a) => a.id === id) ?? null);
   }, [agents]);
 
   const companyUserLabelMap = useMemo(
@@ -1935,6 +1948,7 @@ export function IssuesList({
         />
       ) : (
         <>
+          <InboxIssueTrailingColumnsHeader columns={visibleTrailingIssueColumns} className="pb-1" />
           {groupedContent.map((group) => {
           if (remainingRowsToRender <= 0) return null;
           return (
@@ -2198,9 +2212,11 @@ export function IssuesList({
                               })}
                               onFilterWorkspace={filterToWorkspace}
                               assigneeName={agentName(issue.assigneeAgentId)}
+                              assigneeAgentIconUrl={agentIconUrl(issue.assigneeAgentId)}
                               assigneeUserName={assigneeUserLabel}
                               assigneeUserAvatarUrl={assigneeUserProfile?.image ?? null}
                               creatorAgentName={agentName(issue.createdByAgentId)}
+                              creatorAgentIconUrl={agentIconUrl(issue.createdByAgentId)}
                               creatorUserName={originatingUserId ? (companyUserProfileMap.get(originatingUserId)?.label ?? null) : null}
                               creatorUserAvatarUrl={originatingUserId ? (companyUserProfileMap.get(originatingUserId)?.image ?? null) : null}
                               viaAgentName={originatingViaAgentId ? agentName(originatingViaAgentId) : null}

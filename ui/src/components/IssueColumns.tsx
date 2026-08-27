@@ -56,7 +56,7 @@ function issueTrailingGridTemplate(columns: InboxIssueColumn[]): string {
   return columns
     .map((column) => {
       if (column === "assignee") return "minmax(6rem, 8rem)";
-      if (column === "kickedOffBy") return "minmax(6rem, 8rem)";
+      if (column === "kickedOffBy") return "minmax(6rem, 9.5rem)";
       if (column === "project") return "minmax(4.5rem, 7rem)";
       if (column === "workspace") return "minmax(6rem, 9rem)";
       if (column === "parent") return "minmax(3.5rem, 5.5rem)";
@@ -64,6 +64,40 @@ function issueTrailingGridTemplate(columns: InboxIssueColumn[]): string {
       return "minmax(3.5rem, 4.5rem)";
     })
     .join(" ");
+}
+
+/**
+ * Column names for the trailing grid, rendered once above the list. Uses the
+ * SAME grid template as the rows so the labels sit over their own columns —
+ * without it a reader has to guess whether a date is "created" or "updated".
+ */
+export function InboxIssueTrailingColumnsHeader({
+  columns,
+  className,
+}: {
+  columns: InboxIssueColumn[];
+  className?: string;
+}) {
+  const { t } = useTranslation();
+  if (columns.length === 0) return null;
+  return (
+    <div
+      className={cn("hidden pr-3 pl-2 sm:flex sm:items-center sm:pl-1", className)}
+      data-testid="issue-columns-header"
+      aria-hidden
+    >
+      <span
+        className="ml-auto grid shrink-0 items-center gap-4 text-(length:--text-nano) font-semibold uppercase tracking-(--tracking-caps) text-muted-foreground"
+        style={{ gridTemplateColumns: issueTrailingGridTemplate(columns) }}
+      >
+        {columns.map((column) => (
+          <span key={column} className="min-w-0 truncate">
+            {t(issueColumnLabels[column])}
+          </span>
+        ))}
+      </span>
+    </div>
+  );
 }
 
 export function IssueColumnPicker({
@@ -233,9 +267,11 @@ export function InboxIssueTrailingColumns({
   workspaceId,
   workspaceName,
   assigneeName,
+  assigneeAgentIconUrl,
   assigneeUserName,
   assigneeUserAvatarUrl,
   creatorAgentName,
+  creatorAgentIconUrl,
   creatorUserName,
   creatorUserAvatarUrl,
   viaAgentName,
@@ -252,9 +288,12 @@ export function InboxIssueTrailingColumns({
   workspaceId?: string | null;
   workspaceName: string | null;
   assigneeName: string | null;
+  /** Provider logo (metadata.customIcon); falls back to initials when absent. */
+  assigneeAgentIconUrl?: string | null;
   assigneeUserName?: string | null;
   assigneeUserAvatarUrl?: string | null;
   creatorAgentName?: string | null;
+  creatorAgentIconUrl?: string | null;
   creatorUserName?: string | null;
   creatorUserAvatarUrl?: string | null;
   viaAgentName?: string | null;
@@ -272,7 +311,7 @@ export function InboxIssueTrailingColumns({
 
   return (
     <span
-      className="grid items-center gap-2"
+      className="grid items-center gap-4"
       style={{ gridTemplateColumns: issueTrailingGridTemplate(columns) }}
     >
       {columns.map((column) => {
@@ -283,9 +322,10 @@ export function InboxIssueTrailingColumns({
 
           if (issue.assigneeAgentId) {
             return (
-              <span key={column} className="min-w-0 text-xs text-foreground">
+              <span key={column} className="flex min-w-0 text-xs text-foreground">
                 <Identity
                   name={assigneeName ?? issue.assigneeAgentId.slice(0, 8)}
+                  avatarUrl={assigneeAgentIconUrl}
                   size="sm"
                   shape="square"
                   className="min-w-0"
@@ -296,7 +336,7 @@ export function InboxIssueTrailingColumns({
 
           if (issue.assigneeUserId) {
             return (
-              <span key={column} className="min-w-0 text-xs text-foreground">
+              <span key={column} className="flex min-w-0 text-xs text-foreground">
                 <Identity
                   name={userLabel}
                   avatarUrl={assigneeUserAvatarUrl}
@@ -320,9 +360,10 @@ export function InboxIssueTrailingColumns({
             return (
               <Tooltip key={column}>
                 <TooltipTrigger asChild>
-                  <span className="min-w-0 text-xs text-foreground">
+                  <span className="flex min-w-0 text-xs text-foreground">
                     <Identity
                       name={name}
+                      avatarUrl={creatorAgentIconUrl}
                       size="sm"
                       shape="square"
                       className="min-w-0"
@@ -339,7 +380,7 @@ export function InboxIssueTrailingColumns({
             return (
               <Tooltip key={column}>
                 <TooltipTrigger asChild>
-                  <span className="min-w-0 text-xs text-foreground">
+                  <span className="flex min-w-0 text-xs text-foreground">
                     <Identity
                       name={creatorUserLabel}
                       avatarUrl={creatorUserAvatarUrl}
