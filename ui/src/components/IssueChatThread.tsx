@@ -2453,7 +2453,7 @@ function ExpiredRequestConfirmationActivity({
 function isIssueCommentPresentation(value: unknown): value is IssueCommentPresentation {
   if (!value || typeof value !== "object") return false;
   const v = value as Record<string, unknown>;
-  return v.kind === "system_notice" || v.kind === "message" || v.kind === "progress_note";
+  return v.kind === "system_notice" || v.kind === "message";  // progress_note → Progress Tab only (user 2026-08-26)
 }
 
 function isIssueCommentMetadata(value: unknown): value is IssueCommentMetadata {
