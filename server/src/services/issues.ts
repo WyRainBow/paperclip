@@ -7696,12 +7696,18 @@ export function issueService(db: Db) {
         issueData.assigneeAgentId !== undefined ? issueData.assigneeAgentId : existing.assigneeAgentId;
       const nextAssigneeUserId =
         issueData.assigneeUserId !== undefined ? issueData.assigneeUserId : existing.assigneeUserId;
+      // Driving counts as the claim marker here too: the route-level gate
+      // (issues.ts PATCH) accepts "assignee or Driving", and `issue claim`
+      // records Driving — the service check must agree, or a Driving-claimed
+      // card still 422s on in_progress (MUL-72 follow-up).
+      const nextDrivingAgentId =
+        issueData.drivingAgentId !== undefined ? issueData.drivingAgentId : existing.drivingAgentId;
 
       if (nextAssigneeAgentId && nextAssigneeUserId) {
         throw unprocessable("Issue can only have one assignee");
       }
-      if (patch.status === "in_progress" && !nextAssigneeAgentId && !nextAssigneeUserId) {
-        throw unprocessable("in_progress issues require an assignee");
+      if (patch.status === "in_progress" && !nextAssigneeAgentId && !nextAssigneeUserId && !nextDrivingAgentId) {
+        throw unprocessable("in_progress issues require an assignee or Driving");
       }
       if (patch.status === "in_progress") {
         const dependencyReadiness = blockedByIssueIds === undefined
