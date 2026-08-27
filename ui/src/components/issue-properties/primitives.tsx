@@ -160,9 +160,7 @@ export function SessionIdentity({
 
 /** `sess_1ecef3b3-9a23-…` → `sess_1ecef3b3`; the full id stays in the tooltip. */
 function shortSessionId(sessionId: string) {
-  const withoutPrefix = sessionId.startsWith("sess_") ? sessionId.slice(5) : sessionId;
-  const head = withoutPrefix.split("-")[0] ?? withoutPrefix;
-  return sessionId.startsWith("sess_") ? `sess_${head}` : head;
+  return sessionId;  // full ID — user wants complete session visible (2026-08-26)
 }
 
 /**
