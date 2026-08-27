@@ -35,6 +35,18 @@ const TOOL_LABELS: Record<string, string> = {
 };
 const toolLabel = (tool: string) => TOOL_LABELS[tool] ?? tool;
 
+const TOOL_COLORS: Record<string, string> = {
+  claude: "#D97757",
+  codex: "#10A37F",
+  grok: "#6366f1",
+  zcode: "#2563eb",
+};
+function ToolBrandIcon({ tool }: { tool: string }) {
+  const color = TOOL_COLORS[tool];
+  if (!color) return null;
+  return <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: color }} aria-hidden />;
+}
+
 const SPACE_META: Record<Space, { label: string; blurb: string }> = {
   paperclip: {
     label: "Paperclip Wiki",
@@ -300,7 +312,7 @@ export function TeamWiki({ fixedSpace }: { fixedSpace?: Space } = {}) {
         {fixedSpace ? (
           <div role="tablist" className="flex flex-wrap gap-1 border-b border-border pb-2" data-testid="personal-tool-tabs">
             {[{ id: "all", label: `全部 ${pages.length}` }].concat(
-              tools.map((t) => ({ id: t, label: `${toolLabel(t)} ${pages.filter((p) => p.path.split("/")[0] === t).length}` })),
+              tools.map((t) => ({ id: t, label: `${toolLabel(t)} ${pages.filter((p) => p.path.split("/")[0] === t).length}`, tool: t })),
             ).map((t) => (
               <button
                 key={t.id}
@@ -310,6 +322,7 @@ export function TeamWiki({ fixedSpace }: { fixedSpace?: Space } = {}) {
                 onClick={() => setToolTab(t.id)}
                 className={`rounded-md px-3 py-1 text-sm transition-colors ${toolTab === t.id ? "bg-accent font-medium text-foreground" : "text-muted-foreground hover:text-foreground"}`}
               >
+                {"tool" in t && t.tool ? <ToolBrandIcon tool={t.tool as string} /> : null}
                 {t.label}
               </button>
             ))}
