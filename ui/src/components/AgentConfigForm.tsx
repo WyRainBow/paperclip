@@ -942,7 +942,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
       });
       const testResults: Array<{ label: string; model: string | null; result: AdapterEnvironmentTestResult }> = [
         {
-          label: "Primary model",
+          label: "主模型",
           model: primaryModel,
           result: await runEnvironmentTestCase(
             "Primary model",
@@ -955,7 +955,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
 
       if (cheapTestCase) {
         testResults.push({
-          label: "Cheap model",
+          label: "低成本模型",
           model: cheapTestCase.model,
           result: await runEnvironmentTestCase(
             "Cheap model",
@@ -1113,7 +1113,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
         ?? (testEnvironment.error instanceof Error
           ? testEnvironment.error.message
           : testEnvironment.error
-            ? "Environment test failed"
+            ? "环境测试失败"
             : null),
       result: testEnvironment.data ?? null,
       // `showAdapterLogin` already requires a selected company and a non-empty
@@ -1313,8 +1313,8 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
 
         <div className={cn(!cards && "border-b border-border")}>
           {cards
-            ? <h3 className="mb-3 text-sm font-medium">Secret access</h3>
-            : <div className="px-4 py-2 text-xs font-medium text-muted-foreground">Secret access</div>
+            ? <h3 className="mb-3 text-sm font-medium">密钥访问</h3>
+            : <div className="px-4 py-2 text-xs font-medium text-muted-foreground">密钥访问</div>
           }
           <div className={cn(cards ? "space-y-3 rounded-lg border border-border p-4" : "space-y-3 px-4 pb-3")}>
             <p className="text-xs text-muted-foreground">{help.secretAccess}</p>
@@ -1356,8 +1356,8 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
       {!isCreate && (
         <div className={cn(!cards && "border-b border-border")}>
           {cards
-            ? <h3 className="text-sm font-medium mb-3">Identity</h3>
-            : <div className="px-4 py-2 text-xs font-medium text-muted-foreground">Identity</div>
+            ? <h3 className="text-sm font-medium mb-3">身份</h3>
+            : <div className="px-4 py-2 text-xs font-medium text-muted-foreground">身份</div>
           }
           <div className={cn(cards ? "border border-border rounded-lg p-4 space-y-3" : "px-4 pb-3 space-y-3")}>
             <Field label="名称" hint={help.name}>
@@ -1384,7 +1384,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                 value={eff("identity", "reportsTo", props.agent.reportsTo ?? null)}
                 onChange={(id) => mark("identity", "reportsTo", id)}
                 excludeAgentIds={[props.agent.id]}
-                chooseLabel="Choose manager…"
+                chooseLabel="选择上级…"
               />
             </Field>
             <Field label="能力" hint={help.capabilities}>
@@ -1437,13 +1437,13 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
         // Render the environment read-only instead of the selectable picker.
         <div className={cn(!cards && (isCreate ? "border-t border-border" : "border-b border-border"))}>
           {cards
-            ? <h3 className="text-sm font-medium mb-3">Environment</h3>
-            : <div className="px-4 py-2 text-xs font-medium text-muted-foreground">Environment</div>
+            ? <h3 className="text-sm font-medium mb-3">环境</h3>
+            : <div className="px-4 py-2 text-xs font-medium text-muted-foreground">环境</div>
           }
           <div className={cn(cards ? "border border-border rounded-lg p-4 space-y-3" : "px-4 pb-3 space-y-3")}>
             <Field
               label="默认环境"
-              hint="This instance runs all agents in the Kubernetes sandbox. Local execution is disabled."
+              hint="这个实例把所有 Agent 都跑在 Kubernetes 沙箱里，本地执行已禁用。"
             >
               {kubernetesEnvironment ? (
                 <div className={cn(inputClass, "flex items-center text-muted-foreground")}>
@@ -1461,8 +1461,8 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
       ) : showEnvironmentOverrideControl ? (
         <div className={cn(!cards && (isCreate ? "border-t border-border" : "border-b border-border"))}>
           {cards
-            ? <h3 className="text-sm font-medium mb-3">Environment</h3>
-            : <div className="px-4 py-2 text-xs font-medium text-muted-foreground">Environment</div>
+            ? <h3 className="text-sm font-medium mb-3">环境</h3>
+            : <div className="px-4 py-2 text-xs font-medium text-muted-foreground">环境</div>
           }
           <div className={cn(cards ? "border border-border rounded-lg p-4 space-y-3" : "px-4 pb-3 space-y-3")}>
             <Field label="环境覆盖">
@@ -1479,7 +1479,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                     mark("identity", "defaultEnvironmentId", nextValue || null);
                   }}
                 >
-                  <option value="">Default: {inheritedEnvironmentLabel}</option>
+                  <option value="">默认：{inheritedEnvironmentLabel}</option>
                   {environmentOptions.map((environment) => (
                     <option key={environment.id} value={environment.id}>
                       {environmentDisplayLabel(environment)}
@@ -1496,8 +1496,8 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
       <div className={cn(!cards && (isCreate ? "border-t border-border" : "border-b border-border"))}>
         <div className={cn(cards ? "flex items-center justify-between mb-3" : "px-4 py-2 flex items-center justify-between gap-2")}>
           {cards
-            ? <h3 className="text-sm font-medium">Adapter</h3>
-            : <span className="text-xs font-medium text-muted-foreground">Adapter</span>
+            ? <h3 className="text-sm font-medium">适配器</h3>
+            : <span className="text-xs font-medium text-muted-foreground">适配器</span>
           }
           {showInlineAdapterTestEnvironmentButton && (
             <Button
@@ -1577,7 +1577,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
               {testActionError
                 ?? (testEnvironment.error instanceof Error
                   ? testEnvironment.error.message
-                  : "Environment test failed")}
+                  : "环境测试失败")}
             </div>
           )}
 
@@ -1634,8 +1634,8 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
       {isLocal && (
         <div className={cn(!cards && "border-b border-border")}>
           {cards
-            ? <h3 className="text-sm font-medium mb-3">Permissions &amp; Configuration</h3>
-            : <div className="px-4 py-2 text-xs font-medium text-muted-foreground">Permissions &amp; Configuration</div>
+            ? <h3 className="text-sm font-medium mb-3">权限与配置</h3>
+            : <div className="px-4 py-2 text-xs font-medium text-muted-foreground">权限与配置</div>
           }
           <div className={cn(cards ? "border border-border rounded-lg p-4 space-y-3" : "px-4 pb-3 space-y-3")}>
               <Field label="命令" hint={help.localCommand}>
@@ -1703,7 +1703,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                     : undefined
                 }
                 refreshingModels={refreshingModels}
-                detectModelLabel="Detect model"
+                detectModelLabel="检测模型"
                 emptyDetectHint="No model detected. Select or enter one manually."
               />
               {(refreshModelsError || fetchedModelsError) && (
@@ -1877,7 +1877,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
               number={val!.intervalSec}
               onNumberChange={(v) => set!({ intervalSec: v })}
               numberLabel="秒"
-              numberPrefix="Run heartbeat every"
+              numberPrefix="心跳间隔"
               numberHint={help.intervalSec}
               showNumber={val!.heartbeatEnabled}
             />
@@ -1899,7 +1899,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                 number={eff("heartbeat", "intervalSec", Number(heartbeat.intervalSec ?? 300))}
                 onNumberChange={(v) => mark("heartbeat", "intervalSec", v)}
                 numberLabel="秒"
-                numberPrefix="Run heartbeat every"
+                numberPrefix="心跳间隔"
                 numberHint={help.intervalSec}
                 showNumber={eff("heartbeat", "enabled", heartbeat.enabled === true)}
               />
@@ -2056,10 +2056,10 @@ function AdapterLoginTerminalState({
   }
   const label =
     status === "timed_out"
-      ? "Login timed out"
+      ? "登录超时"
       : status === "cancelled"
-        ? "Login cancelled"
-        : "Login failed";
+        ? "登录已取消"
+        : "登录失败";
   return (
     <div className="flex items-start gap-2 text-(length:--text-micro) text-destructive">
       <TriangleAlert className="size-3 shrink-0" />
@@ -2178,7 +2178,7 @@ function DisplayedCodeLoginPanel({
   return (
     <div className="rounded-md border border-border bg-muted/40 px-3 py-2 space-y-2">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-xs font-medium text-foreground">Sign in to the environment</span>
+        <span className="text-xs font-medium text-foreground">登录该环境</span>
         <div className="flex items-center gap-1.5">
           {isActive && (
             <Button
@@ -2626,7 +2626,7 @@ function SubmittedBrowserCodeLoginPanel({
   return (
     <div className="rounded-md border border-border bg-muted/40 px-3 py-2 space-y-2">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-xs font-medium text-foreground">Sign in to the environment</span>
+        <span className="text-xs font-medium text-foreground">登录该环境</span>
         <div className="flex items-center gap-1.5">
           {isActive && (
             <Button
@@ -3041,7 +3041,7 @@ export function ModelDropdown({
               {selected
                 ? selected.label
                 : value
-                  || (allowDefault ? (defaultLabel ?? "Default") : required ? "Select model (required)" : "Select model")}
+                  || (allowDefault ? (defaultLabel ?? "默认") : required ? "选择模型（必填）" : "选择模型")}
             </span>
             <ChevronDown className="h-3 w-3 text-muted-foreground" />
           </button>
@@ -3099,7 +3099,7 @@ export function ModelDropdown({
                 <path d="M21 12a9 9 0 0 1-15.28 6.36L3 16" />
                 <path d="M8 16H3v5" />
               </svg>
-              {refreshingModels ? "Refreshing..." : "Refresh models"}
+              {refreshingModels ? "刷新中…" : "刷新模型列表"}
             </button>
           )}
           {value && (!models.some((m) => m.id === value) || promotedModelIds.has(value)) && (
@@ -3190,7 +3190,7 @@ export function ModelDropdown({
                   setModelSearch("");
                 }}
               >
-                <span>Use manual model</span>
+                <span>使用手填模型</span>
                 <span className="text-xs font-mono text-muted-foreground">{manualModel}</span>
               </button>
             )}
