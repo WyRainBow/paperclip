@@ -1,4 +1,5 @@
 import type { Command } from "commander";
+import { readFile as fsReadFile } from "node:fs/promises";
 import { addCommonClientOptions, apiPath, assertDecisionBodyTemplate, handleCommandError, printOutput, resolveCommandContext, type BaseClientOptions } from "./common.js";
 
 interface DecisionOptionRow { id: string; label: string; description?: string | null; recommendedByAgentId?: string | null; recommendationReason?: string | null }
@@ -23,6 +24,7 @@ interface DecisionCreateOptions extends BaseClientOptions {
   rationale?: string;
   decide?: string;
   constraints?: string;
+  fullBodyFile?: string;
   createdByAgent?: string;
 }
 
@@ -94,6 +96,10 @@ export function registerDecisionCommands(program: Command): void {
       .option("--rationale <text>", "Decide immediately with this 裁决理由 (pairs with --decide)")
       .option("--decide <optionId>", "Option to choose when deciding immediately")
       .option("--constraints <text>", "附加约束 for the immediate decide")
+      .option(
+        "--full-body-file <path>",
+        "Nine-section full rationale (durable counterpart of the card). Filed as an issue document keyed `decision-<decisionId8>` on the origin issue; id/status/proposer/time header is auto-prefixed (MUL-23)",
+      )
       .option("--created-by-agent <nameOrId>", "Board path only: agent the record is attributed to (defaults to $PAPERCLIP_AGENT_ID)")
       .action(async (opts: DecisionCreateOptions) => {
         try {
@@ -155,7 +161,30 @@ export function registerDecisionCommands(program: Command): void {
             })) ?? null;
           }
           const final = decided ?? created;
-          printOutput(ctx.json ? final : { id: final.id, status: final.status, chosen: final.chosenOptionId ?? null }, { json: ctx.json });
+          // MUL-23: the card carries the four-part skeleton for the deciding
+          // moment; the nine-section full rationale (considered-and-rejected
+          // options, tradeoffs, consequences, supersession links) lives as an
+          // issue document — one document per decision, keyed by decision id.
+          let documentKey: string | null = null;
+          if (opts.fullBodyFile) {
+            const fullBody = await fsReadFile(opts.fullBodyFile, "utf8");
+            documentKey = `decision-${final.id.slice(0, 8)}`;
+            const decidedAt = final.status === "decided" ? (final.decidedAt ?? null) : null;
+            const header = [
+              `> 决策 ${final.id} · 状态 ${final.status}${decidedAt ? ` · 裁决于 ${decidedAt}` : ""}`,
+              "",
+            ].join("\n");
+            await ctx.api.put(apiPath`/api/issues/${issue.id}/documents/${documentKey}`, {
+              title: `决策完整版：${opts.title}`,
+              format: "markdown",
+              body: header + fullBody,
+              changeSummary: "nine-section full rationale (MUL-23)",
+            });
+          }
+          printOutput(
+            ctx.json ? final : { id: final.id, status: final.status, chosen: final.chosenOptionId ?? null, documentKey },
+            { json: ctx.json },
+          );
         } catch (err) {
           handleCommandError(err);
         }
