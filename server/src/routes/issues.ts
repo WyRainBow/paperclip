@@ -5029,15 +5029,21 @@ export function issueRoutes(
     const hasStructuredFields = input.presentation !== undefined || input.metadata !== undefined;
     if (!hasStructuredFields) return true;
     if (req.actor.type === "board") return true;
-    // Agents may file progress notes about their own work; every other
-    // structured presentation/metadata shape stays board-only.
+    // Agents may file the shapes that describe their own work: progress notes
+    // and discussion Q&A. Both are how a terminal agent reports what it did,
+    // and requiring the board to write them meant a registered agent could not
+    // speak as itself — the comment ended up authored by local-board even
+    // though the whole point of the agent's identity is to sign its own words.
+    // Everything else (and anything carrying metadata) stays board-only.
+    const AGENT_WRITABLE_PRESENTATION_KINDS = new Set(["progress_note", "discussion_qa"]);
     const presentation = input.presentation as { kind?: unknown } | null | undefined;
-    const isAgentProgressNote = req.actor.type === "agent"
+    const isAgentOwnedShape = req.actor.type === "agent"
       && input.metadata === undefined
       && presentation != null
       && typeof presentation === "object"
-      && presentation.kind === "progress_note";
-    if (isAgentProgressNote) return true;
+      && typeof presentation.kind === "string"
+      && AGENT_WRITABLE_PRESENTATION_KINDS.has(presentation.kind);
+    if (isAgentOwnedShape) return true;
     res.status(403).json({
       error: "Only board users may set structured comment presentation or metadata",
       details: {

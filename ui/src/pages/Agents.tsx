@@ -679,6 +679,11 @@ function OrgTreeNode({
         ) : (
           <AgentStatusCapsule status={node.status} />
         )}
+        <AgentIcon
+          icon={agent?.icon}
+          customIconUrl={agentCustomIcon(agent)}
+          className="h-4 w-4 shrink-0 text-muted-foreground"
+        />
         <div className="flex-1 min-w-0 flex flex-wrap items-center gap-2">
           {/* Name floor + `truncate` keeps the primary identifier readable; the
               cluster wraps to a second line under pressure instead of starving
