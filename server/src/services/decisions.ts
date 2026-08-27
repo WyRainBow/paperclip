@@ -751,6 +751,28 @@ export function decisionService(db: Db, options: DecisionServiceOptions) {
     return (await get(id))!;
   }
 
+  async function remove(id: string, actor: { actorType: "agent" | "user"; actorId: string; runId?: string | null }) {
+    const current = await get(id);
+    if (!current) throw notFound("Decision not found");
+    // Deleting erases the record entirely (cancel/dismiss keep it in the
+    // list). Board may delete anything; an agent only its own non-open
+    // decisions — an open question must not silently vanish, cancel it first.
+    if (actor.actorType === "agent") {
+      if (actor.actorId !== current.originAgentId) throw forbidden("Only the origin agent may delete");
+      if (current.status === "open") throw conflict("decision_still_open", { code: "decision_still_open" });
+    }
+    await db.delete(decisionRetention).where(and(
+      eq(decisionRetention.companyId, current.companyId),
+      eq(decisionRetention.sourceKind, "decision"),
+      eq(decisionRetention.sourceId, id),
+    ));
+    await db.delete(decisions).where(eq(decisions.id, id));
+    await logActivity(db, { companyId: current.companyId, actorType: actor.actorType, actorId: actor.actorId, runId: actor.runId,
+      action: "decision.deleted", entityType: "decision", entityId: id,
+      details: { title: current.title, status: current.status, originAgentId: current.originAgentId } });
+    return { id, deleted: true as const };
+  }
+
   async function dismiss(id: string, userId: string, userActor: AuthorizationActor, reason?: string | null) {
     const current = await get(id); if (!current) throw notFound("Decision not found");
     if (!verifyDecisionSpec(spec({ id: current.id, options: current.options, targetSnapshots: current.targetSnapshots as Record<string, Snapshot> }), current.signedSpec)) throw forbidden("Decision signature verification failed");
@@ -847,5 +869,5 @@ export function decisionService(db: Db, options: DecisionServiceOptions) {
     return { expired, resumed };
   }
 
-  return { create, createBundle, get, list, stats, outcome, decide, cancel, dismiss, sweepExpired };
+  return { create, createBundle, get, list, stats, outcome, decide, cancel, dismiss, remove, sweepExpired };
 }

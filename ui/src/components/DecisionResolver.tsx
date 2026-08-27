@@ -191,6 +191,15 @@ export function DecisionResolver({ companyId, decisionId, originIssue, agentMap,
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: () => decisionsApi.remove(decisionId),
+    onSuccess: () => {
+      // The record is gone: drop the detail cache instead of writing to it.
+      queryClient.removeQueries({ queryKey: queryKeys.decisions.detail(decisionId) });
+      invalidate();
+    },
+  });
+
   if (detail.isLoading) {
     return (
       <div className="flex items-center gap-2 py-3 text-xs text-muted-foreground">
@@ -207,10 +216,11 @@ export function DecisionResolver({ companyId, decisionId, originIssue, agentMap,
     );
   }
 
-  const busy = decideMutation.isPending || dismissMutation.isPending;
+  const busy = decideMutation.isPending || dismissMutation.isPending || deleteMutation.isPending;
   const errorMessage =
     (decideMutation.error instanceof Error && decideMutation.error.message) ||
     (dismissMutation.error instanceof Error && dismissMutation.error.message) ||
+    (deleteMutation.error instanceof Error && deleteMutation.error.message) ||
     null;
 
   return (
@@ -253,6 +263,7 @@ export function DecisionResolver({ companyId, decisionId, originIssue, agentMap,
       errorMessage={errorMessage}
       onDecide={(optionId, inputValues) => decideMutation.mutate({ optionId, inputValues, idempotencyKey: crypto.randomUUID() })}
       onDismiss={(reason) => dismissMutation.mutate(reason)}
+      onDelete={() => deleteMutation.mutate()}
     />
   );
 }

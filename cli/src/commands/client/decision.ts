@@ -177,4 +177,28 @@ export function registerDecisionCommands(program: Command): void {
         }
       }),
   );
+
+  addCommonClientOptions(
+    decision
+      .command("delete")
+      .description("Delete a decision record permanently. Board deletes any; an agent only its own non-open decisions (cancel first)")
+      .argument("<decisionId>", "Decision UUID or unique prefix")
+      .action(async (decisionId: string, opts: BaseClientOptions) => {
+        try {
+          const ctx = resolveCommandContext(opts, { requireCompany: true });
+          let id = decisionId;
+          if (id.length < 36) {
+            const base = apiPath`/api/companies/${ctx.companyId}/decisions`;
+            const rows = (await ctx.api.get<DecisionRow[]>(`${base}?limit=100`)) ?? [];
+            const hits = rows.filter((row) => row.id.startsWith(id));
+            if (hits.length !== 1) throw new Error(hits.length === 0 ? `No decision starts with ${id}` : `Ambiguous prefix ${id}: ${hits.map((h) => h.id.slice(0, 12)).join(", ")}`);
+            id = hits[0].id;
+          }
+          const result = await ctx.api.delete<{ id: string; deleted: boolean }>(apiPath`/api/decisions/${id}`);
+          printOutput(result, { json: ctx.json, label: ctx.json ? undefined : "deleted" });
+        } catch (err) {
+          handleCommandError(err);
+        }
+      }),
+  );
 }

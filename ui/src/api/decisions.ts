@@ -116,4 +116,5 @@ export const decisionsApi = {
   dismiss: (id: string, reason?: string | null) =>
     api.post<DecisionOutcome>(`/decisions/${id}/dismiss`, reason ? { reason } : {}),
   cancel: (id: string) => api.post<Decision>(`/decisions/${id}/cancel`, {}),
+  remove: (id: string) => api.delete<{ id: string; deleted: boolean }>(`/decisions/${id}`),
 };

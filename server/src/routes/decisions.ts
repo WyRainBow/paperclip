@@ -274,5 +274,12 @@ export function decisionRoutes(db: Db, options: DecisionServiceOptions) {
     if (!decision) return;
     const actor = getActorInfo(req); res.json(await svc.cancel(decision.id, { actorType: actor.actorType, actorId: actor.actorId, runId: actor.runId }));
   });
+  router.delete("/decisions/:id", async (req, res) => {
+    assertBoardOrAgent(req);
+    const decision = await getAccessibleResource(req, res, svc.get(req.params.id as string), "Decision not found");
+    if (!decision) return;
+    const actor = getActorInfo(req);
+    res.json(await svc.remove(decision.id, { actorType: actor.actorType, actorId: actor.actorId, runId: actor.runId }));
+  });
   return router;
 }

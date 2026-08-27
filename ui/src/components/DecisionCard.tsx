@@ -10,6 +10,7 @@ import {
   Loader2,
   MinusCircle,
   ShieldAlert,
+  Trash2,
   XCircle,
 } from "lucide-react";
 import { decisionEffectTargetIssueIds, type DecisionEffect, type DecisionOption } from "@paperclipai/shared";
@@ -66,6 +67,8 @@ export interface DecisionCardProps {
   errorMessage?: string | null;
   onDecide?: (optionId: string, inputValues: Record<string, string>) => void;
   onDismiss?: (reason?: string) => void;
+  /** Permanently delete the record (two-step inline confirm; board-side). */
+  onDelete?: () => void;
   className?: string;
 }
 
@@ -262,12 +265,14 @@ export function DecisionCard({
   errorMessage,
   onDecide,
   onDismiss,
+  onDelete,
   className,
 }: DecisionCardProps) {
   const [inputValues, setInputValues] = useState<Record<string, string>>({});
   const [confirmOptionId, setConfirmOptionId] = useState<string | null>(null);
   const [confirmText, setConfirmText] = useState("");
   const [optionsExpanded, setOptionsExpanded] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const open = decision.status === "open";
   const dismissed =
@@ -830,6 +835,34 @@ export function DecisionCard({
                 </p>
               )}
             </>
+          )}
+        </div>
+      )}
+
+      {/* Delete is destructive and irreversible, so it never fires on one
+          click: the trash icon arms an inline confirm instead of a dialog. */}
+      {onDelete && (
+        <div className="mt-3 flex items-center justify-end gap-2">
+          {confirmDelete ? (
+            <>
+              <span className="text-xs text-muted-foreground">{t("Permanently delete this decision record?")}</span>
+              <Button variant="ghost" size="sm" disabled={busy} onClick={() => setConfirmDelete(false)}>
+                {t("Cancel")}
+              </Button>
+              <Button variant="destructive" size="sm" disabled={busy} onClick={() => { setConfirmDelete(false); onDelete(); }}>
+                <Trash2 className="h-3.5 w-3.5" /> {t("Confirm delete")}
+              </Button>
+            </>
+          ) : (
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={busy}
+              className="text-muted-foreground hover:text-destructive"
+              onClick={() => setConfirmDelete(true)}
+            >
+              <Trash2 className="h-3.5 w-3.5" /> {t("Delete")}
+            </Button>
           )}
         </div>
       )}
