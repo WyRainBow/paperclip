@@ -407,11 +407,12 @@ export function DecisionCard({
         {" · "}
         Proposed by{" "}
         {(() => {
-          // Brand icon for known terminal agents
           const name = originAgentName ?? "";
-          const brand = BRAND_COLORS[name];
-          return brand ? (
-            <span className="inline-block h-3 w-3 rounded-full align-middle" style={{ backgroundColor: brand }} aria-hidden />
+          const agent = resolveAgent?.(decision.originAgentId);
+          return agent?.customIconUrl ? (
+            <img src={agent.customIconUrl} alt="" className="inline-block h-3.5 w-3.5 rounded-full align-middle object-cover" />
+          ) : agent?.icon ? (
+            <span className="inline-block h-3 w-3 rounded-full align-middle" style={{ backgroundColor: BRAND_COLORS[name] ?? "#64748b" }} aria-hidden />
           ) : null;
         })()}{" "}
         <span className="font-medium text-foreground">{originAgentName ?? "an agent"}</span>
@@ -541,11 +542,9 @@ export function DecisionCard({
       {open && recommendedOption && (recommendedOption.recommendationReason ?? recommendedOption.description)?.trim() && (
         <div className="mt-3 rounded-lg border border-border bg-muted/30 px-3 py-2">
           <p className="text-(length:--text-micro) flex items-center gap-1 font-medium text-muted-foreground">
-            {(() => {
-              const name = recommendedBy?.name ?? "";
-              const brand = BRAND_COLORS[name];
-              return brand ? <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: brand }} aria-hidden /> : null;
-            })()}
+            {recommendedBy?.customIconUrl ? (
+              <img src={recommendedBy.customIconUrl} alt="" className="inline-block h-3 w-3 rounded-full object-cover" />
+            ) : null}
             推荐理由 · {recommendedBy?.name ?? "提案 agent"}
           </p>
           <p className="mt-1 text-sm leading-6 text-foreground/90">
