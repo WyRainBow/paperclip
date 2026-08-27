@@ -12,7 +12,7 @@ interface DecisionRow {
 
 interface DecisionListOptions extends BaseClientOptions { status?: string; originIssue?: string; limit?: string }
 interface DecisionDecideOptions extends BaseClientOptions { option: string; rationale: string; constraints?: string }
-interface DecisionCreateOptions extends BaseClientOptions { payloadFile: string; originIssue: string; ruleKey?: string; resolver?: string; rationale?: string; decide?: string; constraints?: string }
+interface DecisionCreateOptions extends BaseClientOptions { payloadFile: string; originIssue: string; ruleKey?: string; resolver?: string; rationale?: string; decide?: string; constraints?: string; createdByAgent?: string }
 
 function shortLine(d: DecisionRow): string {
   const who = d.decidedByAgentId ? `agent:${d.decidedByAgentId.slice(0, 8)}` : d.decidedByUserId ?? "";
@@ -58,7 +58,7 @@ export function registerDecisionCommands(program: Command): void {
   addCommonClientOptions(
     decision
       .command("create")
-      .description("Create a decision from a payload file (MUL-67: no more raw POSTs or borrowing another agent's hands)")
+      .description("Create a decision from a payload file. Flags-based sibling: `issue decision:create` — same server contract, pick by input shape")
       .requiredOption("--payload-file <path>", "JSON with title/body/options (effects auto-filled; decidedOptionId honoured with --rationale)")
       .requiredOption("--origin-issue <idOrIdentifier>", "Issue this decision was raised on")
       .option("--rule-key <key>", "Idempotent rule key")
@@ -66,6 +66,7 @@ export function registerDecisionCommands(program: Command): void {
       .option("--rationale <text>", "Decide immediately with this 裁决理由 (uses payload decidedOptionId unless --decide given)")
       .option("--decide <optionId>", "Option to choose when deciding immediately")
       .option("--constraints <text>", "附加约束 for the immediate decide")
+      .option("--created-by-agent <nameOrId>", "Board path only: agent the record is attributed to (defaults to $PAPERCLIP_AGENT_ID)")
       .action(async (opts: DecisionCreateOptions) => {
         try {
           const ctx = resolveCommandContext(opts, { requireCompany: true });
@@ -76,9 +77,21 @@ export function registerDecisionCommands(program: Command): void {
           const issue = await ctx.api.get<{ id: string }>(apiPath`/api/issues/${opts.originIssue}`);
           if (!issue?.id) throw new Error(`Issue not found: ${opts.originIssue}`);
           const options = payload.options.map((option) => ({ ...option, effects: option.effects ?? [] }));
+          // Board shells hold no agent identity, so the server's board path
+          // wants createdByAgentId naming the agent the record belongs to.
+          // Peer review caught this command only working over the agent-key
+          // channel; resolve the attribution here so both channels work.
+          const me = await ctx.api.get<{ id: string } | null>("/api/agents/me").catch(() => null);
+          const createdByAgentId = me?.id
+            ? null
+            : (opts.createdByAgent?.trim() || process.env.PAPERCLIP_AGENT_ID?.trim() || null);
+          if (!me?.id && !createdByAgentId) {
+            throw new Error("no identity for the decision — authenticate with an agent key, pass --created-by-agent, or set PAPERCLIP_AGENT_ID");
+          }
           const created = (await ctx.api.post<DecisionRow>(apiPath`/api/companies/${ctx.companyId}/decisions`, {
             title: payload.title, body: payload.body, options,
             resolverPolicy: opts.resolver, originIssueId: issue.id,
+            ...(createdByAgentId ? { createdByAgentId } : {}),
             ...(opts.ruleKey ? { ruleKey: opts.ruleKey, idempotencyKey: `decision:${opts.ruleKey}` } : {}),
           }))!;
           let decided: DecisionRow | null = null;
@@ -86,7 +99,11 @@ export function registerDecisionCommands(program: Command): void {
           if (opts.rationale && chosen) {
             const inputValues: Record<string, string> = { rationale: opts.rationale };
             if (opts.constraints) inputValues.constraints = opts.constraints;
-            decided = (await ctx.api.post<DecisionRow>(apiPath`/api/decisions/${created.id}/decide`, { optionId: chosen, inputValues })) ?? null;
+            decided = (await ctx.api.post<DecisionRow>(apiPath`/api/decisions/${created.id}/decide`, {
+              optionId: chosen, inputValues,
+              // Board verdicts still name the terminal that performed them.
+              ...(createdByAgentId ? { actingAgentId: createdByAgentId } : {}),
+            })) ?? null;
           }
           const final = decided ?? created;
           printOutput(ctx.json ? final : { id: final.id, status: final.status, chosen: final.chosenOptionId ?? null }, { json: ctx.json });

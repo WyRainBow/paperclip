@@ -38,7 +38,17 @@ if not text:
 print(json.dumps({"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": text}}, ensure_ascii=False))
 '
   else
-    # Codex/zcode/grok: plain text to stderr
-    echo "$MAP" >&2
+    # Codex/zcode/grok: plain text to stderr. Same .text extraction as the
+    # Claude branch — raw $MAP is the endpoint's {"mode","text"} JSON with
+    # literal \n, which is what these terminals were receiving (MUL-64; this
+    # branch regressed once already when the file was rewritten, so keep the
+    # two branches structurally identical).
+    printf '%s' "$MAP" | python3 -c '
+import json, sys
+payload = json.load(sys.stdin)
+text = payload.get("text") if isinstance(payload, dict) else None
+if text:
+    print(text)
+' >&2
   fi
 fi
