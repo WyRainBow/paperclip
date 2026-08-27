@@ -1,10 +1,13 @@
 {
+  "Cancel": "取消",
+  "Confirm delete": "確認刪除",
   "language.toggle.label": "Switch language",
   "language.toggle.description": "Toggle the interface between English and 简体中文.",
   "Keep sidebar expanded": "Keep sidebar expanded",
   "Expand sidebar": "Expand sidebar",
   "Collapse sidebar": "Collapse sidebar",
   "New Task": "New Task",
+  "Permanently delete this decision record?": "永久刪除這條決策記錄？",
   "Search": "Search",
   "Dashboard": "Dashboard",
   "Inbox": "Inbox",
