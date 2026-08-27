@@ -47,8 +47,11 @@ const statsQuerySchema = z.object({
 }).strict();
 
 function agentContext(req: Parameters<typeof getActorInfo>[0]) {
-  if (req.actor.type !== "agent" || !req.actor.agentId || !req.actor.runId) return null;
-  return { agentId: req.actor.agentId, runId: req.actor.runId };
+  // runId is optional on purpose: a terminal agent holding a standard key has
+  // no run, and requiring one meant it could never propose a decision. The
+  // service derives provenance from originIssueId instead (user 2026-08-27).
+  if (req.actor.type !== "agent" || !req.actor.agentId) return null;
+  return { agentId: req.actor.agentId, runId: req.actor.runId ?? null };
 }
 
 function boardUserId(req: Parameters<typeof getActorInfo>[0]) {
@@ -67,7 +70,7 @@ export function decisionRoutes(db: Db, options: DecisionServiceOptions) {
       assertCompanyAccess(req, companyId);
       const agent = agentContext(req);
       if (!agent) {
-        res.status(403).json({ error: "Agent run context required" });
+        res.status(403).json({ error: "Agent identity required" });
         return;
       }
       const access = await authorizationService(db).decide({
@@ -144,12 +147,12 @@ export function decisionRoutes(db: Db, options: DecisionServiceOptions) {
   );
   router.post("/companies/:companyId/decisions", validate(createSchema), async (req, res) => {
     const companyId = req.params.companyId as string; assertCompanyAccess(req, companyId);
-    const agent = agentContext(req); if (!agent) { res.status(403).json({ error: "Agent run context required" }); return; }
+    const agent = agentContext(req); if (!agent) { res.status(403).json({ error: "Agent identity required" }); return; }
     res.status(201).json(await svc.create({ companyId, actor: req.actor, ...agent, ...req.body }));
   });
   router.post("/companies/:companyId/decision-bundles", validate(bundleSchema), async (req, res) => {
     const companyId = req.params.companyId as string; assertCompanyAccess(req, companyId);
-    const agent = agentContext(req); if (!agent) { res.status(403).json({ error: "Agent run context required" }); return; }
+    const agent = agentContext(req); if (!agent) { res.status(403).json({ error: "Agent identity required" }); return; }
     res.status(201).json(await svc.createBundle({ companyId, actor: req.actor, ...agent, ...req.body }));
   });
   // Readable by agents as well as the board: an agent picking up a task needs

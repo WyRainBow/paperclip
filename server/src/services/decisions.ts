@@ -117,13 +117,20 @@ function boardCanActDirectly(actor: AuthorizationActor, companyId: string) {
 export function decisionService(db: Db, options: DecisionServiceOptions) {
   const authz = authorizationService(db);
   let targetSweepCursor: string | null = null;
-  type CreateInput = { companyId: string; actor: AuthorizationActor; agentId: string; runId: string; bundleId?: string | null;
+  type CreateInput = { companyId: string; actor: AuthorizationActor; agentId: string; runId: string | null; bundleId?: string | null;
     ruleKey?: string | null; title: string; body: string; options: DecisionOption[]; inputs?: DecisionInput[] | null; expiresAt?: Date | null;
     idempotencyKey?: string | null; continuationPolicy?: "none" | "wake_origin_agent"; metadata?: Record<string, unknown>;
     resolverPolicy?: "board" | "agents"; originIssueId?: string | null };
   type CreateInputWithSnapshots = CreateInput & { additionalTargetSnapshots?: Record<string, Snapshot> };
 
-  async function origin(companyId: string, agentId: string, runId: string, fallbackIssueId?: string | null) {
+  async function origin(companyId: string, agentId: string, runId: string | null, fallbackIssueId?: string | null) {
+    // A keyed terminal agent has no run at all (standard key, MUL-63). Its
+    // provenance issue cannot be derived from a run snapshot, so the create
+    // call must name it — same contract terminal_contributor runs already had.
+    if (!runId) {
+      if (!fallbackIssueId) throw unprocessable("originIssueId is required when creating a decision without a run");
+      return { run: null, issueId: fallbackIssueId };
+    }
     const run = await db.select().from(heartbeatRuns).where(and(eq(heartbeatRuns.id, runId), eq(heartbeatRuns.companyId, companyId), eq(heartbeatRuns.agentId, agentId)))
       .then((rows) => rows[0] ?? null);
     if (!run) throw forbidden("Decision provenance requires the origin run");
@@ -267,7 +274,7 @@ export function decisionService(db: Db, options: DecisionServiceOptions) {
     if (ids.length) await dbOrTx.insert(decisionTargetIssues).values(ids.map((issueId) => ({ decisionId: id, issueId, companyId: input.companyId })));
     await logActivity(dbOrTx, { companyId: input.companyId, actorType: "agent", actorId: input.agentId, agentId: input.agentId,
       runId: input.runId, action: "decision.created", entityType: "decision", entityId: id,
-      details: { originIssueId: provenance.issueId, originAgentId: input.agentId, originResponsibleUserId: provenance.run.responsibleUserId } });
+      details: { originIssueId: provenance.issueId, originAgentId: input.agentId, originResponsibleUserId: provenance.run?.responsibleUserId ?? null } });
     return created;
   }
 
@@ -577,7 +584,9 @@ export function decisionService(db: Db, options: DecisionServiceOptions) {
   async function runEffects(decision: typeof decisions.$inferSelect, userActor: AuthorizationActor) {
     const option = decision.options.find((item) => item.id === decision.chosenOptionId);
     if (!option || (!decision.decidedByUserId && !decision.decidedByAgentId)) throw unprocessable("Stored decision outcome is invalid");
-    const run = await db.select({ responsibleUserId: heartbeatRuns.responsibleUserId }).from(heartbeatRuns).where(eq(heartbeatRuns.id, decision.originRunId)).then((rows) => rows[0] ?? null);
+    const run = decision.originRunId
+      ? await db.select({ responsibleUserId: heartbeatRuns.responsibleUserId }).from(heartbeatRuns).where(eq(heartbeatRuns.id, decision.originRunId)).then((rows) => rows[0] ?? null)
+      : null;
     const metadata = decision.metadata as Record<string, unknown>;
     if (metadata.kind === "attention_archive_proposal") {
       // Archive proposals resolve on the board side only; an agent resolver
@@ -711,7 +720,9 @@ export function decisionService(db: Db, options: DecisionServiceOptions) {
         ...(input.dismissed ? { dismissed: true, dismissReason: input.dismissReason ?? null } : {}) } })
       .where(and(eq(decisions.id, current.id), eq(decisions.status, "open"))).returning();
     if (!claimed) throw conflict("decision_already_resolved", { code: "decision_already_resolved" });
-    const run = await db.select({ responsibleUserId: heartbeatRuns.responsibleUserId }).from(heartbeatRuns).where(eq(heartbeatRuns.id, claimed.originRunId)).then((rows) => rows[0] ?? null);
+    const run = claimed.originRunId
+      ? await db.select({ responsibleUserId: heartbeatRuns.responsibleUserId }).from(heartbeatRuns).where(eq(heartbeatRuns.id, claimed.originRunId)).then((rows) => rows[0] ?? null)
+      : null;
     const agentResolver = input.decidedByAgentId
       ? { actorType: "agent" as const, actorId: input.decidedByAgentId, agentId: input.decidedByAgentId, runId: input.decidedByRunId ?? claimed.originRunId }
       : { actorType: "system" as const, actorId: "decision-executor", agentId: claimed.originAgentId, runId: claimed.originRunId };

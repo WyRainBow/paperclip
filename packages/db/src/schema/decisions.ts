@@ -26,7 +26,7 @@ export const decisionBundles = pgTable(
     summary: text("summary").notNull(),
     originAgentId: uuid("origin_agent_id").notNull().references(() => agents.id),
     originIssueId: uuid("origin_issue_id").notNull().references(() => issues.id),
-    originRunId: uuid("origin_run_id").notNull().references(() => heartbeatRuns.id),
+    originRunId: uuid("origin_run_id").references(() => heartbeatRuns.id),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
@@ -42,7 +42,7 @@ export const decisions = pgTable(
     bundleId: uuid("bundle_id").references(() => decisionBundles.id, { onDelete: "set null" }),
     originAgentId: uuid("origin_agent_id").notNull().references(() => agents.id),
     originIssueId: uuid("origin_issue_id").notNull().references(() => issues.id),
-    originRunId: uuid("origin_run_id").notNull().references(() => heartbeatRuns.id),
+    originRunId: uuid("origin_run_id").references(() => heartbeatRuns.id),
     ruleKey: text("rule_key"),
     title: text("title").notNull(),
     body: text("body").notNull(),
