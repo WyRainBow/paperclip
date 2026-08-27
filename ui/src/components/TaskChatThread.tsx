@@ -691,20 +691,9 @@ export function TaskChatThread(props: TaskChatThreadProps) {
                       finishedAtMs={tailFinishedAtMs}
                       toolSummary={tailToolSummary}
                     />
-                    <TaskChatLiveTail
-                      items={tailItems}
-                      emptyMessage={
-                        tailStatus === "queued"
-                          ? "Waiting to start..."
-                          : // Before the first transcript token, surface the run's
-                            // live runtime status (sandbox preparation phases like
-                            // "Syncing workspace to environment" emitted via
-                            // onRuntimeProgress) instead of an opaque wait message.
-                            (liveRun && liveRun.id === tailRunId
-                              ? liveRun.currentStatusMessage
-                              : null) || "Waiting for transcript..."
-                      }
-                    />
+                    {/* Run transcript tail removed: progress info belongs in
+                        the Progress tab, chat is conversation-only (user
+                        2026-08-26). The run pill above still shows status. */}
                   </div>
                 ) : null}
                 {bottomBlockerLinks}
