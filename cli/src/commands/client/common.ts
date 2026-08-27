@@ -296,3 +296,24 @@ export function handleCommandError(error: unknown): never {
   console.error(pc.red(message));
   process.exit(1);
 }
+
+
+/**
+ * 决策正文死模板（MUL-49 收口）：背景 / 判断标准 / 方案 三节缺一不可。
+ * Server-side the inputs (裁决理由) are locked; the body sections stayed
+ * advisory with zero consumers — "靠自觉" was the exact failure the template
+ * existed to prevent. Enforced here at the CLI layer so the generic decision
+ * service stays language-neutral. Accepts markdown headings ("## 背景") and
+ * plain "背景：" line starts — the shape both real backfills already used.
+ */
+export function assertDecisionBodyTemplate(body: string): void {
+  const sections = ["背景", "判断标准", "方案"] as const;
+  const missing = sections.filter((section) =>
+    !new RegExp(`^#{1,6}\\s*[0-9.、]*\\s*${section}`, "m").test(body)
+    && !new RegExp(`^\\s*${section}\\s*[：:]`, "m").test(body));
+  if (missing.length > 0) {
+    throw new Error(
+      `决策正文缺节：${missing.join("、")} —— 三段死模板（背景 / 判断标准 / 方案）缺一不可，每个方案带自己的代价`,
+    );
+  }
+}

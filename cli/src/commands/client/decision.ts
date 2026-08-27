@@ -1,5 +1,5 @@
 import type { Command } from "commander";
-import { addCommonClientOptions, apiPath, handleCommandError, printOutput, resolveCommandContext, type BaseClientOptions } from "./common.js";
+import { addCommonClientOptions, apiPath, assertDecisionBodyTemplate, handleCommandError, printOutput, resolveCommandContext, type BaseClientOptions } from "./common.js";
 import { readFile } from "node:fs/promises";
 
 interface DecisionOptionRow { id: string; label: string; description?: string | null; recommendedByAgentId?: string | null; recommendationReason?: string | null }
@@ -74,6 +74,7 @@ export function registerDecisionCommands(program: Command): void {
             title: string; body: string; decidedOptionId?: string;
             options: Array<DecisionOptionRow & { effects?: unknown[]; style?: string }>;
           };
+          assertDecisionBodyTemplate(payload.body);
           const issue = await ctx.api.get<{ id: string }>(apiPath`/api/issues/${opts.originIssue}`);
           if (!issue?.id) throw new Error(`Issue not found: ${opts.originIssue}`);
           const options = payload.options.map((option) => ({ ...option, effects: option.effects ?? [] }));

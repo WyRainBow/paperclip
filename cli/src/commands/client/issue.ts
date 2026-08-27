@@ -39,6 +39,7 @@ import {
   resolveCommandContext,
   type BaseClientOptions,
   type ResolvedClientContext,
+  assertDecisionBodyTemplate,
 } from "./common.js";
 import {
   buildFeedbackTraceQuery,
@@ -826,6 +827,7 @@ export function registerIssueCommands(program: Command): void {
           const issue = await ctx.api.get<Issue>(apiPath`/api/issues/${issueId}`);
           if (!issue) throw new Error(`Issue not found: ${issueId}`);
           const companyId = (issue as { companyId?: string }).companyId ?? ctx.companyId;
+          assertDecisionBodyTemplate(opts.body);
           if (!opts.option.length) throw new Error('at least one --option "<id>|<label>" is required');
           const parsed = opts.option.map(parseDecisionOption);
           if (opts.decided && !parsed.some((option) => option.id === opts.decided)) {
