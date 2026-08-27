@@ -400,7 +400,7 @@ export function DecisionCard({
       </div>
 
       {/* Provenance */}
-      <p className="mt-1 text-xs text-muted-foreground">
+      <p className="mt-1 flex flex-wrap items-center gap-x-3 text-xs text-muted-foreground">
         {/* The id is the handle the CLI and API address this decision by, so a
             reader can act on the card they are looking at without a lookup. */}
         <span className="font-mono" title={decision.id}>decision:{decision.id.slice(0, 8)}</span>
@@ -472,7 +472,7 @@ export function DecisionCard({
                 )
               )}
               {decision.decidedAt && (
-                <span className="tabular-nums text-muted-foreground"> · {absoluteTimestamp(decision.decidedAt)}</span>
+                <span className="tabular-nums text-muted-foreground">·{absoluteTimestamp(decision.decidedAt)}</span>
               )}
             </p>
           )}
