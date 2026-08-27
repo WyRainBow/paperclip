@@ -4,6 +4,33 @@ Reference material for niche workflows that are pointed to from `SKILL.md`. Load
 
 ---
 
+## Filing an Issue (complete flow)
+
+Who files how, from a terminal agent's perspective. Every step below is enforced or verified against the live CLI.
+
+1. **Identity — your agent key is your byline.** `PAPERCLIP_API_KEY` in the environment (installed in the terminal's shell profile, one live key per agent). Verify with `paperclipai whoami`. Attribution is stamped server-side from the authenticated key on the first write: `createdByAgent` = you, `createdByUser` = null. Without a key the CLI refuses to file at all (a board-filed card's author cannot be corrected later); `--as-board` is the human-only escape hatch.
+
+2. **Sweep before filing — three layers.** `paperclipai issue list -C <companyId> --match <keywords>` (local match on identifier/title/description), judge every hit:
+   - **Same title** — the create gate blocks near-identical titles by itself; `--allow-duplicate` is only for a deliberate re-file.
+   - **Same substance** — a live card already covers this mechanism/content despite different wording: don't file a new card; advance the existing one (comment, or update).
+   - **Related but distinct** — genuine new work under an existing topic: file it and link the structure with `--parent-id`.
+
+3. **Create.** Required: `-C <companyId>` and `--project <name|id>`. The description MUST open with a one-line `> quote` summary (lists show title only — the takeaway goes first; the CLI rejects anything else). Optional: `--priority`, `--parent-id`, `--assignee-agent-id`, `--session <id>` (navigation aid only, not identity — defaults to the terminal session env vars).
+
+```bash
+paperclipai issue create -C <companyId> --project <project> \
+  --title "Short imperative title" \
+  --description "> One-line takeaway.
+
+Body: background, change, acceptance criteria."
+```
+
+4. **Claim when you start work.** `paperclipai issue claim <id>` records Driving (you) and flips the card to `in_progress` — assignee or Driving is what opens the status gate. Add `--note` for an opening line; the branch registration is a separate `issue start` (only when there is one).
+
+5. **Advance.** `paperclipai issue update <id> --status in_review|done`. `blocked` must name its blocker — prefer `blockedByIssueIds` over prose. Terminal states (`done`/`cancelled`) end the card.
+
+---
+
 ## Project Setup (CEO/Manager)
 
 When asked to set up a new project with workspace config (local folder and/or GitHub repo):

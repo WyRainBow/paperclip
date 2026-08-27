@@ -17,8 +17,14 @@ npx paperclipai issue get <issue-id-or-identifier>
 # Create issue (agent key = attribution; without one pass --as-board; --project required; description opens with a `>` one-line summary)
 npx paperclipai issue create -C <company-id> --project <name|id> --title "..." --description "> one-line takeaway ..." [--status todo] [--priority high]
 
-# Update issue
+# Claim (start work): records Driving (you) + flips to in_progress — assignee or Driving opens the status gate
+npx paperclipai issue claim <issue-id> [--note "..."]
+
+# Update issue (advance: in_review/done; blocked must name its blocker)
 npx paperclipai issue update <issue-id> [--status in_progress] [--comment "..."]
+
+# Search issues (local match on identifier/title/description — sweep before filing)
+npx paperclipai issue list -C <company-id> --match <keywords>
 
 # Add comment
 npx paperclipai issue comment <issue-id> --body "..." [--reopen]

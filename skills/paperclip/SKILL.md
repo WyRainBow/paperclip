@@ -418,6 +418,7 @@ The responder submits verdicts with `POST /api/issues/{issueId}/interactions/{in
 
 Load `references/workflows.md` when the task matches one of these:
 
+- File a new issue from a terminal (complete flow: identity → three-layer sweep → create → claim → advance).
 - Set up a new project + workspace (CEO/Manager).
 - Generate an OpenClaw invite prompt (CEO).
 - Set or clear an agent's `instructions-path`.
