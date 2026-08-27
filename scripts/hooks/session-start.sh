@@ -25,9 +25,18 @@ if [ -n "$MAP" ]; then
   mkdir -p "$MIRROR_DIR" 2>/dev/null || true
   echo "$MAP" > "$MIRROR_FILE" 2>/dev/null || true
 
-  # Claude-family: JSON additionalContext
+  # Claude-family: additionalContext must be a STRING. Embedding $MAP raw
+  # nested the endpoint's {"mode","text"} object there instead, so the fetched
+  # Team Rules never reached the session. Extract .text first.
   if [ -n "${CLAUDE_CODE_SESSION_ID:-}" ] || [ -n "${CLAUDE_PROJECT_DIR:-}" ]; then
-    echo "{\"hookSpecificOutput\":{\"hookEventName\":\"SessionStart\",\"additionalContext\":${MAP}}}"
+    printf '%s' "$MAP" | python3 -c '
+import json, sys
+payload = json.load(sys.stdin)
+text = payload.get("text") if isinstance(payload, dict) else None
+if not text:
+    sys.exit(0)
+print(json.dumps({"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": text}}, ensure_ascii=False))
+'
   else
     # Codex/zcode/grok: plain text to stderr
     echo "$MAP" >&2

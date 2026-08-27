@@ -59,7 +59,7 @@ import { SourceResolvedFoldCallout } from "../components/SourceResolvedFoldCallo
 import { SourceResolvedFoldBadge } from "../components/SourceResolvedFoldBadge";
 import { readSourceResolvedWatchdogFold } from "../lib/source-resolved-watchdog-fold";
 import { buildSameOriginWebSocketUrl } from "../lib/websocket-url";
-import { formatCents, formatDate, relativeTime, formatTokens, visibleRunCostUsd } from "../lib/utils";
+import { formatCents, formatDate, relativeTime, formatTokens, visibleRunCostUsd, chineseTimestamp } from "../lib/utils";
 import { cn } from "../lib/utils";
 import { describeRunRetryState } from "../lib/runRetryState";
 import { Button } from "@/components/ui/button";
@@ -4495,6 +4495,14 @@ function KeysTab({ agentId, companyId }: { agentId: string; companyId?: string }
         <p className="text-xs text-muted-foreground">
           API Key 让这个 Agent 能以自己的身份调用 Paperclip 服务端。
         </p>
+        <p className="text-xs text-muted-foreground">
+          <span className="font-medium text-foreground">一个 Agent 只能有一把生效中的 Key。</span>
+          {" "}已经有一把还去创建会被服务端拒绝（409）——Key 就是这个 Agent 的终端身份凭证，
+          明文常驻在对应终端的 <code className="font-mono">~/.zshenv</code>（按终端分流，
+          Claude 会话只读 Claude 的 Key，Codex 只读 Codex 的），
+          再铸一把只会让旧的那把继续留在别人机器上生效。
+          丢了就先吊销下面那把，再创建新的。
+        </p>
         <div className="flex items-center gap-2">
           <Input
             placeholder="Key 名称（如 production）"
@@ -4508,12 +4516,18 @@ function KeysTab({ agentId, companyId }: { agentId: string; companyId?: string }
           <Button
             size="sm"
             onClick={() => createKey.mutate()}
-            disabled={createKey.isPending}
+            disabled={createKey.isPending || activeKeys.length > 0}
+            title={activeKeys.length > 0 ? "已有一把生效中的 Key，先吊销它再创建" : undefined}
           >
             <Plus className="h-3.5 w-3.5 mr-1" />
             创建
           </Button>
         </div>
+        {createKey.isError && (
+          <p className="text-xs text-destructive">
+            {createKey.error instanceof Error ? createKey.error.message : "创建 Key 失败"}
+          </p>
+        )}
       </div>
 
       {/* Active keys */}
@@ -4534,7 +4548,7 @@ function KeysTab({ agentId, companyId }: { agentId: string; companyId?: string }
                 <div>
                   <span className="text-sm font-medium">{key.name}</span>
                   <span className="text-xs text-muted-foreground ml-3">
-                    创建于 {formatDate(key.createdAt)}
+                    创建于 {chineseTimestamp(key.createdAt)}
                   </span>
                 </div>
                 <Button
@@ -4564,7 +4578,7 @@ function KeysTab({ agentId, companyId }: { agentId: string; companyId?: string }
                 <div>
                   <span className="text-sm line-through">{key.name}</span>
                   <span className="text-xs text-muted-foreground ml-3">
-                    吊销于 {key.revokedAt ? formatDate(key.revokedAt) : ""}
+                    吊销于 {key.revokedAt ? chineseTimestamp(key.revokedAt) : ""}
                   </span>
                 </div>
               </div>
