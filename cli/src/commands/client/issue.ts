@@ -248,7 +248,7 @@ async function autoClaimIfUnclaimed(ctx: ResolvedClientContext, issue: Issue): P
   const me = await ctx.api.get<{ id: string } | null>(apiPath`/api/agents/me`).catch(() => null);
   if (!me?.id) return;
   const drivingSession =
-    process.env.CLAUDE_CODE_SESSION_ID?.trim() || process.env.CODEX_SESSION_ID?.trim() || null;
+    process.env.CLAUDE_CODE_SESSION_ID?.trim() || process.env.CODEX_SESSION_ID?.trim() || process.env.ZCODE_SESSION_ID?.trim() || null;
   // Driving alone is the claim marker (same as the claim command's normal
   // path); assigneeAgentId is left untouched because cards default to
   // assigneeUserId=local-board and setting both trips the one-assignee rule.
@@ -479,6 +479,7 @@ export function registerIssueCommands(program: Command): void {
             opts.session?.trim() ||
             process.env.CLAUDE_CODE_SESSION_ID?.trim() ||
             process.env.CODEX_SESSION_ID?.trim() ||
+            process.env.ZCODE_SESSION_ID?.trim() ||
             undefined;
           const payload = createIssueSchema.parse({
             title: opts.title,
@@ -501,10 +502,31 @@ export function registerIssueCommands(program: Command): void {
           // 2. Backfill createdByAgentId if we can identify the agent
           // 3. Auto-assign so in_progress won't be blocked
           if (created) {
+            // Auto-detect agent from env vars and backfill attribution (MUL-63).
+            // Local dev: board anonymous + env var inference = no key needed.
             if (!created.createdByAgentId) {
-              // Only reachable via --as-board now; say so plainly rather than
-              // leaving the reader to notice "local-board" on the card later.
-              console.error("⚠ 这张卡没有 agent 作者（--as-board），Opened by 会显示 local-board。");
+              const detectedAgentName = process.env.CLAUDE_CODE_SESSION_ID
+                ? "Claude（Terminal）"
+                : process.env.CODEX_SESSION_ID
+                  ? "Codex（Terminal）"
+                  : process.env.ZCODE_SESSION_ID || process.env.ZCODE_SESSION
+                    ? "Zcode（Terminal）"
+                    : null;
+              if (detectedAgentName) {
+                try {
+                  const agents = (await ctx.api.get<Array<{ id: string; name: string }>>(
+                    apiPath`/api/companies/${ctx.companyId}/agents`,
+                  )) ?? [];
+                  const agent = agents.find((a) => a.name === detectedAgentName);
+                  if (agent) {
+                    await ctx.api.patch(apiPath`/api/issues/${created.id}`, { createdByAgentId: agent.id });
+                    created.createdByAgentId = agent.id;
+                  }
+                } catch { /* best-effort */ }
+              }
+            }
+            if (!created.createdByAgentId) {
+              console.error("⚠ 这张卡没有 agent 作者，Opened by 会显示 local-board。设 CLAUDE_CODE_SESSION_ID / CODEX_SESSION_ID / ZCODE_SESSION_ID 可自动识别。");
             }
             if (!created.assigneeAgentId && !created.assigneeUserId) {
               try {
@@ -593,6 +615,7 @@ export function registerIssueCommands(program: Command): void {
           const drivingSession =
             process.env.CLAUDE_CODE_SESSION_ID?.trim() ||
             process.env.CODEX_SESSION_ID?.trim() ||
+            process.env.ZCODE_SESSION_ID?.trim() ||
             null;
           const me = await ctx.api.get<{ id: string } | null>(apiPath`/api/agents/me`).catch(() => null);
           const drivingAgentId = me?.id ?? process.env.PAPERCLIP_AGENT_ID?.trim() ?? null;
@@ -659,6 +682,7 @@ export function registerIssueCommands(program: Command): void {
             opts.session?.trim() ||
             process.env.CLAUDE_CODE_SESSION_ID?.trim() ||
             process.env.CODEX_SESSION_ID?.trim() ||
+            process.env.ZCODE_SESSION_ID?.trim() ||
             null;
           const drivingPatch: Record<string, unknown> = {};
           // Structured branch column (MUL-59): the branch used to live only in
