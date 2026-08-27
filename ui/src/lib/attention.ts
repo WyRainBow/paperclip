@@ -201,11 +201,20 @@ function countNoun(count: number, singular: string): string {
 export function attentionDetailLine(item: AttentionItem): string | null {
   const detail = item.detail;
   if (!detail) return null;
+  // Review-queue items carry the issue title as their whole excerpt, so the
+  // row printed the same sentence twice (headline + "“headline”") and read as
+  // a decision with no body. A detail that only repeats the title is not a
+  // detail — honour the contract in the doc comment above and return null.
+  const normalize = (value: string | null | undefined) =>
+    (value ?? "").replace(/\s+/g, " ").replace(/[“”"]/g, "").trim();
+  const titleNorm = normalize(item.subject?.title ?? null);
+  const repeatsTitle = (value: string | null | undefined) =>
+    titleNorm.length > 0 && normalize(value) === titleNorm;
   switch (detail.kind) {
     case "plan_approval":
       return detail.planTitle?.trim() || quote(detail.summaryExcerpt);
     case "approval":
-      return quote(detail.summaryExcerpt);
+      return repeatsTitle(detail.summaryExcerpt) ? null : quote(detail.summaryExcerpt);
     case "confirmation":
       return quote(detail.promptExcerpt);
     case "checkbox_confirmation": {
@@ -242,7 +251,7 @@ export function attentionDetailLine(item: AttentionItem): string | null {
     case "budget":
       return `${Math.round(detail.observedPercent)}% of budget used ($${detail.amountObserved} / $${detail.amountLimit})`;
     case "generic":
-      return quote(detail.summaryExcerpt);
+      return repeatsTitle(detail.summaryExcerpt) ? null : quote(detail.summaryExcerpt);
     default:
       return null;
   }
