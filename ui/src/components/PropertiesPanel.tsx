@@ -9,16 +9,59 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 export function PropertiesPanel() {
   const { panelContent, panelVisible, setPanelVisible } = usePanel();
   const { enabled: classicTaskInterfaceEnabled } = useClassicTaskInterfaceEnabled();
+  // The classic panel was pinned at 320px, so long values (session ids, agent
+  // names, timestamps) had nowhere to go. It now shares the redesign's stored
+  // width and drag grip — same key, so the two interfaces stay in step.
+  const [classicWidth, setClassicWidth] = useState(() => clampPaneWidth(readStoredPaneWidth()));
+  const classicWidthRef = useRef(classicWidth);
+  classicWidthRef.current = classicWidth;
+  const classicDragRef = useRef<{ pointerId: number; startX: number; startWidth: number } | null>(null);
+
+  const onClassicGripDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    classicDragRef.current = { pointerId: event.pointerId, startX: event.clientX, startWidth: classicWidthRef.current };
+    document.body.style.userSelect = "none";
+  }, []);
+  const onClassicGripMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    const drag = classicDragRef.current;
+    if (drag === null || drag.pointerId !== event.pointerId) return;
+    // The grip is on the panel's LEFT border, so moving left widens it.
+    setClassicWidth(clampPaneWidth(drag.startWidth + (drag.startX - event.clientX)));
+  }, []);
+  const onClassicGripUp = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    const drag = classicDragRef.current;
+    if (drag === null || drag.pointerId !== event.pointerId) return;
+    classicDragRef.current = null;
+    document.body.style.userSelect = "";
+    persistPaneWidth(classicWidthRef.current);
+  }, []);
 
   if (!panelContent) return null;
 
   if (classicTaskInterfaceEnabled) {
     return (
       <aside
-        className="hidden md:flex border-l border-border bg-card flex-col shrink-0 overflow-hidden transition-(--tp-width-opacity) duration-200 ease-in-out h-full"
-        style={{ width: panelVisible ? 320 : 0, opacity: panelVisible ? 1 : 0 }}
+        className="hidden md:flex border-l border-border bg-card flex-row shrink-0 overflow-hidden h-full"
+        style={{ width: panelVisible ? classicWidth : 0, opacity: panelVisible ? 1 : 0 }}
       >
-        <div className="w-80 flex-1 flex flex-col min-w-(--sz-320px) min-h-0">
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize properties panel"
+          onPointerDown={onClassicGripDown}
+          onPointerMove={onClassicGripMove}
+          onPointerUp={onClassicGripUp}
+          onPointerCancel={onClassicGripUp}
+          onDoubleClick={() => {
+            setClassicWidth(clampPaneWidth(DEFAULT_PANE_WIDTH));
+            persistPaneWidth(clampPaneWidth(DEFAULT_PANE_WIDTH));
+          }}
+          className="w-1.5 shrink-0 cursor-col-resize bg-transparent transition-colors hover:bg-border"
+          title="拖动调整宽度，双击恢复默认"
+        />
+        <div className="flex min-w-0 flex-1 flex-col min-h-0">
           <div className="flex items-center justify-between px-4 py-2 border-b border-border">
             <span className="text-sm font-medium">Properties</span>
             <Button variant="ghost" size="icon-xs" onClick={() => setPanelVisible(false)}>

@@ -79,15 +79,15 @@ describe("PropertiesPanel", () => {
       });
     });
 
-    it("renders the fixed-width panel with no grip and no maximize button", async () => {
+    it("renders a resizable panel with a grip but still no maximize button", async () => {
       await renderPanel();
       const aside = container.querySelector("aside");
       expect(aside).not.toBeNull();
-      expect(aside!.style.width).toBe("320px");
-      expect(aside!.querySelector('[role="separator"]')).toBeNull();
+      // Shares the redesign's stored width instead of the old hardcoded 320px.
+      expect(aside!.style.width).toBe("322px");
+      expect(aside!.querySelector('[role="separator"]')).not.toBeNull();
+      // Maximize stays exclusive to the redesign panel.
       expect(container.querySelector('[aria-label="Maximize panel"]')).toBeNull();
-      // Inner wrapper keeps the hardcoded width classes exactly as today.
-      expect(aside!.querySelector(".w-80")).not.toBeNull();
     });
 
     it("collapses to width 0 when the panel is hidden", async () => {

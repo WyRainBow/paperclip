@@ -2592,11 +2592,6 @@ export function IssueProperties({
             )}
           </PropertyRow>
         ) : null}
-        {issue.startedAt && (
-          <PropertyRow label="Started">
-            <span className="text-sm">{formatDateTime(issue.startedAt)}</span>
-          </PropertyRow>
-        )}
         {issue.completedAt && (
           <PropertyRow label="完成时间">
             <span className="text-sm">{chineseTimestamp(issue.completedAt)}</span>
