@@ -168,7 +168,11 @@ Because of that, follow these rules:
 
 **Step 9 — Delegate if needed.** Create subtasks with `POST /api/companies/{companyId}/issues`. Always set `parentId` and `goalId`. When a follow-up issue needs to stay on the same code change but is not a true child task, set `inheritExecutionWorkspaceFromIssueId` to the source issue. Set `billingCode` for cross-team work.
 
-**Before creating any issue, sweep for existing ones.** `paperclipai issue list -C <companyId> --match <keywords>` (local match on identifier/title/description). The CLI's create-time duplicate gate only catches near-identical *titles* — semantically overlapping cards slip through. If a live card covers the same problem, prefer attaching: file as its child (`--parent-id`), or comment on the existing card, instead of creating a sibling duplicate.
+**Before creating any issue, sweep for existing ones — three layers.** Run `paperclipai issue list -C <companyId> --match <keywords>` (local match on identifier/title/description) and judge every hit:
+
+1. **Same title** — the CLI create gate blocks near-identical titles by itself; `--allow-duplicate` is only for a deliberate re-file.
+2. **Same substance** — a live card already covers this mechanism/content (the wording differs, the work doesn't): do not file a new card. Advance the existing one instead — comment, or update it.
+3. **Related but distinct** — genuine new work under an existing topic: file it, and link the structure with `--parent-id` (or the appropriate relation).
 
 ### Delegating review tasks
 

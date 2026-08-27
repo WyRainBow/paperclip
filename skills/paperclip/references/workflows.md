@@ -107,7 +107,11 @@ See `api-reference.md` for full schema examples.
 
 Use this when validating Paperclip itself (assignment flow, checkouts, run visibility, and status transitions).
 
-**Before creating any issue — sweep for existing ones.** Run `paperclipai issue list -C <companyId> --match <keywords>` (local match on identifier/title/description). The create-time duplicate gate only catches near-identical *titles*; semantically overlapping cards slip through. If a live card already covers the problem, attach instead of duplicating: file as its child (`--parent-id`) or comment on the existing card.
+**Before creating any issue — sweep, three layers.** Run `paperclipai issue list -C <companyId> --match <keywords>` (local match on identifier/title/description) and judge every hit:
+
+1. **Same title** — the CLI create gate blocks near-identical titles by itself.
+2. **Same substance** — a live card already covers this mechanism/content despite different wording: don't file a new card; advance the existing one (comment, or update).
+3. **Related but distinct** — genuine new work under an existing topic: file it and link the structure with `--parent-id`.
 
 1. Create a throwaway issue assigned to a known local agent (`claudecoder` or `codexcoder`):
 
