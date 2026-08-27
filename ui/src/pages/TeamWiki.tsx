@@ -42,9 +42,8 @@ const TOOL_COLORS: Record<string, string> = {
   zcode: "#2563eb",
 };
 function ToolBrandIcon({ tool }: { tool: string }) {
-  const color = TOOL_COLORS[tool];
-  if (!color) return null;
-  return <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: color }} aria-hidden />;
+  if (!TOOL_COLORS[tool]) return null;
+  return <img src={`/brands/${tool}.svg`} alt="" className="inline-block h-4 w-4 shrink-0 rounded-full" aria-hidden />;
 }
 
 const SPACE_META: Record<Space, { label: string; blurb: string }> = {
