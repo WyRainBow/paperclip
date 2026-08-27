@@ -404,7 +404,7 @@ export function DecisionCard({
         {/* The id is the handle the CLI and API address this decision by, so a
             reader can act on the card they are looking at without a lookup. */}
         <span className="font-mono" title={decision.id}>decision:{decision.id.slice(0, 8)}</span>
-        {"&ensp;·&ensp;"}
+        {" · "}
         Proposed by{" "}
         {(() => {
           const name = originAgentName ?? "";
@@ -425,11 +425,11 @@ export function DecisionCard({
           </>
         )}
         {decision.createdAt && (
-          <span className="tabular-nums">&ensp;·&ensp;{chineseTimestamp(decision.createdAt)}</span>
+          <span className="tabular-nums"> · {chineseTimestamp(decision.createdAt)}</span>
         )}
         {targetRefs.length > 0 && (
           <>
-            {"&ensp;·&ensp;applies to "}
+            {" · applies to "}
             {targetRefs.map(({ id, ref }, index) => (
               <span key={id}>
                 {index > 0 && ", "}
@@ -446,7 +446,7 @@ export function DecisionCard({
         )}
         {runHref && (
           <>
-            {"&ensp;·&ensp;"}
+            {" · "}
             <a href={runHref} className="hover:underline">view run</a>
           </>
         )}
