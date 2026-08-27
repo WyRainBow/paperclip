@@ -6,6 +6,19 @@ import { assertCompanyAccess } from "./authz.js";
 import { badRequest } from "../errors.js";
 
 const DEFAULT_BUDGET_CHARS = 2000;
+
+// CJK-aware token estimation (OV pattern): CJK chars ≈ 1.5 tokens,
+// ASCII ≈ 0.25 tokens. This is an estimate — the goal is budget
+// proportionality, not billing accuracy.
+function estimateTokens(text: string): number {
+  let cjk = 0;
+  let other = 0;
+  for (const ch of text) {
+    if (ch.charCodeAt(0) > 0x2e80) cjk++;
+    else other++;
+  }
+  return Math.ceil(cjk * 1.5 + other * 0.25);
+}
 const MAX_BUDGET_CHARS = 6000;
 const MAX_RESULTS = 8;
 
@@ -42,6 +55,8 @@ export function workspaceRecallRoutes(db: Db): Router {
       : DEFAULT_BUDGET_CHARS;
 
     if (mode === "directory") {
+      // OV-aligned: token-based budget, CJK-aware, 10000 token default
+      // (user 2026-08-26: match OpenViking's SessionStart budget)
       // Team Rules full text + asset directory needs more budget than
       // search snippets (user 2026-08-26: rules are mandatory reading)
       const wikiPages = await db
@@ -73,8 +88,12 @@ export function workspaceRecallRoutes(db: Db): Router {
       lines.push("查询正文：paperclipai workspace recall --query <关键词> [--budget N]");
 
       const mapText = lines.join("\n");
-      const truncated = mapText.length > budget ? mapText.slice(0, budget) + "…(截断)" : mapText;
-      res.json({ mode: "directory", text: truncated, budgetChars: budget, usedChars: truncated.length });
+      const tokenBudget = Math.max(budget, 2000); // directory mode uses larger budget
+      const usedTokens = estimateTokens(mapText);
+      const truncated = usedTokens > tokenBudget
+        ? mapText.slice(0, Math.floor(mapText.length * (tokenBudget / usedTokens))) + "\n…(token 预算截断)"
+        : mapText;
+      res.json({ mode: "directory", text: truncated, budgetTokens: tokenBudget, usedTokens, usedChars: truncated.length });
       return;
     }
 

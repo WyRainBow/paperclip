@@ -1,50 +1,35 @@
 #!/usr/bin/env bash
-# Paperclip SessionStart hook: inject a TeamWorkSpace asset directory map
-# into the session context (decision mul40.session-injection: inject-
-# directory-map, 2000 token cap, index only — no body content).
-#
-# Output: JSON with hookSpecificOutput.additionalContext for Claude-family
-# tools; plain text for others. The map lists Team Rules titles, Team Wiki
-# page paths + one-line summaries, TeamSkill names, and hooks status.
-# Ends with a recall instruction line.
-
+# Paperclip SessionStart hook: inject Team Rules full text + asset directory
+# into the session context. OV-aligned design (AGPLv3 — pattern reuse only):
+# token-based budget (CJK-aware, 10000 token default), injection mirrored
+# to ~/.paperclip/last_inject.md for audit.
 set -euo pipefail
 
 API_BASE="${PAPERCLIP_API_BASE:-http://localhost:3100}"
 COMPANY_ID="${PAPERCLIP_COMPANY_ID:-}"
-BUDGET="${PAPERCLIP_INJECT_BUDGET:-5000}"
+# Budget in characters (≈ tokens × ~4 for mixed CJK/ASCII)
+# OV uses 10000 tokens; we pass a proportional char budget to the endpoint
+BUDGET="${PAPERCLIP_INJECT_BUDGET:-10000}"
 
 if [ -z "$COMPANY_ID" ]; then
   exit 0
 fi
 
-# Build the directory map (server-side assembled, same recall endpoint but
-# with a "directory" mode that returns just titles+paths).
-MAP=$(curl -sf --max-time 3 "${API_BASE}/api/companies/${COMPANY_ID}/workspace/recall?q=&mode=directory&budget=${BUDGET}" 2>/dev/null) || exit 0
-[ -n "$MAP" ] || exit 0
+MAP=$(curl -sf --max-time 3 \
+  "${API_BASE}/api/companies/${COMPANY_ID}/workspace/recall?mode=directory&budget=${BUDGET}" 2>/dev/null) || exit 0
 
-if [ -n "${CLAUDE_CODE_SESSION_ID:-}" ] || [ -n "${CLAUDE_PROJECT_DIR:-}" ]; then
-  # Claude-family: additionalContext must be a STRING — extract the map's
-  # `text` field and re-serialize, instead of splicing the whole response
-  # object in (which fails the hook schema and drops the injection).
-  printf '%s' "$MAP" | python3 -c '
-import json, sys
-try:
-    text = json.load(sys.stdin).get("text", "")
-except Exception:
-    sys.exit(0)
-if text:
-    print(json.dumps({"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": text}}, ensure_ascii=False))
-' 2>/dev/null || exit 0
-else
-  # Codex/zcode/grok: plain text to stderr (picked up as context)
-  printf '%s' "$MAP" | python3 -c '
-import json, sys
-try:
-    text = json.load(sys.stdin).get("text", "")
-except Exception:
-    sys.exit(0)
-if text:
-    print(text, file=sys.stderr)
-' || exit 0
+if [ -n "$MAP" ]; then
+  # Mirror to file for audit (OV pattern: ~/.openviking/last_inject.md)
+  MIRROR_DIR="$HOME/.paperclip"
+  MIRROR_FILE="${MIRROR_DIR}/last_inject.md"
+  mkdir -p "$MIRROR_DIR" 2>/dev/null || true
+  echo "$MAP" > "$MIRROR_FILE" 2>/dev/null || true
+
+  # Claude-family: JSON additionalContext
+  if [ -n "${CLAUDE_CODE_SESSION_ID:-}" ] || [ -n "${CLAUDE_PROJECT_DIR:-}" ]; then
+    echo "{\"hookSpecificOutput\":{\"hookEventName\":\"SessionStart\",\"additionalContext\":${MAP}}}"
+  else
+    # Codex/zcode/grok: plain text to stderr
+    echo "$MAP" >&2
+  fi
 fi
