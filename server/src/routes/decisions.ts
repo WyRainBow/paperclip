@@ -195,14 +195,12 @@ export function decisionRoutes(db: Db, options: DecisionServiceOptions) {
     const decision = await getAccessibleResource(req, res, svc.get(req.params.id as string), "Decision not found");
     if (!decision) return;
     if (req.actor.type === "agent" && req.actor.agentId && req.actor.companyId === decision.companyId) {
-      // Agent-resolvable decisions exist so mutually-made terminal decisions
-      // (claude/codex talking in the operator's shell) can be archived with
-      // the deciding agent's identity. Board-created governance decisions keep
-      // resolverPolicy "board" and never enter this branch.
-      if (decision.resolverPolicy !== "agents") {
-        res.status(403).json({ error: "Only the board may decide this decision", code: "board_resolver_only" });
-        return;
-      }
+      // Any company agent may decide, whatever the resolverPolicy (user
+      // 2026-08-27): the operator relays their verdicts through terminal
+      // agents, so "board only" in practice meant "laundered through
+      // local-board with the agent invisible". The verdict is signed by the
+      // agent that performed it; resolverPolicy stays on the record as the
+      // proposer's intent, not as a gate.
       res.json(await svc.decide({
         id: decision.id,
         decidedByAgentId: req.actor.agentId,

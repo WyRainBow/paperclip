@@ -484,7 +484,10 @@ export function decisionService(db: Db, options: DecisionServiceOptions) {
         // The proposer signed these effects and opted into agent resolution
         // (resolverPolicy "agents"), so a peer-agent resolver may land them;
         // the origin-side access checks above still apply either way.
-        const agentResolverAllowed = decision.resolverPolicy === "agents" && decidedByAgentId != null;
+        // Agents may now decide regardless of resolverPolicy (user 2026-08-27),
+        // so an agent-signed verdict clears the resolver check on its own —
+        // the origin-side access checks above still gate every effect.
+        const agentResolverAllowed = decidedByAgentId != null;
         if (agentResolverAllowed) {
           userAccess = { allowed: true, reason: "allow_agent_resolver" };
         } else if (effect.type === "assign_issue" || (effect.type === "create_issue" && (effect.draft.assigneeAgentId || effect.draft.assigneeUserId))) {
