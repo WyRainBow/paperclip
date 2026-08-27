@@ -588,7 +588,7 @@ describe("IssueDocumentsSection", () => {
     await flush();
 
     const revisionButton = Array.from(container.querySelectorAll("button"))
-      .find((button) => button.textContent?.includes("rev 4"));
+      .find((button) => button.textContent?.includes("revision 4"));
     expect(revisionButton).toBeTruthy();
 
     await act(async () => {
@@ -658,7 +658,7 @@ describe("IssueDocumentsSection", () => {
     expect(container.textContent).not.toContain("Restored plan body");
 
     const revisionButtons = Array.from(container.querySelectorAll("button"));
-    const historicalRevisionButton = revisionButtons.find((button) => button.textContent?.includes("rev 3"));
+    const historicalRevisionButton = revisionButtons.find((button) => button.textContent?.includes("revision 3"));
     expect(historicalRevisionButton).toBeTruthy();
 
     await act(async () => {
@@ -735,7 +735,7 @@ describe("IssueDocumentsSection", () => {
     expect(container.textContent).toContain("Current plan body");
 
     const revisionButtons = Array.from(container.querySelectorAll("button"));
-    const historicalRevisionButton = revisionButtons.find((button) => button.textContent?.includes("rev 3"));
+    const historicalRevisionButton = revisionButtons.find((button) => button.textContent?.includes("revision 3"));
     expect(historicalRevisionButton).toBeTruthy();
 
     await act(async () => {
@@ -746,7 +746,7 @@ describe("IssueDocumentsSection", () => {
     expect(container.textContent).toContain("Historical plan body");
 
     const currentRevisionButton = Array.from(container.querySelectorAll("button"))
-      .find((button) => button.textContent?.includes("rev 4"));
+      .find((button) => button.textContent?.includes("revision 4"));
     expect(currentRevisionButton).toBeTruthy();
 
     await act(async () => {
@@ -814,7 +814,7 @@ describe("IssueDocumentsSection", () => {
     expect(container.textContent).toContain("Current plan body");
 
     const revisionButtons = Array.from(container.querySelectorAll("button"));
-    const historicalRevisionButton = revisionButtons.find((button) => button.textContent?.includes("rev 2"));
+    const historicalRevisionButton = revisionButtons.find((button) => button.textContent?.includes("revision 2"));
     expect(historicalRevisionButton).toBeTruthy();
 
     await act(async () => {
@@ -825,7 +825,7 @@ describe("IssueDocumentsSection", () => {
     expect(container.textContent).toContain("Original plan body");
 
     const currentRevisionButton = Array.from(container.querySelectorAll("button"))
-      .find((button) => button.textContent?.includes("rev 3"));
+      .find((button) => button.textContent?.includes("revision 3"));
     expect(currentRevisionButton).toBeTruthy();
 
     await act(async () => {

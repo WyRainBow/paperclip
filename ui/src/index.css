@@ -275,8 +275,10 @@
   --tc-thread-max-h: calc(100dvh - 8rem);
 
   /* Redesigned chat-shell column cap (phase 2c): one token caps the page
-     wrapper, thread body, and pinned composer so they widen in lockstep. */
-  --tc-shell-max-w: 60rem;
+     wrapper, thread body, and pinned composer so they widen in lockstep.
+     Widened 60rem → 72rem (user 2026-08-27): document cards carry tables and
+     long spec bodies, and 60rem wrapped them harder than the content needed. */
+  --tc-shell-max-w: 72rem;
 
   /* Mobile pinned-composer bottom offset (PAP-495). Default clears just the
      safe-area inset (+20px); Layout raises it to the bottom-nav height

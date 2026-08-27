@@ -131,7 +131,7 @@ export function DocumentFrameHeader({
                     revisionMenu.historicalPreview && "text-amber-700 hover:text-amber-800 dark:text-amber-300 dark:hover:text-amber-200",
                   )}
                 >
-                  rev {revisionMenu.displayedRevisionNumber}
+                  revision {revisionMenu.displayedRevisionNumber}
                   <ChevronDown className="h-3 w-3" />
                 </Button>
               </DropdownMenuTrigger>
@@ -152,7 +152,7 @@ export function DocumentFrameHeader({
                         >
                           <div className="flex min-w-0 flex-col">
                             <div className="flex items-center gap-2">
-                              <span className="font-medium">rev {revision.revisionNumber}</span>
+                              <span className="font-medium">revision {revision.revisionNumber}</span>
                               {isCurrentRevision ? (
                                 <Badge variant="outline" className="border-border px-1.5 text-(length:--text-nano) uppercase tracking-(--tracking-eyebrow) text-muted-foreground">
                                   Current
@@ -181,11 +181,12 @@ export function DocumentFrameHeader({
               className="shrink-0 font-mono text-(length:--text-micro) text-muted-foreground"
               title={documentId}
             >
-              doc:{documentId.slice(0, 8)}
+              docID: {documentId.slice(0, 8)}
             </span>
           ) : null}
           {createdBy ? (
             <span className="flex shrink-0 items-center gap-1 text-(length:--text-micro) text-muted-foreground">
+              创建人：
               <RevisionActorAvatar actor={createdBy} />
               <span className="truncate">{createdBy.name}</span>
             </span>
@@ -195,7 +196,7 @@ export function DocumentFrameHeader({
               href={updatedHref ?? `#document-${encodeURIComponent(documentKey)}`}
               className="truncate text-(length:--text-micro) text-muted-foreground transition-colors hover:text-foreground hover:underline"
             >
-              updated {relativeTime(updatedAt)}
+              最新更新时间：{relativeTime(updatedAt)}
             </a>
           ) : null}
           {annotationSlot}

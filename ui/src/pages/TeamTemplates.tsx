@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { cn } from "@/lib/utils";
+import { copyTextToClipboard } from "@/lib/clipboard";
 import { FileText, GitBranch, Scale, ClipboardList, Send } from "lucide-react";
 
 /**
@@ -307,7 +308,7 @@ export function TeamTemplates() {
             <pre className="mt-3 max-h-[60vh] overflow-auto whitespace-pre-wrap rounded-lg bg-muted/30 p-4 font-mono text-xs leading-5">{active.body}</pre>
             <button
               type="button"
-              onClick={() => navigator.clipboard.writeText(active.body)}
+              onClick={() => { void copyTextToClipboard(active.body); }}
               className="mt-3 rounded-md border border-border px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             >
               复制模板

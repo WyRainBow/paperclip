@@ -56,7 +56,8 @@ describe("TaskChatSystemNotice (PAP-443)", () => {
     const button = toggleButton();
     expect(button.getAttribute("aria-expanded")).toBe("false");
     expect(button.textContent).toContain("Task paused — a secret/config binding is missing");
-    expect(button.textContent).toContain("5m ago");
+    // Absolute since 2026-08-27; match the 月/日 时:分 shape, not a fixed string.
+    expect(button.textContent).toMatch(/\d+月\d+日 \d{2}:\d{2}/);
     expect(container.textContent).not.toContain("source-scoped recovery action");
     expect(
       container.querySelector('[data-testid="task-chat-system-notice-details"]'),
