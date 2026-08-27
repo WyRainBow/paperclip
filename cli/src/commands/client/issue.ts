@@ -254,6 +254,33 @@ function parseDecisionOption(spec: string): { id: string; label: string } {
   return { id, label };
 }
 
+/**
+ * 认领防漏（MUL-72）: an agent writing progress or advancing status on an
+ * unclaimed card (no assignee AND no Driving) auto-claims it first — the
+ * server now 409s such writes, and this keeps the CLI path frictionless.
+ * Board callers (no /api/agents/me) are untouched.
+ */
+async function autoClaimIfUnclaimed(ctx: ResolvedClientContext, issue: Issue): Promise<void> {
+  if (issue.assigneeAgentId || issue.drivingAgentId) return;
+  const me = await ctx.api.get<{ id: string } | null>(apiPath`/api/agents/me`).catch(() => null);
+  if (!me?.id) return;
+  const drivingSession =
+    process.env.CLAUDE_CODE_SESSION_ID?.trim() || process.env.CODEX_SESSION_ID?.trim() || null;
+  // Driving alone is the claim marker (same as the claim command's normal
+  // path); assigneeAgentId is left untouched because cards default to
+  // assigneeUserId=local-board and setting both trips the one-assignee rule.
+  try {
+    await ctx.api.patch<Issue>(apiPath`/api/issues/${issue.id}`, {
+      drivingAgentId: me.id,
+      ...(drivingSession ? { drivingSession } : {}),
+    });
+    console.error(`auto-claimed ${issue.identifier ?? issue.id}（Driving 记为本 agent）`);
+    issue.drivingAgentId = me.id;
+  } catch (err) {
+    console.error(`auto-claim failed for ${issue.identifier ?? issue.id}: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
 export function registerIssueCommands(program: Command): void {
   const issue = program.command("issue").description("Issue operations");
 
@@ -546,6 +573,10 @@ export function registerIssueCommands(program: Command): void {
             hiddenAt: parseHiddenAt(opts.hiddenAt),
           });
 
+          if (opts.status && !opts.assigneeAgentId) {
+            const existing = await ctx.api.get<Issue>(apiPath`/api/issues/${issueId}`).catch(() => null);
+            if (existing) await autoClaimIfUnclaimed(ctx, existing);
+          }
           const updated = await ctx.api.patch<Issue & { comment?: IssueComment | null }>(apiPath`/api/issues/${issueId}`, payload);
           printOutput(updated, { json: ctx.json });
         } catch (err) {
@@ -567,29 +598,15 @@ export function registerIssueCommands(program: Command): void {
           const issue = await ctx.api.get<Issue>(apiPath`/api/issues/${issueId}`);
           if (!issue) throw new Error(`Issue not found: ${issueId}`);
           let updated: Issue | null = issue;
-          if (issue.status !== opts.status) {
-            try {
-              updated = await ctx.api.patch<Issue>(apiPath`/api/issues/${issue.id}`, { status: opts.status });
-            } catch (err) {
-              // in_progress requires an assignee; agent callers self-assign, board
-              // callers get a hint.
-              const message = err instanceof Error ? err.message : String(err);
-              if (!message.includes("require an assignee")) throw err;
-              const me = await ctx.api.get<Issue & { id: string; name?: string }>(apiPath`/api/agents/me`).catch(() => null);
-              if (!me?.id) {
-                throw new Error("in_progress requires an assignee; assign one first or run this with --api-key as the claiming agent");
-              }
-              updated = await ctx.api.patch<Issue>(apiPath`/api/issues/${issue.id}`, {
-                status: opts.status,
-                assigneeAgentId: me.id,
-              });
-            }
-          }
           // 接卡即开工（user 2026-08-27）: Driving records the claiming agent.
           // Sub-agents it dispatches are its implementation detail and are not
           // recorded anywhere; a new claimant overwrites Driving, which is the
           // intended handover semantics. Auto-filled here because 15 of 18
           // started cards simply had nobody remember to run `issue start`.
+          // Driving is patched BEFORE status: the server 409s an agent
+          // advancing an unclaimed card (MUL-72), and Driving is the claim
+          // marker that opens that gate. Self-assigning instead trips the
+          // one-assignee rule (cards default to assigneeUserId=local-board).
           const drivingSession =
             process.env.CLAUDE_CODE_SESSION_ID?.trim() ||
             process.env.CODEX_SESSION_ID?.trim() ||
@@ -601,6 +618,9 @@ export function registerIssueCommands(program: Command): void {
             if (drivingSession) drivingPatch.drivingSession = drivingSession;
             if (drivingAgentId) drivingPatch.drivingAgentId = drivingAgentId;
             updated = await ctx.api.patch<Issue>(apiPath`/api/issues/${issue.id}`, drivingPatch).catch(() => updated);
+          }
+          if (issue.status !== opts.status) {
+            updated = await ctx.api.patch<Issue>(apiPath`/api/issues/${issue.id}`, { status: opts.status });
           }
           const lines = [`接卡：${issue.identifier} → ${opts.status}（by claim command）`];
           if (drivingAgentId || drivingSession) lines.push(`Driving：${drivingAgentId ?? "?"}${drivingSession ? ` · 会话 ${drivingSession}` : ""}`);
@@ -945,6 +965,7 @@ export function registerIssueCommands(program: Command): void {
           const ctx = resolveCommandContext(opts);
           const issue = await ctx.api.get<Issue>(apiPath`/api/issues/${issueId}`);
           if (!issue) throw new Error(`Issue not found: ${issueId}`);
+          await autoClaimIfUnclaimed(ctx, issue);
           const comment = await ctx.api.post<IssueComment>(apiPath`/api/issues/${issue.id}/comments`, {
             body: text,
             presentation: { kind: "progress_note", tone: opts.tone },

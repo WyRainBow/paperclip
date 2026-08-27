@@ -9491,6 +9491,27 @@ export function issueRoutes(
     await assertIssueEnvironmentSelection(existing.companyId, updateFields.executionWorkspaceSettings?.environmentId);
     const requestedAssigneeAgentId =
       normalizedAssigneeAgentId === undefined ? existing.assigneeAgentId : normalizedAssigneeAgentId;
+    // Unclaimed cards (no assignee AND no Driving) must be claimed before an
+    // agent advances them — otherwise finished work shows "Driving Unclaimed"
+    // in the ledger (user 2026-08-27, MUL-72). A patch that itself assigns or
+    // records Driving (the claim flow) passes.
+    const advancingStatusRequested =
+      typeof updateFields.status === "string" &&
+      updateFields.status !== existing.status &&
+      ["in_progress", "in_review", "done"].includes(updateFields.status);
+    if (
+      req.actor.type === "agent" &&
+      advancingStatusRequested &&
+      requestedAssigneeAgentId == null &&
+      existing.drivingAgentId == null &&
+      updateFields.drivingAgentId == null
+    ) {
+      res.status(409).json({
+        error: "Unclaimed issue: advancing status require an assignee or Driving — run `issue claim` first",
+        details: { issueId: existing.id, requestedStatus: updateFields.status },
+      });
+      return;
+    }
     const explicitMoveToTodoRequested = reopenRequested || resumeRequested === true;
     const recoveryRelevantSourceMutationRequested =
       req.body.status !== undefined ||
@@ -12183,6 +12204,21 @@ export function issueRoutes(
       presentation: req.body.presentation,
       metadata: req.body.metadata,
     })) return;
+    // Progress notes are work-ledger entries: an agent filing one on an
+    // unclaimed card (no assignee AND no Driving) skipped the claim step, so
+    // the ledger would show work by nobody (user 2026-08-27, MUL-72).
+    if (
+      req.actor.type === "agent" &&
+      (req.body.presentation as { kind?: unknown } | null | undefined)?.kind === "progress_note" &&
+      issue.assigneeAgentId == null &&
+      issue.drivingAgentId == null
+    ) {
+      res.status(409).json({
+        error: "Unclaimed issue: progress notes require an assignee or Driving — run `issue claim` first",
+        details: { issueId: issue.id },
+      });
+      return;
+    }
     const closedExecutionWorkspace = await getClosedIssueExecutionWorkspace(issue);
 
     const actor = getActorInfo(req);
