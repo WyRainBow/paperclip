@@ -4984,7 +4984,7 @@ describe("company portability", () => {
     const presentation = { kind: "system_notice", tone: "warning", detailsDefaultOpen: false };
     const metadata = {
       version: 1,
-      sections: [{ rows: [{ type: "key_value", label: "Cause", value: "successful_run_missing_state" }] }],
+      sections: [{ rows: [{ type: "key_value", label: "原因", value: "successful_run_missing_state" }] }],
     };
 
     projectSvc.list.mockResolvedValue([]);

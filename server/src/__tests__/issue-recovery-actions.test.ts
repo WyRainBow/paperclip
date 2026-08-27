@@ -1378,7 +1378,7 @@ describeEmbeddedPostgres("issue recovery actions", () => {
     expect(escalationComments[0]?.presentation).toMatchObject({
       kind: "system_notice",
       tone: "danger",
-      title: "Workspace validation failed",
+      title: "工作区校验失败",
     });
     expect(enqueueWakeup).not.toHaveBeenCalled();
   });

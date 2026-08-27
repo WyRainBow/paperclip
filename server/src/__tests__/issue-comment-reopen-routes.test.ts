@@ -1127,7 +1127,7 @@ describe.sequential("issue comment reopen routes", () => {
       presentation: { kind: "system_notice", tone: "warning", detailsDefaultOpen: false },
       metadata: {
         version: 1,
-        sections: [{ rows: [{ type: "key_value", label: "Cause", value: "successful_run_missing_state" }] }],
+        sections: [{ rows: [{ type: "key_value", label: "原因", value: "successful_run_missing_state" }] }],
       },
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -1136,7 +1136,7 @@ describe.sequential("issue comment reopen routes", () => {
 
     const metadata = {
       version: 1,
-      sections: [{ rows: [{ type: "key_value", label: "Cause", value: "successful_run_missing_state" }] }],
+      sections: [{ rows: [{ type: "key_value", label: "原因", value: "successful_run_missing_state" }] }],
     };
     const presentation = { kind: "system_notice", tone: "warning" };
     const res = await request(app)
@@ -1173,7 +1173,7 @@ describe.sequential("issue comment reopen routes", () => {
         presentation: { kind: "system_notice", tone: "warning" },
         metadata: {
           version: 1,
-          sections: [{ rows: [{ type: "key_value", label: "Cause", value: "covert_channel_attempt" }] }],
+          sections: [{ rows: [{ type: "key_value", label: "原因", value: "covert_channel_attempt" }] }],
         },
       });
 

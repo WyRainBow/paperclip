@@ -54,7 +54,7 @@ export type RecoveryResolveOutcome =
   | "false_positive_in_review";
 
 /**
- * Payload for the "Re-issue on isolated workspace" action (workspace_validation only).
+ * Payload for the "在隔离工作区重开" action (workspace_validation only).
  * The caller composes an isolated-workspace re-issue whose git worktree bases off `baseRef`
  * — the live (checked-out) branch that diverged, or its HEAD sha when the branch is detached.
  */
@@ -79,7 +79,7 @@ export interface IssueRecoveryActionCardProps {
   /** Optional click handler for resolve menu actions. If omitted, the buttons are not rendered. */
   onResolve?: (outcome: RecoveryResolveOutcome) => void;
   /**
-   * Optional handler for the workspace_validation "Re-issue on isolated workspace" action.
+   * Optional handler for the workspace_validation "在隔离工作区重开" action.
    * Rendered only for a git-worktree branch-incoherence divergence with a resolvable live ref.
    * If omitted, the re-issue button is not shown.
    */
@@ -128,30 +128,30 @@ export interface IssueRecoveryActionCardProps {
 }
 
 const KIND_LABEL: Record<IssueRecoveryActionKind, string> = {
-  missing_disposition: "Missing Disposition",
-  deliberate_wait_without_target: "Wait Without A Target",
-  stranded_assigned_issue: "Stranded Task",
-  workspace_validation: "Workspace Validation",
-  configuration_validation: "Configuration Validation",
-  active_run_watchdog: "Active Watchdog",
-  issue_graph_liveness: "Task Needs Next Step",
+  missing_disposition: "缺少处置结论",
+  deliberate_wait_without_target: "等待但没有等待对象",
+  stranded_assigned_issue: "搁浅的卡",
+  workspace_validation: "工作区校验",
+  configuration_validation: "配置校验",
+  active_run_watchdog: "活跃看门狗",
+  issue_graph_liveness: "卡需要下一步",
 };
 
 const KIND_HEADLINE: Record<IssueRecoveryActionKind, string> = {
   missing_disposition:
-    "This task's run finished, but no next step was chosen. Choose what happens next — try the task again, mark it done, or send it for review.",
+    "这张卡的运行结束了，但没人选下一步。请选择重试、标记完成，或者送去评审。",
   deliberate_wait_without_target:
     "This task's last run stopped to wait, but there is no reviewer, blocker, monitor, or approval to wait for. Paperclip is repairing the next step; the task stays with its owner.",
   stranded_assigned_issue:
-    "Paperclip retried this task's last run, but there is still no queued run, reviewer, blocker, or other next owner. To get it moving, choose what happens next — try the task again, mark it done, or send it for review.",
+    "Paperclip 重试了这张卡的最近一次运行，但仍然没有排队的运行、评审人、阻塞项或下一个负责人。要让它动起来，请选择重试、标记完成，或者送去评审。",
   workspace_validation:
-    "Paperclip stopped this run because the task's git workspace could not be validated.",
+    "这张卡的 git 工作区校验没过，Paperclip 停掉了这次运行。",
   configuration_validation:
     "Paperclip stopped before dispatching this run because required secret/env bindings are missing.",
   active_run_watchdog:
-    "The active run has been silent. Recovery is observing without interrupting it.",
+    "活跃运行一直没有动静。恢复机制在旁观，没有打断它。",
   issue_graph_liveness:
-    "Paperclip could not find a clear next step for this open task. Choose whether to continue work, send it for review, mark it done, or record what is blocking it.",
+    "这张未关闭的卡，Paperclip 找不到明确的下一步。请选择继续做、送评审、标记完成，还是记录卡在哪。",
 };
 
 /** Shared shell for the retry-timing pill so every timing state reads as the same control. */
@@ -168,7 +168,7 @@ const STATE_TONE: Record<RecoveryCardCardState, {
   divider: string;
 }> = {
   needed: {
-    label: "RECOVERY NEEDED",
+    label: "需要恢复",
     containerClass:
       "border-amber-300/70 bg-amber-50/85 text-amber-950 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100",
     iconWrapClass: "bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-200",
@@ -178,7 +178,7 @@ const STATE_TONE: Record<RecoveryCardCardState, {
     divider: "border-amber-300/60 dark:border-amber-500/30",
   },
   in_progress: {
-    label: "RECOVERY IN PROGRESS",
+    label: "恢复进行中",
     containerClass:
       "border-sky-300/70 bg-sky-50/80 text-sky-950 dark:border-sky-500/40 dark:bg-sky-500/10 dark:text-sky-100",
     iconWrapClass: "bg-sky-100 text-sky-800 dark:bg-sky-500/20 dark:text-sky-200",
@@ -188,7 +188,7 @@ const STATE_TONE: Record<RecoveryCardCardState, {
     divider: "border-sky-300/60 dark:border-sky-500/30",
   },
   observe_only: {
-    label: "OBSERVING ACTIVE RUN",
+    label: "正在观察活跃运行",
     containerClass:
       "border-border bg-muted/40 text-foreground dark:bg-muted/20",
     iconWrapClass: "bg-muted text-foreground/70",
@@ -198,7 +198,7 @@ const STATE_TONE: Record<RecoveryCardCardState, {
     divider: "border-border/70",
   },
   escalated: {
-    label: "RECOVERY ESCALATED",
+    label: "恢复已升级",
     containerClass:
       "border-red-400/60 bg-red-50/85 text-red-950 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-100",
     iconWrapClass: "bg-red-100 text-red-800 dark:bg-red-500/20 dark:text-red-200",
@@ -208,7 +208,7 @@ const STATE_TONE: Record<RecoveryCardCardState, {
     divider: "border-red-400/50 dark:border-red-500/30",
   },
   resolved: {
-    label: "RECOVERY RESOLVED",
+    label: "恢复已完成",
     containerClass:
       "border-emerald-300/70 bg-emerald-50/80 text-emerald-950 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-100",
     iconWrapClass: "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-200",
@@ -394,15 +394,15 @@ const ANCESTRY_BADGE: Record<
   { label: string; className: string }
 > = {
   ancestor: {
-    label: "Forward-only",
+    label: "只能向前",
     className: "border-emerald-400/50 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
   },
   diverged: {
-    label: "Diverged",
+    label: "已分叉",
     className: "border-red-400/50 bg-red-500/10 text-red-700 dark:text-red-300",
   },
   unknown: {
-    label: "Ancestry unknown",
+    label: "来源不明",
     className: "border-border bg-muted/60 text-muted-foreground",
   },
 };
@@ -614,7 +614,7 @@ function BreakGlassOverride({
             onConfirm(trimmedReason);
           }}
         >
-          {pending ? "Reconciling…" : "Reconcile anyway (break-glass)"}
+          {pending ? "Reconciling…" : "强行对账（破窗操作）"}
         </Button>
       </PopoverContent>
     </Popover>
@@ -645,7 +645,7 @@ function RepairWorkspace({
   const dirtyCount = divergence.dirtyFileCount;
   const dirtyLabel =
     dirtyCount === null
-      ? "Uncommitted changes"
+      ? "有未提交的改动"
       : `${dirtyCount} uncommitted ${dirtyCount === 1 ? "change" : "changes"}`;
   const trigger = (
     <Button
@@ -758,17 +758,17 @@ function readWakePolicySummary(action: IssueRecoveryAction): string | null {
   if (!policy) return null;
   const type = readEvidenceString(policy.type);
   if (!type) return null;
-  if (type === "wake_owner") return "An agent will be asked to choose the next step";
+  if (type === "wake_owner") return "会请一个 Agent 来决定下一步";
   if (type === "bounded_owner_disposition_repair") {
-    return "Paperclip is retrying the original owner";
+    return "Paperclip 正在重试原负责人";
   }
-  if (type === "bounded_recovery_owner") return "A recovery owner is repairing the next step";
-  if (type === "board_escalation") return "Board decision required";
-  if (type === "manual") return "Manual follow-up needed";
-  if (type === "manual_repair_required") return "Repair needed before retry";
+  if (type === "bounded_recovery_owner") return "恢复负责人正在修复下一步";
+  if (type === "board_escalation") return "需要 board 拍板";
+  if (type === "manual") return "需要人工跟进";
+  if (type === "manual_repair_required") return "重试前需要先修复";
   if (type === "monitor") {
     const interval = readEvidenceString(policy.intervalLabel);
-    return interval ? `Check scheduled · ${interval}` : "Check scheduled";
+    return interval ? `Check scheduled · ${interval}` : "已排定检查";
   }
   return type.replaceAll("_", " ");
 }
@@ -904,17 +904,17 @@ function lineageHeadline(lineage: RecoveryRetryLineage): string {
   // An attempt that came due and never ran leaves nobody working on this task, even though
   // attempts remain on paper. Say so before any lane wording that ends in "no action needed".
   if (lineage.retryExpired) {
-    return "This task's automatic retry came due and did not run, so nothing is moving it forward right now. Someone must retry it or record the next step. The task stays with its original owner.";
+    return "这张卡的自动重试到点了却没跑，所以现在没有任何东西在推进它。需要有人重试或者记录下一步。卡仍然归原负责人。";
   }
   if (lineage.lane === "source_owner") {
     return lineage.exhausted
-      ? "This task's last run stopped to wait, but nothing was waiting for it. The original owner has used every automatic repair attempt, so the next step needs a decision. The task stays with its owner."
-      : "This task's last run stopped to wait, but nothing was waiting for it. Paperclip is retrying the original owner to record a real next step. The task stays with its owner, and no action is needed yet.";
+      ? "这张卡的最近一次运行停下来等待，但没有任何东西在等它。原负责人已经用完全部自动修复机会，下一步需要有人拍板。卡仍然归原负责人。"
+      : "这张卡的最近一次运行停下来等待，但没有任何东西在等它。Paperclip 正在重试原负责人，好记录一个真实的下一步。卡仍然归原负责人，暂时不用你做什么。";
   }
   if (lineage.lane === "recovery_owner") {
-    return "The original owner could not record a next step within its retry budget. A recovery owner is now repairing the path only — the task itself still belongs to its original owner.";
+    return "原负责人在重试额度内没能记录下一步。现在由恢复负责人只负责修复路径，卡本身仍然归原负责人。";
   }
-  return "Automatic recovery is exhausted, so the board must choose the next step. The task itself still belongs to its original owner.";
+  return "自动恢复已经用尽，下一步要由 board 决定。卡本身仍然归原负责人。";
 }
 
 /** Spent/remaining attempts as pips. The readable count lives beside it in text. */
@@ -945,30 +945,30 @@ const RESOLVE_OPTIONS: Array<{
 }> = [
   {
     outcome: "todo",
-    label: "Try again",
-    description: "Dismiss recovery and return the source task to todo.",
+    label: "重试",
+    description: "关掉恢复，并把来源卡退回待办。",
   },
   {
     outcome: "done",
-    label: "Mark task done",
-    description: "Restore by recording the requested work as complete.",
+    label: "标记为已完成",
+    description: "把要求的工作记为已完成来恢复。",
   },
   {
     outcome: "in_review",
-    label: "Send for review",
-    description: "Hand off to a reviewer with a real review path.",
+    label: "送去评审",
+    description: "交给一个有真实评审路径的评审人。",
   },
   {
     outcome: "false_positive_done",
-    label: "False positive, done",
-    description: "Dismiss recovery and mark the source task complete.",
+    label: "误报，已完成",
+    description: "关掉恢复，并把来源卡标记为已完成。",
     destructive: true,
     boardOnly: true,
   },
   {
     outcome: "false_positive_in_review",
-    label: "False positive, review",
-    description: "Dismiss recovery and send the source task for review.",
+    label: "误报，转评审",
+    description: "关掉恢复，并把来源卡送去评审。",
     destructive: true,
     boardOnly: true,
   },
@@ -1010,9 +1010,9 @@ export function IssueRecoveryActionCard({
   // A lane with no path left must not keep advertising a retry that will never run — whether
   // the budget ran out or the scheduled attempt simply never fired.
   const wakeSummary = lineage?.retryExpired
-    ? "The scheduled retry did not run — a retry or a decision is needed"
+    ? "排定的重试没有跑起来，需要重试或者拍板"
     : lineage?.exhausted && lineage.lane !== "board"
-    ? "Automatic retries are finished — a decision is needed"
+    ? "自动重试已经跑完，需要有人拍板"
     : readWakePolicySummary(action);
   const evidenceSummary = pickEvidenceSummary(action);
   const sourceRunId = readEvidenceRunId(action, "sourceRunId") ?? readEvidenceRunId(action, "latestRunId");
@@ -1090,7 +1090,7 @@ export function IssueRecoveryActionCard({
     ? `Held by ${contentionLabel(repairContention)} — re-issue on an isolated workspace instead.`
     : null;
   // When contended, the re-issue is the recommended path, so it takes the primary emphasis and a
-  // "Recommended" hint while the repair button is disabled.
+  // "推荐" hint while the repair button is disabled.
   const reissueRecommended = showRepairAction && repairContention !== null;
   const showFooter =
     showResolveActions ||
@@ -1145,7 +1145,7 @@ export function IssueRecoveryActionCard({
       <dl className={cn("border-t bg-background/40 dark:bg-background/20", tone.divider)}>
         {lineage ? (
           <>
-            <MetadataRow label="Task owner">
+            <MetadataRow label="卡负责人">
               <span
                 className="inline-flex flex-wrap items-center gap-1.5"
                 data-testid="recovery-source-owner"
@@ -1158,7 +1158,7 @@ export function IssueRecoveryActionCard({
                 <span className="text-muted-foreground">keeps this task</span>
               </span>
             </MetadataRow>
-            <MetadataRow label="Recovery owner">
+            <MetadataRow label="恢复负责人">
               <span
                 className="inline-flex flex-wrap items-center gap-1.5"
                 data-testid="recovery-recovery-owner"
@@ -1182,7 +1182,7 @@ export function IssueRecoveryActionCard({
                 )}
               </span>
             </MetadataRow>
-            <MetadataRow label="Retry progress">
+            <MetadataRow label="重试进度">
               <span
                 className="inline-flex flex-wrap items-center gap-x-2 gap-y-1"
                 data-testid="recovery-retry-progress"
@@ -1191,7 +1191,7 @@ export function IssueRecoveryActionCard({
                 data-recovery-max-attempts={lineage.maxAttempts ?? undefined}
               >
                 <AttemptMeter lineage={lineage} />
-                <span>{attemptLabel ?? "Attempts not bounded"}</span>
+                <span>{attemptLabel ?? "重试次数没有上限"}</span>
                 {lineage.liveRunId ? (
                   <span
                     className={RETRY_PILL_CLASS}
@@ -1209,7 +1209,7 @@ export function IssueRecoveryActionCard({
                     data-testid="recovery-next-retry"
                     data-recovery-retry-expired="true"
                   >
-                    {retryOffset ? `Retry missed ${retryOffset}` : "Retry missed"}
+                    {retryOffset ? `Retry missed ${retryOffset}` : "错过了重试"}
                   </span>
                 ) : retryOffset ? (
                   <span
@@ -1217,7 +1217,7 @@ export function IssueRecoveryActionCard({
                     title={formatTimeAbsolute(lineage.nextRetryAt) ?? undefined}
                     data-testid="recovery-next-retry"
                   >
-                    {retryOffset === "now" ? "Next try now" : `Next try ${retryOffset}`}
+                    {retryOffset === "now" ? "下次重试时间" : `Next try ${retryOffset}`}
                   </span>
                 ) : lineage.exhausted ? (
                   <span className={RETRY_PILL_CLASS} data-testid="recovery-next-retry">
@@ -1227,7 +1227,7 @@ export function IssueRecoveryActionCard({
               </span>
             </MetadataRow>
             {lineage.lane !== "source_owner" && lineage.sourceMaxAttempts !== null ? (
-              <MetadataRow label="Owner retries">
+              <MetadataRow label="负责人重试">
                 <span data-testid="recovery-source-attempts">
                   The original owner used {lineage.sourceAttempt ?? lineage.sourceMaxAttempts} of{" "}
                   {lineage.sourceMaxAttempts} automatic attempts.
@@ -1236,7 +1236,7 @@ export function IssueRecoveryActionCard({
             ) : null}
           </>
         ) : (
-        <MetadataRow label="Owner">
+        <MetadataRow label="负责人">
           <span className="inline-flex flex-wrap items-center gap-1.5">
             {action.ownerType === "agent" && action.ownerAgentId ? (
               <>
@@ -1261,15 +1261,15 @@ export function IssueRecoveryActionCard({
           </span>
         </MetadataRow>
         )}
-        <MetadataRow label="Source run">
+        <MetadataRow label="来源运行">
           <RunChip runId={sourceRunId} agentId={action.previousOwnerAgentId} />
         </MetadataRow>
         {correctiveRunId ? (
-          <MetadataRow label="Corrective run">
+          <MetadataRow label="纠正性运行">
             <RunChip runId={correctiveRunId} agentId={action.previousOwnerAgentId} />
           </MetadataRow>
         ) : null}
-        <MetadataRow label="Evidence">
+        <MetadataRow label="证据">
           {evidenceSummary ? (
             evidenceSummary.isCode ? (
               <span className="break-words font-mono text-(length:--text-micro) text-foreground/80">
@@ -1282,10 +1282,10 @@ export function IssueRecoveryActionCard({
             <MissingValue />
           )}
         </MetadataRow>
-        <MetadataRow label="Next action">
+        <MetadataRow label="下一步">
           {action.nextAction ? <span>{action.nextAction}</span> : <MissingValue />}
         </MetadataRow>
-        <MetadataRow label="Follow-up">
+        <MetadataRow label="后续">
           <span className="inline-flex flex-wrap items-center gap-1.5">
             {wakeSummary ? <span>{wakeSummary}</span> : <MissingValue />}
             {showAttempt ? (
@@ -1301,7 +1301,7 @@ export function IssueRecoveryActionCard({
           </span>
         </MetadataRow>
         {cardState === "resolved" && action.outcome ? (
-          <MetadataRow label="Resolution">
+          <MetadataRow label="结论">
             <span className={cn("font-medium", tone.labelClass)}>
               Resolved as {OUTCOME_LABEL[action.outcome]}
               {action.resolvedAt ? ` · ${formatTimeShort(action.resolvedAt) ?? ""}` : ""}
@@ -1321,7 +1321,7 @@ export function IssueRecoveryActionCard({
                   size="sm"
                   variant="default"
                   data-testid="recovery-action-resolve-trigger"
-                  aria-label="Resolve recovery"
+                  aria-label="结束恢复"
                 >
                   Resolve…
                 </Button>
@@ -1450,7 +1450,7 @@ export function IssueRecoveryActionCard({
                     })
                   }
                 >
-                  {reissuePending ? "Creating…" : "Create isolated re-issue"}
+                  {reissuePending ? "Creating…" : "在隔离工作区重开一张卡"}
                 </Button>
               </PopoverContent>
             </Popover>

@@ -243,7 +243,7 @@ describeEmbeddedPostgres("deleted issue comment redaction", () => {
         id: sourceIssueId,
         companyId,
         identifier: "REF-1",
-        title: "Source issue",
+        title: "来源卡",
         status: "todo",
         priority: "medium",
       },

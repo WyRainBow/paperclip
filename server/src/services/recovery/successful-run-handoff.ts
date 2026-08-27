@@ -94,6 +94,9 @@ export type SuccessfulRunHandoffNotice = {
   metadata: IssueCommentMetadata;
 };
 
+/** Label of the row the escalation dedupe keys on. */
+export const RECOVERY_ACTION_ROW_LABEL = "恢复动作";
+
 export function noticeMetadataReferencesRecoveryAction(
   metadata: IssueCommentMetadata | null | undefined,
   recoveryActionId: string,
@@ -101,7 +104,9 @@ export function noticeMetadataReferencesRecoveryAction(
   return (metadata?.sections ?? []).some((section) =>
     section.rows.some((row) =>
       row.type === "key_value" &&
-      row.label === "Recovery action" &&
+      // Rows written before the label was translated still carry the English
+      // text; missing them would re-post an escalation that already exists.
+      (row.label === RECOVERY_ACTION_ROW_LABEL || row.label === "Recovery action") &&
       row.value === recoveryActionId,
     ),
   );
@@ -156,18 +161,18 @@ export function buildSuccessfulRunHandoffRequiredNotice(input: {
     body: SUCCESSFUL_RUN_HANDOFF_REQUIRED_NOTICE_BODY,
     presentation: systemNoticePresentation({
       tone: "warning",
-      title: "Missing issue disposition",
+      title: "卡缺少处置结论",
     }),
     metadata: {
       version: 1,
       sourceRunId: input.run.id,
       sections: [
         {
-          title: "Required action",
+          title: "必须做的事",
           rows: [
-            issueLinkRow("Source issue", input.issue),
-            agentLinkRow("Assignee", input.agent),
-            keyValueRow("Missing disposition", "clear_next_step"),
+            issueLinkRow("来源卡", input.issue),
+            agentLinkRow("责任人", input.agent),
+            keyValueRow("缺少处置结论", "clear_next_step"),
             keyValueRow(
               "Valid dispositions",
               "done, cancelled, in_review with an owner, blocked with blockers, delegated follow-up, or explicit continuation",
@@ -175,13 +180,13 @@ export function buildSuccessfulRunHandoffRequiredNotice(input: {
           ],
         },
         {
-          title: "Run evidence",
+          title: "运行证据",
           rows: [
-            runLinkRow("Successful run", input.run),
-            keyValueRow("Run status", input.run.status),
-            keyValueRow("Normalized cause", SUCCESSFUL_RUN_MISSING_STATE_REASON),
-            keyValueRow("Detected progress", input.detectedProgressSummary),
-            keyValueRow("Automatic retry", "one corrective handoff wake queued"),
+            runLinkRow("成功的运行", input.run),
+            keyValueRow("运行状态", input.run.status),
+            keyValueRow("归一化原因", SUCCESSFUL_RUN_MISSING_STATE_REASON),
+            keyValueRow("检测到的进展", input.detectedProgressSummary),
+            keyValueRow("自动重试", "one corrective handoff wake queued"),
           ],
         },
       ],
@@ -205,35 +210,35 @@ export function buildSuccessfulRunHandoffExhaustedNotice(input: {
     body: SUCCESSFUL_RUN_HANDOFF_EXHAUSTED_NOTICE_BODY,
     presentation: systemNoticePresentation({
       tone: "danger",
-      title: "Missing disposition recovery blocked",
+      title: "缺少处置结论，恢复被挡住",
     }),
     metadata: {
       version: 1,
       sourceRunId: input.sourceRun?.id ?? null,
       sections: [
         {
-          title: "Recovery",
+          title: "恢复",
           rows: [
-            issueLinkRow("Source issue", input.issue),
+            issueLinkRow("来源卡", input.issue),
             input.recoveryActionId
-              ? keyValueRow("Recovery action", input.recoveryActionId)
-              : issueLinkRow("Recovery issue", input.recoveryIssue),
+              ? keyValueRow(RECOVERY_ACTION_ROW_LABEL, input.recoveryActionId)
+              : issueLinkRow("恢复卡", input.recoveryIssue),
             input.recoveryOwner
-              ? agentLinkRow("Recovery owner", input.recoveryOwner)
-              : keyValueRow("Recovery owner", "Board decision required"),
-            agentLinkRow("Source assignee", input.sourceAssignee),
-            keyValueRow("Suggested action", "inspect the evidence, then retry the original owner, explicitly reassign, or record a valid issue disposition"),
+              ? agentLinkRow("恢复负责人", input.recoveryOwner)
+              : keyValueRow("恢复负责人", "Board decision required"),
+            agentLinkRow("原责任人", input.sourceAssignee),
+            keyValueRow("建议动作", "inspect the evidence, then retry the original owner, explicitly reassign, or record a valid issue disposition"),
           ],
         },
         {
-          title: "Run evidence",
+          title: "运行证据",
           rows: [
-            runLinkRow("Source run", input.sourceRun),
-            runLinkRow("Corrective handoff run", input.correctiveRun),
-            keyValueRow("Latest issue status", input.latestIssueStatus),
-            keyValueRow("Latest handoff run status", input.latestHandoffRunStatus),
-            keyValueRow("Normalized cause", SUCCESSFUL_RUN_MISSING_STATE_REASON),
-            keyValueRow("Missing disposition", input.missingDisposition),
+            runLinkRow("来源运行", input.sourceRun),
+            runLinkRow("纠正性交接运行", input.correctiveRun),
+            keyValueRow("卡的最新状态", input.latestIssueStatus),
+            keyValueRow("最近一次交接运行状态", input.latestHandoffRunStatus),
+            keyValueRow("归一化原因", SUCCESSFUL_RUN_MISSING_STATE_REASON),
+            keyValueRow("缺少处置结论", input.missingDisposition),
           ],
         },
       ],

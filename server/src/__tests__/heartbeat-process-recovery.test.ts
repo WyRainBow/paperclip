@@ -2496,11 +2496,11 @@ describeEmbeddedPostgres("heartbeat orphaned process recovery", () => {
       return rows.length > 0 ? rows : null;
     });
     expect(comments).toHaveLength(1);
-    expect(comments[0]?.body).toContain("retried continuation");
+    expect(comments[0]?.body).toContain("自动重试");
     expect(comments[0]?.presentation).toMatchObject({ kind: "system_notice", tone: "danger" });
     expect(noticeMetadataReferencesRecoveryAction(comments[0]?.metadata, recoveryAction.id)).toBe(true);
     expect(commentMetadataRows(comments[0]).some((row) =>
-      row.type === "key_value" && row.label === "Recovery owner" && row.value === "Board decision required",
+      row.type === "key_value" && row.label === "恢复负责人" && row.value === "需要 board 拍板",
     )).toBe(true);
   });
 
@@ -2587,7 +2587,7 @@ describeEmbeddedPostgres("heartbeat orphaned process recovery", () => {
       version: 1,
       sections: [expect.objectContaining({
         rows: expect.arrayContaining([
-          expect.objectContaining({ type: "key_value", label: "Cause", value: "recovery_issue_failed" }),
+          expect.objectContaining({ type: "key_value", label: "原因", value: "recovery_issue_failed" }),
         ]),
       })],
     });
@@ -3278,7 +3278,7 @@ describeEmbeddedPostgres("heartbeat orphaned process recovery", () => {
       authorType: "system",
       body: expect.stringContaining("Agent failed to resume after approval: `adapter_failed` — needs attention"),
     });
-    expect(commentMetadataRows(comments[0]).some((row) => row.label === "Recovery action")).toBe(true);
+    expect(commentMetadataRows(comments[0]).some((row) => row.label === "恢复动作")).toBe(true);
 
     const interaction = await db
       .select({ result: issueThreadInteractions.result })
@@ -3531,7 +3531,7 @@ describeEmbeddedPostgres("heartbeat orphaned process recovery", () => {
 
     const validationComment = await waitForValue(async () => {
       const rows = await db.select().from(issueComments).where(eq(issueComments.issueId, issueId));
-      return rows.find((comment) => comment.body.includes("workspace failed validation")) ?? null;
+      return rows.find((comment) => comment.body.includes("工作区校验没过")) ?? null;
     });
     expect(validationComment).toBeTruthy();
   });
@@ -3619,7 +3619,7 @@ describeEmbeddedPostgres("heartbeat orphaned process recovery", () => {
 
     const configurationComment = await waitForValue(async () => {
       const rows = await db.select().from(issueComments).where(eq(issueComments.issueId, issueId));
-      return rows.find((comment) => comment.body.includes("secret/env bindings are missing")) ?? null;
+      return rows.find((comment) => comment.body.includes("缺少必需的密钥或环境变量绑定")) ?? null;
     });
     expect(configurationComment).toBeTruthy();
   });
@@ -3705,16 +3705,16 @@ describeEmbeddedPostgres("heartbeat orphaned process recovery", () => {
       version: 1,
       sections: expect.arrayContaining([
         expect.objectContaining({
-          title: "Required action",
+          title: "必须做的事",
           rows: expect.arrayContaining([
-            expect.objectContaining({ type: "key_value", label: "Missing disposition", value: "clear_next_step" }),
+            expect.objectContaining({ type: "key_value", label: "缺少处置结论", value: "clear_next_step" }),
           ]),
         }),
         expect.objectContaining({
-          title: "Run evidence",
+          title: "运行证据",
           rows: expect.arrayContaining([
             expect.objectContaining({ type: "run_link", runId }),
-            expect.objectContaining({ type: "key_value", label: "Normalized cause", value: SUCCESSFUL_RUN_MISSING_STATE_REASON }),
+            expect.objectContaining({ type: "key_value", label: "归一化原因", value: SUCCESSFUL_RUN_MISSING_STATE_REASON }),
           ]),
         }),
       ]),
@@ -4028,17 +4028,17 @@ describeEmbeddedPostgres("heartbeat orphaned process recovery", () => {
       version: 1,
       sections: expect.arrayContaining([
         expect.objectContaining({
-          title: "Recovery",
+          title: "恢复",
           rows: expect.arrayContaining([
-            expect.objectContaining({ type: "key_value", label: "Recovery action", value: recoveryAction.id }),
-            expect.objectContaining({ type: "key_value", label: "Recovery owner", value: "Board decision required" }),
+            expect.objectContaining({ type: "key_value", label: "恢复动作", value: recoveryAction.id }),
+            expect.objectContaining({ type: "key_value", label: "恢复负责人", value: "Board decision required" }),
           ]),
         }),
         expect.objectContaining({
-          title: "Run evidence",
+          title: "运行证据",
           rows: expect.arrayContaining([
-            expect.objectContaining({ type: "key_value", label: "Normalized cause", value: SUCCESSFUL_RUN_MISSING_STATE_REASON }),
-            expect.objectContaining({ type: "key_value", label: "Missing disposition", value: "clear_next_step" }),
+            expect.objectContaining({ type: "key_value", label: "归一化原因", value: SUCCESSFUL_RUN_MISSING_STATE_REASON }),
+            expect.objectContaining({ type: "key_value", label: "缺少处置结论", value: "clear_next_step" }),
           ]),
         }),
       ]),
@@ -4189,7 +4189,7 @@ describeEmbeddedPostgres("heartbeat orphaned process recovery", () => {
         rows: expect.arrayContaining([
           expect.objectContaining({
             type: "key_value",
-            label: "Cause",
+            label: "原因",
             value: "continuation_waiting_on_review",
           }),
         ]),
@@ -5642,7 +5642,7 @@ describeEmbeddedPostgres("heartbeat orphaned process recovery", () => {
 
     const comments = await db.select().from(issueComments).where(eq(issueComments.issueId, issueId));
     const recoveryComment = comments.find((comment) =>
-      comment.body.includes("pending execution-review participant once") &&
+      comment.body.includes("重试了一次待处理的执行评审参与方") &&
         noticeMetadataReferencesRecoveryAction(comment.metadata, recoveryAction.id),
     );
     expect(recoveryComment).toBeTruthy();
@@ -6479,18 +6479,18 @@ describeEmbeddedPostgres("heartbeat orphaned process recovery", () => {
 
     const comments = await db.select().from(issueComments).where(eq(issueComments.issueId, issueId));
     expect(comments).toHaveLength(1);
-    expect(comments[0]?.body).toContain("retried dispatch");
+    expect(comments[0]?.body).toContain("自动重派");
     expect(comments[0]?.body).not.toContain("sk-test-recovery-secret");
     expect(JSON.stringify(comments[0]?.metadata)).not.toContain("sk-test-recovery-secret");
     const failureSummary = commentMetadataRows(comments[0]).find((row) =>
-      row.type === "key_value" && row.label === "Failure summary"
+      row.type === "key_value" && row.label === "失败摘要"
     );
-    expect(failureSummary).toMatchObject({ type: "key_value", label: "Failure summary" });
+    expect(failureSummary).toMatchObject({ type: "key_value", label: "失败摘要" });
     expect(failureSummary?.type === "key_value" ? failureSummary.value : "").toContain("Authorization");
     expect(comments[0]?.presentation).toMatchObject({ kind: "system_notice", tone: "danger" });
     expect(noticeMetadataReferencesRecoveryAction(comments[0]?.metadata, recoveryAction.id)).toBe(true);
     expect(commentMetadataRows(comments[0]).some((row) =>
-      row.type === "key_value" && row.label === "Recovery owner" && row.value === "Board decision required",
+      row.type === "key_value" && row.label === "恢复负责人" && row.value === "需要 board 拍板",
     )).toBe(true);
   });
 
@@ -6894,11 +6894,11 @@ describeEmbeddedPostgres("heartbeat orphaned process recovery", () => {
 
     const comments = await db.select().from(issueComments).where(eq(issueComments.issueId, issueId));
     expect(comments).toHaveLength(1);
-    expect(comments[0]?.body).toContain("retried continuation");
+    expect(comments[0]?.body).toContain("自动重试");
     expect(comments[0]?.presentation).toMatchObject({ kind: "system_notice", tone: "danger" });
     expect(noticeMetadataReferencesRecoveryAction(comments[0]?.metadata, recoveryAction.id)).toBe(true);
     expect(commentMetadataRows(comments[0]).some((row) =>
-      row.type === "key_value" && row.label === "Recovery owner" && row.value === "Board decision required",
+      row.type === "key_value" && row.label === "恢复负责人" && row.value === "需要 board 拍板",
     )).toBe(true);
   });
 
@@ -6936,7 +6936,7 @@ describeEmbeddedPostgres("heartbeat orphaned process recovery", () => {
     expect(comments[0]?.body).not.toContain("- Failure: none recorded");
     expect(commentMetadataRows(comments[0])).toContainEqual({
       type: "key_value",
-      label: "Failure code",
+      label: "失败代码",
       value: "adapter_exit_code",
     });
   });
@@ -7029,11 +7029,11 @@ describeEmbeddedPostgres("heartbeat orphaned process recovery", () => {
 
     const comments = await db.select().from(issueComments).where(eq(issueComments.issueId, issueId));
     expect(comments).toHaveLength(1);
-    expect(comments[0]?.body).toContain("retried continuation");
+    expect(comments[0]?.body).toContain("自动重试");
     expect(comments[0]?.body).toContain("3× attempts");
     expect(commentMetadataRows(comments[0])).toContainEqual({
       type: "key_value",
-      label: "Failure code",
+      label: "失败代码",
       value: "adapter_failed",
     });
   });
@@ -7660,11 +7660,11 @@ describeEmbeddedPostgres("heartbeat orphaned process recovery", () => {
 
     const comments = await db.select().from(issueComments).where(eq(issueComments.issueId, issueId));
     expect(comments).toHaveLength(1);
-    expect(comments[0]?.body).toContain("automatically retried continuation");
-    expect(comments[0]?.body).toContain("still has no live execution path");
+    expect(comments[0]?.body).toContain("自动重试了这张指派中的 `in_progress` 卡的续跑");
+    expect(comments[0]?.body).toContain("仍没有活的执行路径");
     expect(noticeMetadataReferencesRecoveryAction(comments[0]?.metadata, recoveryAction.id)).toBe(true);
     expect(commentMetadataRows(comments[0]).some((row) =>
-      row.type === "key_value" && row.label === "Recovery owner" && row.value === "Board decision required",
+      row.type === "key_value" && row.label === "恢复负责人" && row.value === "需要 board 拍板",
     )).toBe(true);
   });
 
