@@ -100,8 +100,12 @@ interface IssueStartOptions extends BaseClientOptions {
 interface IssueQaOptions extends BaseClientOptions {
   question: string;
   answer: string;
+  answerFile?: string;
   label?: string;
   answerAgent?: string;
+  questionAgent?: string;
+  answerDocKey?: string;
+  answerDocTitle?: string;
 }
 
 interface IssueQaListOptions extends BaseClientOptions {}
@@ -584,9 +588,17 @@ export function registerIssueCommands(program: Command): void {
           const drivingPatch: Record<string, unknown> = {};
           if (drivingSession) {
             drivingPatch.drivingSession = drivingSession;
+            // /agents/me only answers for an agent key, and an agent key cannot
+            // PATCH an in-progress issue without a run — so a board-authenticated
+            // terminal falls back to the agent id it was configured with. Without
+            // this, Driving stays "Unclaimed" on every card a terminal starts.
             const me = await ctx.api.get<{ id: string } | null>(apiPath`/api/agents/me`).catch(() => null);
-            if (me?.id) drivingPatch.drivingAgentId = me.id;
+            const drivingAgentId = me?.id ?? process.env.PAPERCLIP_AGENT_ID?.trim() ?? null;
+            if (drivingAgentId) drivingPatch.drivingAgentId = drivingAgentId;
             updated = await ctx.api.patch<Issue>(apiPath`/api/issues/${issue.id}`, drivingPatch);
+          }
+          if (!drivingPatch.drivingAgentId) {
+            process.stderr.write("warning: no agent identity for Driving — set PAPERCLIP_AGENT_ID or run with an agent key\n");
           }
           const lines = [`开工：${issue.identifier}，工作分支：${opts.branch}`];
           if (drivingSession) lines.push(`主审会话：${drivingSession}`);
@@ -614,30 +626,107 @@ export function registerIssueCommands(program: Command): void {
       .requiredOption("--answer <text>", "The answer (right bubble)")
       .option("--label <text>", "Optional label for the thread")
       .option("--answer-agent <name>", "Agent name/id that gave the answer (attribution when filing on behalf)")
+      .option("--question-agent <name>", "Agent name/id that asked — who commissioned this review. Defaults to $PAPERCLIP_AGENT_ID")
+      .option("--answer-file <path>", "Read the full answer from a file — pair with --answer-doc-key so the bubble keeps only --answer")
+      .option("--answer-doc-key <key>", "File the full answer as an issue document under this key (e.g. review-r1); the bubble then holds only the verdict line plus a link")
+      .option("--answer-doc-title <title>", "Title for the answer document")
       .action(async (issueId: string, opts: IssueQaOptions) => {
         try {
           const ctx = resolveCommandContext(opts);
           const issue = await ctx.api.get<Issue>(apiPath`/api/issues/${issueId}`);
           if (!issue) throw new Error(`Issue not found: ${issueId}`);
           const threadId = crypto.randomUUID();
+
+          // A name is not an identity: agents get renamed and the answering
+          // side may be Codex today and Grok tomorrow, so resolve the label to
+          // a real agent id and store that. Both bubbles need this — filing a
+          // review on behalf makes board the writer on the question too.
+          const questionAgentRef = opts.questionAgent?.trim() || process.env.PAPERCLIP_AGENT_ID?.trim() || null;
+          let agentDirectory: Array<{ id: string; name: string; urlKey?: string }> | null = null;
+          const resolveAgentId = async (ref: string | null, flag: string): Promise<string | null> => {
+            if (!ref) return null;
+            if (!agentDirectory) {
+              // The issue knows its company, so `qa` does not need -C just to
+              // resolve an agent name.
+              const companyId = (issue as { companyId?: string }).companyId ?? ctx.companyId;
+              if (!companyId) throw new Error(`cannot resolve ${flag} without a company; pass -C`);
+              agentDirectory = (await ctx.api.get<Array<{ id: string; name: string; urlKey?: string }>>(
+                apiPath`/api/companies/${companyId}/agents`,
+              )) ?? [];
+            }
+            const needle = ref.trim();
+            const match = agentDirectory.find((a) => a.id === needle)
+              ?? agentDirectory.find((a) => a.name === needle)
+              ?? agentDirectory.find((a) => a.urlKey === needle)
+              ?? agentDirectory.find((a) => a.name.toLowerCase() === needle.toLowerCase());
+            if (!match) {
+              process.stderr.write(`warning: no agent matched "${needle}" for ${flag} — that bubble will show no identity\n`);
+            }
+            return match?.id ?? null;
+          };
+          const answerAgentId = await resolveAgentId(opts.answerAgent ?? null, "--answer-agent");
+          const questionAgentId = await resolveAgentId(questionAgentRef, "--question-agent");
+
+          // A cold review runs to thousands of words. The whole thing inside a
+          // bubble turns the tab into a wall, so the full text goes to an issue
+          // document (one key per round) and the bubble keeps the verdict line.
+          let docKey: string | null = null;
+          if (opts.answerDocKey) {
+            const fullBody = opts.answerFile ? await readFile(opts.answerFile, "utf8") : opts.answer;
+            // Re-filing the same round overwrites its document, and the server
+            // demands the caller name the revision it is replacing — so read
+            // the current one instead of failing with a 409.
+            const existingDoc = await ctx.api
+              .get<{ latestRevisionId?: string | null; currentRevisionId?: string | null }>(
+                apiPath`/api/issues/${issue.id}/documents/${opts.answerDocKey}`,
+              )
+              .catch(() => null);
+            const baseRevisionId = existingDoc?.latestRevisionId ?? existingDoc?.currentRevisionId ?? null;
+            await ctx.api.put(apiPath`/api/issues/${issue.id}/documents/${opts.answerDocKey}`, {
+              title: opts.answerDocTitle ?? `评审 ${opts.answerDocKey}`,
+              format: "markdown",
+              body: fullBody,
+              ...(baseRevisionId ? { baseRevisionId } : {}),
+            });
+            docKey = opts.answerDocKey;
+          } else if (opts.answerFile) {
+            throw new Error("--answer-file needs --answer-doc-key: without a document to hold it, the full text would land in the bubble");
+          }
           const qComment = await ctx.api.post<{ id: string } & IssueComment>(
             apiPath`/api/issues/${issue.id}/comments`,
             {
               body: opts.question,
-              presentation: { kind: "discussion_qa", threadId, role: "question", label: opts.label ?? null },
+              presentation: {
+                kind: "discussion_qa",
+                threadId,
+                role: "question",
+                label: opts.label ?? null,
+                ...(questionAgentId ? { questionAgentId } : {}),
+              },
             },
           );
           const aComment = await ctx.api.post<{ id: string } & IssueComment>(
             apiPath`/api/issues/${issue.id}/comments`,
             {
               body: opts.answer,
-              presentation: { kind: "discussion_qa", threadId, role: "answer", label: opts.label ?? null, ...(opts.answerAgent ? { answerAgent: opts.answerAgent } : {}) },
+              presentation: {
+                kind: "discussion_qa",
+                threadId,
+                role: "answer",
+                label: opts.label ?? null,
+                ...(opts.answerAgent ? { answerAgent: opts.answerAgent } : {}),
+                ...(answerAgentId ? { answerAgentId } : {}),
+                ...(docKey ? { docKey, docTitle: opts.answerDocTitle ?? null } : {}),
+              },
             },
           );
           printOutput({
             threadId,
             questionCommentId: qComment?.id,
             answerCommentId: aComment?.id,
+            answerAgentId,
+            questionAgentId,
+            answerDocKey: docKey,
             issue: issue.identifier,
           }, { json: ctx.json });
         } catch (err) {

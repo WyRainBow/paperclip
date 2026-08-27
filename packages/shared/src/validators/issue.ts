@@ -615,6 +615,12 @@ export const updateIssueSchema = objectWithoutDefaults(
   // Server stamps drivingSessionAt; clients never send it.
   drivingSession: z.string().trim().max(200).nullable().optional(),
   drivingAgentId: z.string().guid().nullable().optional(),
+  // Correcting authorship after the fact. Board-only (enforced in the route):
+  // an agent must not be able to rewrite who opened a card, but a human fixing
+  // a card filed before its terminal had an agent key is legitimate — and
+  // without this the field is unreachable, since it is otherwise set only from
+  // the authenticated caller at create time.
+  createdByAgentId: z.string().guid().nullable().optional(),
 });
 
 export type UpdateIssue = z.infer<typeof updateIssueSchema>;
@@ -658,6 +664,19 @@ export const issueCommentPresentationSchema = z.object({
   role: z.enum(["question", "answer"]).optional(),
   label: z.string().trim().max(200).nullable().optional(),
   answerAgent: z.string().trim().max(120).optional(),
+  // The answering agent's id (MUL-51). answerAgent above holds only a name,
+  // which breaks the moment an agent is renamed, and the responder may be
+  // Codex today and Grok tomorrow. Distinct from authorAgentId: that records
+  // who WROTE the comment, which is the board when filing on behalf.
+  answerAgentId: z.string().uuid().optional(),
+  // The agent that ASKED. Filing a review on behalf makes board the writer on
+  // both bubbles, so without this the request side reads as "local-board" even
+  // when Claude is the one commissioning the review.
+  questionAgentId: z.string().uuid().optional(),
+  // A cold review runs to thousands of words; the full text lives in an issue
+  // document under this key (one per round) and the bubble keeps the verdict.
+  docKey: z.string().trim().min(1).max(120).optional(),
+  docTitle: z.string().trim().max(200).nullable().optional(),
 }).strict();
 
 export type IssueCommentPresentation = z.infer<typeof issueCommentPresentationSchema>;

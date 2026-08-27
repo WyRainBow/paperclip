@@ -9422,6 +9422,12 @@ export function issueRoutes(
     if (updateFields.drivingSession !== undefined) {
       updateFields.drivingSessionAt = new Date();
     }
+    // Authorship is stamped from the authenticated caller at create time. Only
+    // a board user may correct it afterwards — letting an agent rewrite it
+    // would make "who opened this" forgeable by the same actor it names.
+    if (updateFields.createdByAgentId !== undefined && req.actor.type !== "board") {
+      throw forbidden("Only board users may change who opened a task");
+    }
     const reviewPolicyChangeRequested =
       req.body.reviewPolicy !== undefined
       && req.body.reviewPolicy !== existing.reviewPolicy;
