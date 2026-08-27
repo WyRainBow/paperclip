@@ -657,6 +657,7 @@ export const issueCommentPresentationSchema = z.object({
   threadId: z.string().uuid().optional(),
   role: z.enum(["question", "answer"]).optional(),
   label: z.string().trim().max(200).nullable().optional(),
+  answerAgent: z.string().trim().max(120).optional(),
 }).strict();
 
 export type IssueCommentPresentation = z.infer<typeof issueCommentPresentationSchema>;

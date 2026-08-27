@@ -101,6 +101,7 @@ interface IssueQaOptions extends BaseClientOptions {
   question: string;
   answer: string;
   label?: string;
+  answerAgent?: string;
 }
 
 interface IssueQaListOptions extends BaseClientOptions {}
@@ -580,6 +581,7 @@ export function registerIssueCommands(program: Command): void {
       .requiredOption("--question <text>", "The question (left bubble)")
       .requiredOption("--answer <text>", "The answer (right bubble)")
       .option("--label <text>", "Optional label for the thread")
+      .option("--answer-agent <name>", "Agent name/id that gave the answer (attribution when filing on behalf)")
       .action(async (issueId: string, opts: IssueQaOptions) => {
         try {
           const ctx = resolveCommandContext(opts);
@@ -597,7 +599,7 @@ export function registerIssueCommands(program: Command): void {
             apiPath`/api/issues/${issue.id}/comments`,
             {
               body: opts.answer,
-              presentation: { kind: "discussion_qa", threadId, role: "answer", label: opts.label ?? null },
+              presentation: { kind: "discussion_qa", threadId, role: "answer", label: opts.label ?? null, ...(opts.answerAgent ? { answerAgent: opts.answerAgent } : {}) },
             },
           );
           printOutput({

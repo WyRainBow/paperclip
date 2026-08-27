@@ -18,6 +18,7 @@ interface DiscussionComment {
     threadId?: string;
     role?: string;
     label?: string | null;
+    answerAgent?: string;
   } | null;
 }
 
@@ -98,8 +99,10 @@ export function IssueDiscussionPanel({ issueId }: { issueId: string }) {
           {(["question", "answer"] as const).map((role) => {
             const msg = thread[role];
             if (!msg) return null;
-            const isAgent = Boolean(msg.authorAgentId);
+            const answerAgentName = msg.presentation?.answerAgent ?? null;
+            const isAgent = Boolean(msg.authorAgentId) || Boolean(answerAgentName);
             const agent = msg.authorAgentId ? agentMap.get(msg.authorAgentId) : null;
+            const displayName = agent?.name ?? answerAgentName ?? msg.authorUserId ?? "board";
             return (
               <div
                 key={msg.id}
@@ -125,8 +128,10 @@ export function IssueDiscussionPanel({ issueId }: { issueId: string }) {
                         <AgentIcon icon={agent.icon} customIconUrl={agentCustomIcon(agent)} className="h-3 w-3" />
                         {agent.name}
                       </>
+                    ) : isAgent && answerAgentName ? (
+                      answerAgentName
                     ) : (
-                      msg.authorUserId ?? "board"
+                      displayName
                     )}
                     <span>· {chineseTimestamp(msg.createdAt)}</span>
                   </p>
