@@ -85,7 +85,11 @@ type DocumentSubjectConfig = {
 
 const DOCUMENT_AUTOSAVE_DEBOUNCE_MS = 900;
 const DOCUMENT_KEY_PATTERN = /^[a-z0-9][a-z0-9_-]*$/;
-const getFoldedDocumentsStorageKey = (issueId: string) => `paperclip:issue-document-folds:${issueId}`;
+// v2: documents now start folded, and the old key had an empty array written
+// on every visit — which under the new rules reads as "this reader opened them
+// all" and would suppress the default everywhere they had ever looked. Bumping
+// the key drops those stale entries once; real choices persist from then on.
+const getFoldedDocumentsStorageKey = (issueId: string) => `paperclip:issue-document-folds:v2:${issueId}`;
 
 function loadFoldedDocumentKeys(issueId: string): string[] | null {
   if (typeof window === "undefined") return null;

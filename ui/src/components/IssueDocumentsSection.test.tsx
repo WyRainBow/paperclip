@@ -299,7 +299,7 @@ describe("IssueDocumentsSection", () => {
     // otherwise buries everything under it). These tests assert on rendered
     // bodies, so they stand in for a reader who already unfolded them.
     for (const subjectId of ["issue-1", "case-1"]) {
-      window.localStorage.setItem(`paperclip:issue-document-folds:${subjectId}`, "[]");
+      window.localStorage.setItem(`paperclip:issue-document-folds:v2:${subjectId}`, "[]");
     }
     vi.clearAllMocks();
     markdownEditorMockState.emitMountEmptyChange = false;
