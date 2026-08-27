@@ -282,7 +282,7 @@ export const AGENT_DETAIL_TABS: ReadonlyArray<{ value: AgentDetailView; label: s
   { value: "dashboard", label: "Dashboard" },
   { value: "instructions", label: "Brief" },
   { value: "skills", label: "Skills" },
-  { value: "configuration", label: "Configuration" },
+  { value: "configuration", label: "配置" },
   { value: "secrets", label: "Secrets" },
   { value: "tools", label: "Tools" },
   { value: "runs", label: "Runs" },
@@ -1103,7 +1103,7 @@ export function AgentDetail() {
       } else if (activeView === "instructions") {
         crumbs.push({ label: "Brief" });
       } else if (activeView === "configuration") {
-        crumbs.push({ label: "Configuration" });
+        crumbs.push({ label: "配置" });
       } else if (activeView === "secrets") {
         crumbs.push({ label: "Secrets" });
       // } else if (activeView === "skills") { // TODO: bring back later
@@ -2063,7 +2063,7 @@ function AgentConfigurePage({
         hideInstructionsFile
       />
       <div>
-        <h3 className="text-sm font-medium mb-3">API Keys</h3>
+        <h3 className="text-sm font-medium mb-3">API Key</h3>
         <KeysTab agentId={agentId} companyId={companyId} />
       </div>
 
@@ -2077,13 +2077,13 @@ function AgentConfigurePage({
             ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
             : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
           }
-          Configuration Revisions
+          配置修订
           <span className="text-xs font-normal text-muted-foreground">{configRevisions?.length ?? 0}</span>
         </button>
         {revisionsOpen && (
           <div className="mt-3">
             {(configRevisions ?? []).length === 0 ? (
-              <p className="text-sm text-muted-foreground">No configuration revisions yet.</p>
+              <p className="text-sm text-muted-foreground">还没有配置修订。</p>
             ) : (
               <div className="space-y-2">
                 {(configRevisions ?? []).slice(0, 10).map((revision) => (
@@ -2103,12 +2103,12 @@ function AgentConfigurePage({
                         onClick={() => rollbackConfig.mutate(revision.id)}
                         disabled={rollbackConfig.isPending}
                       >
-                        Restore
+                        回滚
                       </Button>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      Changed:{" "}
-                      {revision.changedKeys.length > 0 ? revision.changedKeys.join(", ") : "no tracked changes"}
+                      改动：{" "}
+                      {revision.changedKeys.length > 0 ? revision.changedKeys.join("、") : "没有记录到的改动"}
                     </p>
                   </div>
                 ))}
@@ -2223,14 +2223,14 @@ function ConfigurationTab({
   const taskAssignLocked = agent.role === "ceo" || canCreateAgents;
   const taskAssignHint =
     taskAssignSource === "ceo_role"
-      ? "Enabled automatically for CEO agents."
+      ? "CEO 角色自动开启。"
       : taskAssignSource === "agent_creator"
-        ? "Enabled automatically while this agent can create new agents."
+        ? "只要这个 Agent 能创建新 Agent，就自动开启。"
         : taskAssignSource === "explicit_grant"
-          ? "Enabled via explicit company permission grant."
+          ? "由公司显式授权开启。"
           : taskAssignSource === "simple_default"
-            ? "Enabled by simple company-wide task assignment defaults."
-            : "Disabled unless explicitly granted.";
+            ? "由公司级的简单派活默认值开启。"
+            : "未显式授权时关闭。";
 
   return (
     <div className="space-y-6">
@@ -2251,7 +2251,7 @@ function ConfigurationTab({
       />
       {content === "configuration" ? (
         <p className="text-xs text-muted-foreground">
-          Saved adapter config affects the next run. Active runs keep the config they started with, and config changes may start a fresh adapter session.
+          保存的适配器配置从下一次运行开始生效。正在跑的运行沿用它启动时的配置，改配置可能会开一个新的适配器会话。
         </p>
       ) : null}
 
@@ -2279,13 +2279,13 @@ function ConfigurationTab({
       /> : null}
 
       {content === "configuration" ? <div>
-        <h3 className="text-sm font-medium mb-3">Permissions</h3>
+        <h3 className="text-sm font-medium mb-3">权限</h3>
         <div className="border border-border rounded-lg p-4 space-y-4">
           <div className="flex items-center justify-between gap-4 text-sm">
             <div className="space-y-1">
-              <div>Can create new agents</div>
+              <div>可以创建新 Agent</div>
               <p className="text-xs text-muted-foreground">
-                Lets this agent create or hire agents. This also grants task assignment authority.
+                允许这个 Agent 创建或雇佣 Agent，同时会一并获得派活权限。
               </p>
             </div>
             <ToggleSwitch
@@ -2302,9 +2302,9 @@ function ConfigurationTab({
           </div>
           <div className="flex items-center justify-between gap-4 text-sm">
             <div className="space-y-1">
-              <div>Can create/import skills</div>
+              <div>可以创建 / 导入技能</div>
               <p className="text-xs text-muted-foreground">
-                Lets this agent install, import, create, and scan company skills without creating agents.
+                允许这个 Agent 安装、导入、创建和扫描公司技能，不含创建 Agent。
               </p>
             </div>
             <ToggleSwitch
@@ -2321,7 +2321,7 @@ function ConfigurationTab({
           </div>
           <div className="flex items-center justify-between gap-4 text-sm">
             <div className="space-y-1">
-              <div>Can assign tasks</div>
+              <div>可以派活</div>
               <p className="text-xs text-muted-foreground">
                 {taskAssignHint}
               </p>
@@ -4451,7 +4451,7 @@ function KeysTab({ agentId, companyId }: { agentId: string; companyId?: string }
       {newToken && (
         <div className="border border-yellow-300 dark:border-yellow-600/40 bg-yellow-50 dark:bg-yellow-500/5 rounded-lg p-4 space-y-2">
           <p className="text-sm font-medium text-yellow-700 dark:text-yellow-400">
-            API key created — copy it now, it will not be shown again.
+            API Key 已创建，现在就复制，之后不会再显示。
           </p>
           <div className="flex items-center gap-2">
             <code className="flex-1 bg-neutral-100 dark:bg-neutral-950 rounded px-3 py-1.5 text-xs font-mono text-green-700 dark:text-green-300 truncate">
@@ -4461,7 +4461,7 @@ function KeysTab({ agentId, companyId }: { agentId: string; companyId?: string }
               variant="ghost"
               size="icon-sm"
               onClick={() => setTokenVisible((v) => !v)}
-              title={tokenVisible ? "Hide" : "Show"}
+              title={tokenVisible ? "隐藏" : "显示"}
             >
               {tokenVisible ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
             </Button>
@@ -4469,11 +4469,11 @@ function KeysTab({ agentId, companyId }: { agentId: string; companyId?: string }
               variant="ghost"
               size="icon-sm"
               onClick={copyToken}
-              title="Copy"
+              title="复制"
             >
               <Copy className="h-3.5 w-3.5" />
             </Button>
-            {copied && <span className="text-xs text-green-400">Copied!</span>}
+            {copied && <span className="text-xs text-green-400">已复制</span>}
           </div>
           <Button
             variant="ghost"
@@ -4481,7 +4481,7 @@ function KeysTab({ agentId, companyId }: { agentId: string; companyId?: string }
             className="text-muted-foreground text-xs"
             onClick={() => setNewToken(null)}
           >
-            Dismiss
+            知道了
           </Button>
         </div>
       )}
@@ -4490,14 +4490,14 @@ function KeysTab({ agentId, companyId }: { agentId: string; companyId?: string }
       <div className="border border-border rounded-lg p-4 space-y-3">
         <h3 className="text-xs font-medium text-muted-foreground flex items-center gap-2">
           <Key className="h-3.5 w-3.5" />
-          Create API Key
+          创建 API Key
         </h3>
         <p className="text-xs text-muted-foreground">
-          API keys allow this agent to authenticate calls to the Paperclip server.
+          API Key 让这个 Agent 能以自己的身份调用 Paperclip 服务端。
         </p>
         <div className="flex items-center gap-2">
           <Input
-            placeholder="Key name (e.g. production)"
+            placeholder="Key 名称（如 production）"
             value={newKeyName}
             onChange={(e) => setNewKeyName(e.target.value)}
             className="h-8 text-sm"
@@ -4511,22 +4511,22 @@ function KeysTab({ agentId, companyId }: { agentId: string; companyId?: string }
             disabled={createKey.isPending}
           >
             <Plus className="h-3.5 w-3.5 mr-1" />
-            Create
+            创建
           </Button>
         </div>
       </div>
 
       {/* Active keys */}
-      {isLoading && <p className="text-sm text-muted-foreground">Loading keys...</p>}
+      {isLoading && <p className="text-sm text-muted-foreground">加载 Key…</p>}
 
       {!isLoading && activeKeys.length === 0 && !newToken && (
-        <p className="text-sm text-muted-foreground">No active API keys.</p>
+        <p className="text-sm text-muted-foreground">没有生效中的 API Key。</p>
       )}
 
       {activeKeys.length > 0 && (
         <div>
           <h3 className="text-xs font-medium text-muted-foreground mb-2">
-            Active Keys
+            生效中的 Key
           </h3>
           <div className="border border-border rounded-lg divide-y divide-border">
             {activeKeys.map((key: AgentKey) => (
@@ -4534,7 +4534,7 @@ function KeysTab({ agentId, companyId }: { agentId: string; companyId?: string }
                 <div>
                   <span className="text-sm font-medium">{key.name}</span>
                   <span className="text-xs text-muted-foreground ml-3">
-                    Created {formatDate(key.createdAt)}
+                    创建于 {formatDate(key.createdAt)}
                   </span>
                 </div>
                 <Button
@@ -4544,7 +4544,7 @@ function KeysTab({ agentId, companyId }: { agentId: string; companyId?: string }
                   onClick={() => revokeKey.mutate(key.id)}
                   disabled={revokeKey.isPending}
                 >
-                  Revoke
+                  吊销
                 </Button>
               </div>
             ))}
@@ -4556,7 +4556,7 @@ function KeysTab({ agentId, companyId }: { agentId: string; companyId?: string }
       {revokedKeys.length > 0 && (
         <div>
           <h3 className="text-xs font-medium text-muted-foreground mb-2">
-            Revoked Keys
+            已吊销的 Key
           </h3>
           <div className="border border-border rounded-lg divide-y divide-border opacity-50">
             {revokedKeys.map((key: AgentKey) => (
@@ -4564,7 +4564,7 @@ function KeysTab({ agentId, companyId }: { agentId: string; companyId?: string }
                 <div>
                   <span className="text-sm line-through">{key.name}</span>
                   <span className="text-xs text-muted-foreground ml-3">
-                    Revoked {key.revokedAt ? formatDate(key.revokedAt) : ""}
+                    吊销于 {key.revokedAt ? formatDate(key.revokedAt) : ""}
                   </span>
                 </div>
               </div>

@@ -77,6 +77,16 @@ function authorLabel(agentId: string | null, agentNames: Map<string, string>) {
   return agentNames.get(agentId) ?? "已移除的 Agent";
 }
 
+/**
+ * The rules text is a running context cost for every terminal session that
+ * loads it, and everything new merges into this one document — so the length
+ * only ever grows. Show it where the text is written and read, so trimming is
+ * a decision someone can make in the moment instead of after it hurts.
+ */
+function charCountLabel(text: string) {
+  return `${text.length.toLocaleString()} 字符`;
+}
+
 export function TeamRules() {
   const { selectedCompanyId } = useCompany();
   const queryClient = useQueryClient();
@@ -151,7 +161,7 @@ export function TeamRules() {
               aria-label="笔记正文"
               className="min-h-32"
             />
-            <div className="flex gap-2">
+            <div className="flex items-center gap-2">
               <Button
                 size="sm"
                 disabled={!draft.title.trim() || createNote.isPending}
@@ -162,6 +172,9 @@ export function TeamRules() {
               <Button size="sm" variant="ghost" onClick={() => setDraft(null)}>
                 <X className="h-4 w-4" aria-hidden /> 取消
               </Button>
+              <span className="ml-auto text-(length:--text-micro) text-muted-foreground">
+                {charCountLabel(draft.body)}
+              </span>
             </div>
           </div>
         ) : null}
@@ -204,6 +217,7 @@ export function TeamRules() {
                     </div>
                     <p className="mt-2 text-(length:--text-micro) text-muted-foreground">
                       更新于 {new Date(note.updatedAt).toLocaleString()}
+                      {` · ${charCountLabel(note.body)}`}
                       {authorLabel(note.createdByAgentId, agentNames)
                         ? ` · ${authorLabel(note.createdByAgentId, agentNames)} 创建`
                         : ""}
@@ -374,13 +388,16 @@ function NoteEditor({
     <div className="space-y-2">
       <Input value={title} onChange={(e) => setTitle(e.target.value)} aria-label="笔记标题" />
       <Textarea value={body} onChange={(e) => setBody(e.target.value)} aria-label="笔记正文" className="min-h-32" />
-      <div className="flex gap-2">
+      <div className="flex items-center gap-2">
         <Button size="sm" disabled={!title.trim() || pending} onClick={() => onSave(title, body)}>
           <Save className="h-4 w-4" aria-hidden /> 保存
         </Button>
         <Button size="sm" variant="ghost" onClick={onCancel}>
           <X className="h-4 w-4" aria-hidden /> 取消
         </Button>
+        <span className="ml-auto text-(length:--text-micro) text-muted-foreground">
+          {charCountLabel(body)}
+        </span>
       </div>
     </div>
   );

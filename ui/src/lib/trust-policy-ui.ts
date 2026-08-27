@@ -16,14 +16,14 @@ export type LowTrustBoundaryTarget =
   | { type: "issue"; id: string };
 
 export const TRUST_PRESET_LABELS: Record<TrustPreset, string> = {
-  standard: "Standard",
-  low_trust_review: "Low-trust review",
+  standard: "标准",
+  low_trust_review: "低信任评审",
 };
 
 export const TRUST_PRESET_DESCRIPTIONS: Record<TrustPreset, string> = {
-  standard: "Company-visible collaboration. This is the default for normal work.",
+  standard: "公司内可见的协作模式，常规工作用这个。",
   low_trust_review:
-    "Contained for hostile or untrusted input. Narrow Paperclip API, quarantined output. Use for PR review and external-content triage.",
+    "为不可信或带敌意的输入做隔离。只开放很窄的 Paperclip 接口，产出会被隔离。适合 PR 评审和外部内容初筛。",
 };
 
 export function getTrustPreset(permissions: Partial<AgentPermissions> | null | undefined): TrustPreset {
@@ -159,11 +159,11 @@ export function summarizeLowTrustBoundaryTarget(
   boundary: LowTrustBoundary | null | undefined,
 ) {
   const target = getSingleLowTrustBoundaryTarget(boundary);
-  if (target?.type === "project") return `Project ${target.id.slice(0, 8)}`;
-  if (target?.type === "root_issue") return `Root issue ${target.id.slice(0, 8)}`;
+  if (target?.type === "project") return `项目 ${target.id.slice(0, 8)}`;
+  if (target?.type === "root_issue") return `根 Issue ${target.id.slice(0, 8)}`;
   if (target?.type === "issue") return `Issue ${target.id.slice(0, 8)}`;
-  if (!boundary || countBoundaryTargets(boundary) === 0) return "No boundary selected";
-  return `${countBoundaryTargets(boundary)} boundaries`;
+  if (!boundary || countBoundaryTargets(boundary) === 0) return "未选择边界";
+  return `${countBoundaryTargets(boundary)} 条边界`;
 }
 
 export function lowTrustBoundaryHasScope(boundary: LowTrustBoundary | null | undefined) {

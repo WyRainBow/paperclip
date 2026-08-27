@@ -46,9 +46,9 @@ describe("TrustPresetSection", () => {
   it("hides the CE boundary editor under Standard", () => {
     const view = renderSection({ canCreateAgents: false, trustPreset: "standard" });
 
-    expect(view.text()).toContain("Trust preset");
-    expect(view.text()).not.toContain("Boundary type");
-    expect(view.text()).not.toContain("Get Paperclip EE.");
+    expect(view.text()).toContain("信任预设");
+    expect(view.text()).not.toContain("边界类型");
+    expect(view.text()).not.toContain("了解 Paperclip EE。");
   });
 
   it("shows a selectable CE boundary editor for low-trust review", () => {
@@ -65,11 +65,11 @@ describe("TrustPresetSection", () => {
       },
     });
 
-    expect(view.text()).toContain("Containment active");
-    expect(view.text()).toContain("Boundary type");
+    expect(view.text()).toContain("隔离已生效");
+    expect(view.text()).toContain("边界类型");
     expect(view.text()).toContain("Paperclip App");
-    expect(view.text()).toContain("Get Paperclip EE.");
-    expect(view.text()).not.toContain("Managed by EE/API");
+    expect(view.text()).toContain("了解 Paperclip EE。");
+    expect(view.text()).not.toContain("由 EE / API 管理");
   });
 
   it("renders multi-boundary policies as read-only", () => {
@@ -86,8 +86,8 @@ describe("TrustPresetSection", () => {
       },
     });
 
-    expect(view.text()).toContain("Managed by EE/API");
-    expect(view.text()).toContain("2 boundaries");
-    expect(view.text()).not.toContain("Clear boundary");
+    expect(view.text()).toContain("由 EE / API 管理");
+    expect(view.text()).toContain("2 条边界");
+    expect(view.text()).not.toContain("清除边界");
   });
 });

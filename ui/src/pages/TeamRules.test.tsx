@@ -116,4 +116,16 @@ describe("TeamRules single-document policy", () => {
       root.unmount();
     });
   });
+
+  it("shows the rules text length, since the document only grows", async () => {
+    const body = "x".repeat(3680);
+    mockApi.get.mockResolvedValue([{ ...NOTE, body }]);
+    const root = await renderTeamRules();
+
+    expect(container.textContent).toContain("3,680 字符");
+
+    flushSync(() => {
+      root.unmount();
+    });
+  });
 });
