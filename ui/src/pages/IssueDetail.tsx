@@ -5225,7 +5225,7 @@ export function IssueDetail() {
           </TabsTrigger>
           <TabsTrigger value="decisions" className="gap-1.5">
             <ListChecks className="h-3.5 w-3.5" />
-            {t("Decisions")}
+            Decision
           </TabsTrigger>
           <TabsTrigger value="discussion" className="gap-1.5">
             <MessagesSquare className="h-3.5 w-3.5" aria-hidden />
@@ -5427,7 +5427,7 @@ export function IssueDetail() {
         </TabsContent>
 
         <TabsContent value="discussion" className={shellSectionClass}>
-          <IssueDiscussionPanel issueId={issue.id} />
+          <IssueDiscussionPanel issueId={issue.id} issueIdentifier={issue.identifier} />
         </TabsContent>
 
         {activePluginTab && (

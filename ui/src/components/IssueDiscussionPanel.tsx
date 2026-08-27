@@ -3,6 +3,9 @@ import { useCompany } from "@/context/CompanyContext";
 import { issuesApi } from "@/api/issues";
 import { cn, chineseTimestamp } from "@/lib/utils";
 import { AgentIcon, agentCustomIcon } from "@/components/AgentIconPicker";
+import { FileText } from "lucide-react";
+import { buildDocumentAnnotationHash } from "@/lib/document-annotation-hash";
+import { createIssueDetailPath } from "@/lib/issueDetailBreadcrumb";
 
 const AGENT_BRAND_COLORS: Record<string, string> = {
   "Claude（Terminal）": "#D97757",
@@ -28,6 +31,10 @@ interface DiscussionComment {
     role?: string;
     label?: string | null;
     answerAgent?: string;
+    answerAgentId?: string;
+    questionAgentId?: string;
+    docKey?: string;
+    docTitle?: string;
   } | null;
 }
 
@@ -40,12 +47,15 @@ interface Thread {
 }
 
 /**
- * Discussion tab: Q&A pairs as chat bubbles. Left = board/question,
- * right = agent/answer (authorAgentId determines the side). Threads are
- * comments linked by presentation.threadId with kind=discussion_qa
- * (MUL-38: zero new tables, same mechanism as progress_note).
+ * Discussion tab: Q&A pairs as chat bubbles. The sides follow the review
+ * roles, not the question/answer roles (MUL-51): the side that commissioned
+ * the review (the question) sits right, the responding agent (the answer)
+ * sits left, so a Claude→Codex/Grok review reads like one conversation.
+ * Threads are comments linked by presentation.threadId with
+ * kind=discussion_qa (MUL-38: zero new tables, same mechanism as
+ * progress_note).
  */
-export function IssueDiscussionPanel({ issueId }: { issueId: string }) {
+export function IssueDiscussionPanel({ issueId, issueIdentifier }: { issueId: string; issueIdentifier?: string | null }) {
   const { selectedCompanyId } = useCompany();
   const commentsQuery = useQuery({
     queryKey: ["issues", issueId, "discussion"],
@@ -60,6 +70,14 @@ export function IssueDiscussionPanel({ issueId }: { issueId: string }) {
   const agentMap = useMemo(() => {
     const map = new Map<string, Agent>();
     for (const agent of agentsQuery.data ?? []) map.set(agent.id, agent);
+    return map;
+  }, [agentsQuery.data]);
+
+  // Older answers carry only presentation.answerAgent (a name string), so the
+  // agent record — and with it the provider logo — has to be found by name.
+  const agentByName = useMemo(() => {
+    const map = new Map<string, Agent>();
+    for (const agent of agentsQuery.data ?? []) map.set(agent.name, agent);
     return map;
   }, [agentsQuery.data]);
 
@@ -109,26 +127,39 @@ export function IssueDiscussionPanel({ issueId }: { issueId: string }) {
             const msg = thread[role];
             if (!msg) return null;
             const answerAgentName = msg.presentation?.answerAgent ?? null;
-            const isAgent = Boolean(msg.authorAgentId) || Boolean(answerAgentName);
-            const agent = msg.authorAgentId ? agentMap.get(msg.authorAgentId) : null;
+            // Both sides can be filed on behalf, so each carries its own
+            // attributed agent id; authorAgentId is only the writer.
+            const attributedAgentId = msg.presentation?.answerAgentId ?? msg.presentation?.questionAgentId ?? null;
+            const isAgent = Boolean(msg.authorAgentId) || Boolean(answerAgentName) || Boolean(attributedAgentId);
+            const agent = (attributedAgentId ? agentMap.get(attributedAgentId) : null)
+              ?? (msg.authorAgentId ? agentMap.get(msg.authorAgentId) : null)
+              ?? (answerAgentName ? agentByName.get(answerAgentName) : null)
+              ?? null;
             const displayName = agent?.name ?? answerAgentName ?? msg.authorUserId ?? "board";
             return (
               <div
                 key={msg.id}
-                className={cn("flex gap-2", role === "question" ? "justify-start" : "justify-end")}
+                className={cn("flex gap-2", role === "question" ? "justify-end" : "justify-start")}
                 data-testid={`bubble-${role}`}
               >
-                {role === "answer" ? null : (
-                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-border bg-muted/40 text-(length:--text-micro) font-medium text-muted-foreground">
-                    Q
+                {role === "question" ? null : (
+                  <span
+                    className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-full border border-sky-500/30 bg-sky-500/10 text-(length:--text-micro) font-medium text-sky-700 dark:text-sky-300"
+                    title={isAgent ? displayName : undefined}
+                  >
+                    {agent ? (
+                      <AgentIcon icon={agent.icon} customIconUrl={agentCustomIcon(agent)} className="h-4 w-4" />
+                    ) : (
+                      "A"
+                    )}
                   </span>
                 )}
                 <div
                   className={cn(
                     "max-w-[80%] rounded-xl px-3 py-2 text-sm leading-5",
                     role === "question"
-                      ? "rounded-bl-sm bg-muted/50 text-foreground"
-                      : "rounded-br-sm border border-sky-500/20 bg-sky-500/5 text-foreground",
+                      ? "rounded-br-sm bg-muted/50 text-foreground"
+                      : "rounded-bl-sm border border-sky-500/20 bg-sky-500/5 text-foreground",
                   )}
                 >
                   <p className="mb-0.5 flex items-center gap-1 text-(length:--text-micro) text-muted-foreground">
@@ -151,10 +182,26 @@ export function IssueDiscussionPanel({ issueId }: { issueId: string }) {
                     <span>· {chineseTimestamp(msg.createdAt)}</span>
                   </p>
                   <p className="whitespace-pre-wrap">{msg.body}</p>
+                  {msg.presentation?.docKey ? (
+                    <a
+                      href={`${createIssueDetailPath(issueIdentifier ?? issueId)}${buildDocumentAnnotationHash({ documentKey: msg.presentation.docKey, threadId: null, commentId: null })}`}
+                      className="mt-1.5 inline-flex items-center gap-1 text-(length:--text-micro) font-medium text-sky-700 underline-offset-2 hover:underline dark:text-sky-300"
+                    >
+                      <FileText className="h-3 w-3" aria-hidden />
+                      {msg.presentation.docTitle ?? `完整评审：${msg.presentation.docKey}`}
+                    </a>
+                  ) : null}
                 </div>
-                {role === "question" ? null : (
-                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-sky-500/30 bg-sky-500/10 text-(length:--text-micro) font-medium text-sky-700 dark:text-sky-300">
-                    A
+                {role === "answer" ? null : (
+                  <span
+                    className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-full border border-border bg-muted/40 text-(length:--text-micro) font-medium text-muted-foreground"
+                    title={isAgent ? displayName : undefined}
+                  >
+                    {agent ? (
+                      <AgentIcon icon={agent.icon} customIconUrl={agentCustomIcon(agent)} className="h-4 w-4" />
+                    ) : (
+                      "Q"
+                    )}
                   </span>
                 )}
               </div>
