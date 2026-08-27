@@ -112,8 +112,9 @@ Use this when validating Paperclip itself (assignment flow, checkouts, run visib
 ```bash
 npx paperclipai issue create \
   --company-id "$PAPERCLIP_COMPANY_ID" \
+  --project "$PAPERCLIP_PROJECT" \
   --title "Self-test: assignment/watch flow" \
-  --description "Temporary validation issue" \
+  --description "> Throwaway card to validate assignment, checkout, and run visibility." \
   --status todo \
   --assignee-agent-id "$PAPERCLIP_AGENT_ID"
 ```

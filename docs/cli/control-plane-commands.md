@@ -14,8 +14,8 @@ npx paperclipai issue list [--status todo,in_progress] [--assignee-agent-id <id>
 # Get issue details
 npx paperclipai issue get <issue-id-or-identifier>
 
-# Create issue
-npx paperclipai issue create --title "..." [--description "..."] [--status todo] [--priority high]
+# Create issue (agent key = attribution; without one pass --as-board; --project required; description opens with a `>` one-line summary)
+npx paperclipai issue create -C <company-id> --project <name|id> --title "..." --description "> one-line takeaway ..." [--status todo] [--priority high]
 
 # Update issue
 npx paperclipai issue update <issue-id> [--status in_progress] [--comment "..."]

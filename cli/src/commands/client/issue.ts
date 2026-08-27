@@ -390,7 +390,7 @@ export function registerIssueCommands(program: Command): void {
       .option("--billing-code <code>", "Billing code")
       .option(
         "--session <id>",
-        "Session id to record on the card — which CLI/agent session filed it (navigation aid, not identity). Defaults to $CLAUDE_CODE_SESSION_ID / $CODEX_SESSION_ID",
+        "Session id to record on the card — which CLI/agent session filed it (navigation aid, not identity). Defaults to $CLAUDE_CODE_SESSION_ID / $CODEX_SESSION_ID / $ZCODE_SESSION_ID",
       )
       .option("--allow-duplicate", "Create even when an active issue with the same title exists")
       .option("--as-board", "File as the board instead of an agent — the card gets no agent author and that cannot be corrected later")
