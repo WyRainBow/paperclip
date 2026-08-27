@@ -83,13 +83,14 @@ export function IssuePropertiesPlansTab({ issue }: IssuePropertiesPlansTabProps)
           approve from. */}
       {planDocument ? (
         <section data-testid="issue-plan-document" className="space-y-2">
-          <div className="flex items-center gap-1 text-xs text-muted-foreground">
-            {`Revision ${planDocument.latestRevisionNumber ?? 1} · updated ${new Date(planDocument.updatedAt).toLocaleString([], {
-              month: "short",
-              day: "numeric",
-              hour: "numeric",
-              minute: "2-digit",
-            })}`}
+          <div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
+            <span className="font-mono text-(length:--text-micro)">doc:{planDocument.id?.slice(0, 8) ?? planDocument.key}</span>
+            <span>· rev {planDocument.latestRevisionNumber ?? 1}</span>
+            {planDocument.createdByAgentId || planDocument.createdByUserId ? (
+              <span>· 由 {planDocument.createdByAgentId ? "agent" : planDocument.createdByUserId} 创建</span>
+            ) : null}
+            <span>· 创建时间 {new Date(planDocument.createdAt).toLocaleString("zh-CN", { year: "numeric", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
+            <span>· 更新时间 {new Date(planDocument.updatedAt).toLocaleString("zh-CN", { year: "numeric", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
             <DocumentAnnotationsCountChip
               issueId={issue.id}
               docKey="plan"

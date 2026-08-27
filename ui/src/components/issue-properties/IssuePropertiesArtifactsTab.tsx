@@ -362,6 +362,17 @@ function DocumentRow({
       </div>
       {expanded ? (
         <div className="border-t border-border px-2.5 py-2">
+          <div className="mb-2 flex flex-wrap items-center gap-1 text-(length:--text-micro) text-muted-foreground">
+            <span className="font-mono">doc:{doc.id?.slice(0, 8) ?? doc.key}</span>
+            <span>· key: {doc.key}</span>
+            {doc.createdByAgentId || doc.createdByUserId ? (
+              <span>· 由 {doc.createdByAgentId ? `agent:${doc.createdByAgentId.slice(0, 8)}` : doc.createdByUserId} 创建</span>
+            ) : null}
+            {doc.createdAt ? (
+              <span>· 创建时间 {new Date(doc.createdAt).toLocaleString("zh-CN", { year: "numeric", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
+            ) : null}
+            <span>· 更新时间 {new Date(doc.updatedAt ?? doc.createdAt ?? 0).toLocaleString("zh-CN", { year: "numeric", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
+          </div>
           {doc.body.trim().length > 0 ? (
             <IssueDocumentAnnotations
               issueId={issueId}
