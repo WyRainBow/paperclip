@@ -460,23 +460,16 @@ export function DecisionCard({
           {chosenOption && (
             <p className="text-sm">
               {decidedByAgentName ? (
-                <>
-                  <span className="text-muted-foreground">已由 </span>
-                  <span className="font-medium text-foreground">{decidedByAgentName}</span>
-                  <span className="text-muted-foreground"> 裁决：选了 </span>
-                </>
-              ) : (
-                <span className="text-muted-foreground">选了 </span>
-              )}
-              <span className="font-medium text-foreground">{chosenOption.label}</span>
+                <span className="font-medium text-foreground">{decidedByAgentName}</span>
+              ) : null}
+              <span className="text-muted-foreground">{decidedByAgentName ? " 选了 " : "选了 "}</span>
+              <span className="font-medium text-foreground">「{chosenOption.label}」</span>
               {recommendedOption && (
-                <span className="text-muted-foreground">
-                  {" "}({recommendedBy?.name ?? "提案 agent"} 推荐
-                  {chosenOption.id === recommendedOption.id
-                    ? <span className="text-emerald-700 dark:text-emerald-300"> · 已采纳</span>
-                    : <span className="text-amber-700 dark:text-amber-300"> · 未采纳</span>}
-                  )
-                </span>
+                chosenOption.id === recommendedOption.id ? (
+                  <span className="text-emerald-700 dark:text-emerald-300"> 与推荐一致</span>
+                ) : (
+                  <span className="text-amber-700 dark:text-amber-300"> 未采纳推荐（{recommendedBy?.name ?? "提案 agent"} 推荐 {recommendedOption.label}）</span>
+                )
               )}
               {decision.decidedAt && (
                 <span className="tabular-nums text-muted-foreground"> · {absoluteTimestamp(decision.decidedAt)}</span>
