@@ -691,9 +691,16 @@ export function TaskChatThread(props: TaskChatThreadProps) {
                       finishedAtMs={tailFinishedAtMs}
                       toolSummary={tailToolSummary}
                     />
-                    {/* Run transcript tail removed: progress info belongs in
-                        the Progress tab, chat is conversation-only (user
-                        2026-08-26). The run pill above still shows status. */}
+                    <TaskChatLiveTail
+                      items={tailItems}
+                      emptyMessage={
+                        tailStatus === "queued"
+                          ? "Waiting to start..."
+                          : (liveRun && liveRun.id === tailRunId
+                              ? liveRun.currentStatusMessage
+                              : null) || "Waiting for transcript..."
+                      }
+                    />
                   </div>
                 ) : null}
                 {bottomBlockerLinks}
