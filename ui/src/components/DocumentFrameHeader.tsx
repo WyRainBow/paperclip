@@ -97,7 +97,10 @@ export function DocumentFrameHeader({
   return (
     <div className="flex items-start justify-between gap-3">
       <div className="min-w-0">
-        <div className="flex items-center gap-2 min-w-0">
+        {/* gap-4, not gap-2: the row runs key, revision, docID, author, and
+            timestamp together, and at the tighter gap they read as one string
+            of text rather than five separate fields. */}
+        <div className="flex items-center gap-4 min-w-0">
           <button
             type="button"
             className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
@@ -196,7 +199,7 @@ export function DocumentFrameHeader({
               href={updatedHref ?? `#document-${encodeURIComponent(documentKey)}`}
               className="truncate text-(length:--text-micro) text-muted-foreground transition-colors hover:text-foreground hover:underline"
             >
-              最新更新时间：{relativeTime(updatedAt)}
+              更新时间：{relativeTime(updatedAt)}
             </a>
           ) : null}
           {annotationSlot}

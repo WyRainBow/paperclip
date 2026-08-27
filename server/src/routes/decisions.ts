@@ -32,8 +32,16 @@ const createSchema = z.object({
   resolverPolicy: z.enum(["board", "agents"]).optional(),
   originIssueId: z.string().guid().nullable().optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
+  // createdByAgentId: the mirror of actingAgentId on /decide. A terminal
+  // operating the board has no agent identity on the request, so the create
+  // path used to 403 it outright and back-filling an already-settled decision
+  // had to borrow another session's run. The board names the agent the record
+  // is attributed to instead; an agent actor still cannot claim to be another.
+  createdByAgentId: z.string().guid().nullable().optional(),
 }).strict();
-const bundleSchema = z.object({ title: z.string().trim().min(1).max(500), summary: z.string().max(100_000), decisions: z.array(createSchema).min(1).max(50) }).strict();
+// A bundle is always proposed by an agent actor, so its items never carry the
+// board's explicit attribution field.
+const bundleSchema = z.object({ title: z.string().trim().min(1).max(500), summary: z.string().max(100_000), decisions: z.array(createSchema.omit({ createdByAgentId: true })).min(1).max(50) }).strict();
 // actingAgentId: a board-policy decision is the board's to make, but it is
 // still performed from somewhere — a terminal agent operating the board. The
 // two were collapsed into one field, so every such verdict read as an
@@ -57,6 +65,17 @@ function agentContext(req: Parameters<typeof getActorInfo>[0]) {
 function boardUserId(req: Parameters<typeof getActorInfo>[0]) {
   assertBoard(req);
   return req.actor.userId ?? "local-implicit-board";
+}
+
+// A board actor may name the agent a decision is attributed to, but only one of
+// its own company's — otherwise the board could pin a record on any agent in
+// the instance. Shared by the create and decide paths, which check the same thing.
+function companyAgentId(db: Db, companyId: string, agentId: string) {
+  return db
+    .select({ id: agents.id })
+    .from(agents)
+    .where(and(eq(agents.id, agentId), eq(agents.companyId, companyId)))
+    .then((rows) => rows[0]?.id ?? null);
 }
 
 export function decisionRoutes(db: Db, options: DecisionServiceOptions) {
@@ -147,8 +166,21 @@ export function decisionRoutes(db: Db, options: DecisionServiceOptions) {
   );
   router.post("/companies/:companyId/decisions", validate(createSchema), async (req, res) => {
     const companyId = req.params.companyId as string; assertCompanyAccess(req, companyId);
-    const agent = agentContext(req); if (!agent) { res.status(403).json({ error: "Agent identity required" }); return; }
-    res.status(201).json(await svc.create({ companyId, actor: req.actor, ...agent, ...req.body }));
+    const { createdByAgentId, ...body } = req.body as z.infer<typeof createSchema>;
+    const agent = agentContext(req);
+    if (agent) { res.status(201).json(await svc.create({ companyId, actor: req.actor, ...agent, ...body })); return; }
+    if (!createdByAgentId) {
+      res.status(403).json({ error: "Agent identity required: authenticate as an agent, or pass createdByAgentId naming the company agent this decision is attributed to" });
+      return;
+    }
+    const userId = boardUserId(req);
+    const originAgentId = await companyAgentId(db, companyId, createdByAgentId);
+    if (!originAgentId) { res.status(422).json({ error: "createdByAgentId does not belong to this company" }); return; }
+    // The board owns the call, the named agent owns the record: the decision is
+    // filed under that agent with no run, so provenance falls back to
+    // originIssueId — which the service requires on this path.
+    void userId;
+    res.status(201).json(await svc.create({ companyId, actor: req.actor, agentId: originAgentId, runId: null, ...body }));
   });
   router.post("/companies/:companyId/decision-bundles", validate(bundleSchema), async (req, res) => {
     const companyId = req.params.companyId as string; assertCompanyAccess(req, companyId);
