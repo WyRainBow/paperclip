@@ -519,8 +519,9 @@ export function registerIssueCommands(program: Command): void {
                   )) ?? [];
                   const agent = agents.find((a) => a.name === detectedAgentName);
                   if (agent) {
-                    await ctx.api.patch(apiPath`/api/issues/${created.id}`, { createdByAgentId: agent.id });
+                    await ctx.api.patch(apiPath`/api/issues/${created.id}`, { createdByAgentId: agent.id, createdByUserId: null });
                     created.createdByAgentId = agent.id;
+                    created.createdByUserId = null;
                   }
                 } catch { /* best-effort */ }
               }
