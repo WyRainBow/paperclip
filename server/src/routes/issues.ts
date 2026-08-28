@@ -9816,6 +9816,25 @@ export function issueRoutes(
       }
     }
 
+    // 裁决模式 (MUL-131): in manual mode the verdict verb is reserved for a
+    // person — an agent may park work in in_review but never close it. The
+    // check reads the live setting so flipping the picker takes effect on the
+    // very next patch, no restart. Auto (the default) keeps agent self-close.
+    if (
+      req.actor.type === "agent" &&
+      updateFields.status === "done" &&
+      existing.status !== "done"
+    ) {
+      const generalSettings = (await instanceSettings.get()).general;
+      if (generalSettings.adjudicationMode === "manual") {
+        res.status(422).json({
+          error:
+            "亲审模式：收卡的裁决权在人。把卡推到 in_review 并指派 local-board（issue update <id> --assignee-user-id local-board --status in_review），等老板在收件箱 Approve；或请老板把裁决模式切回「委托」。",
+          details: { code: "manual_adjudication_required", issueId: existing.id },
+        });
+        return;
+      }
+    }
     const reviewInteractionId = await assertInReviewReviewPath({
       existing,
       updateFields,

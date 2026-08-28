@@ -59,6 +59,8 @@ export interface InstanceGeneralSettings {
    * keeps agents' natural language; other values add a wake-prompt directive.
    */
   agentOutputLanguage?: AgentOutputLanguage;
+  /** Who closes finished work (MUL-131): absent/"auto" = agent self-close; "manual" = done is reserved for a person. */
+  adjudicationMode?: "auto" | "manual";
 }
 
 export interface InstanceExperimentalSettings {

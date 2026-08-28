@@ -43,6 +43,7 @@ import { PageSkeleton } from "../components/PageSkeleton";
 import { AttentionQueueRow } from "../components/AttentionQueueRow";
 import { DecisionsToolbar } from "../components/DecisionsToolbar";
 import { Curtain, AgingItemRow } from "../components/DecisionShelf";
+import { AdjudicationModePicker } from "@/components/AdjudicationModePicker";
 import { DecisionQueueRail } from "../components/DecisionQueueRail";
 import { DecisionDateChips, type AttentionCustomRange } from "../components/DecisionDateChips";
 import { DecisionResolver } from "../components/DecisionResolver";
@@ -520,7 +521,11 @@ export function WhatNeedsMe() {
     <div ref={rootRef} className="max-w-3xl space-y-4">
       <div className="flex items-center justify-between gap-2">
         <h1 className="text-xl font-bold">Decisions</h1>
-        <DecisionsToolbar
+        <div className="flex items-center gap-2">
+          {/* 裁决模式 (MUL-131): who closes finished work — sits on this desk
+              because manual-mode review items land right below it. */}
+          <AdjudicationModePicker />
+          <DecisionsToolbar
           visibleCount={visibleCount}
           filterOptions={filterOptions}
           filters={filters}
@@ -529,7 +534,8 @@ export function WhatNeedsMe() {
           onGroupByChange={updateGroupBy}
           sortOrder={sortOrder}
           onSortOrderChange={updateSortOrder}
-        />
+          />
+        </div>
       </div>
 
       {/* Queue quicklinks + date-range chips (§4.1–§4.2). The rail self-hides

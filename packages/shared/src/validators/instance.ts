@@ -40,6 +40,11 @@ export const instanceGeneralSettingsSchema = z.object({
   // leaves agents' natural language untouched; other values add a wake-prompt
   // language directive.
   agentOutputLanguage: z.enum(AGENT_OUTPUT_LANGUAGES).optional(),
+  // Who gets the verdict on finished work (MUL-131). Absent/"auto" = the
+  // implementing agent closes its own card (done) and leaves a decision
+  // record; "manual" = agents may only park work in in_review — the done
+  // verb is reserved for a person, enforced server-side on the status patch.
+  adjudicationMode: z.enum(["auto", "manual"]).optional(),
 }).strict();
 
 export const patchInstanceGeneralSettingsSchema = z
