@@ -100,6 +100,36 @@ npx paperclipai skills import owner/repo/path/to/skill --company-id <company-id>
 npx paperclipai skills agent sync <agent-id> --skill github-pr-workflow --mode add --company-id <company-id>
 ```
 
+## Workspace Commands
+
+Team Rules, Team Wiki and Team Skills reach a session through recall, and the
+citation ledger is how anything comes back. `recall` records what it served;
+`cite` records what the session says it actually used. An asset served often
+and never cited is spending the SessionStart budget for nothing, and
+`assets-health` is where that shows up.
+
+```sh
+# Read the complete Team Rules text — no search, no budget
+npx paperclipai workspace rules --company-id <company-id>
+
+# Search Team Wiki + Team Rules within a character budget.
+# Every result line ends with the `kind:id` ref to paste into `cite`.
+npx paperclipai workspace recall --query "分支登记" --budget 2000 --company-id <company-id>
+npx paperclipai workspace recall --query "分支登记" --issue <issue-id> --company-id <company-id>
+
+# Declare which recalled assets the work actually used. Repeating the same
+# asset on the same issue is a no-op, not an error.
+npx paperclipai workspace cite --asset rule:<uuid> --asset wiki:<uuid> --issue <issue-id> --company-id <company-id>
+
+# Served/cited counts per asset. Names dead-weight candidates; prunes nothing.
+npx paperclipai workspace assets-health --company-id <company-id>
+npx paperclipai workspace assets-health --dead-only --company-id <company-id>
+```
+
+An asset counts as dead weight once it has been served at least five times and
+cited zero times. Below that it is simply new, and calling it dead would retire
+pages before anyone had the chance to use them.
+
 ## Approval Commands
 
 ```sh
