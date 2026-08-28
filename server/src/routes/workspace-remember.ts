@@ -208,7 +208,7 @@ export function workspaceRememberRoutes(db: Db): Router {
         revisionNumber: version.revisionNumber,
         created: true,
         assetRef: `wiki:${created.id}`,
-        note: "已落 agent/cases，recall 即刻可召回",
+        note: "已落 agent/cases，recall 即刻可召回——按草稿制（MUL-138）这应当发生在老板批过 experience-draft 之后",
       });
       return;
     }
@@ -256,7 +256,7 @@ export function workspaceRememberRoutes(db: Db): Router {
       revisionNumber: version.revisionNumber,
       created: false,
       assetRef: `wiki:${updated.id}`,
-      note: "同名经验已存在，本页追加了新版本——旧版本在版本链里可回看",
+      note: "同名经验已存在，本页追加了新版本——旧版本在版本链里可回看；按草稿制（MUL-138）这应当发生在老板批过草稿之后",
     });
   });
 
