@@ -20,28 +20,21 @@ fi
 # registers this hook in its own config file, so that file already knows who it
 # is and passes the slug as $1.
 #
-# Sniffing the environment instead does not survive here. Codex runs hook
-# subprocesses without CODEX_SANDBOX and ZCode's settings.json `env` never
-# reaches child processes at all, so both fell through to "no signature" and
-# started as local-board — the failure the identity line exists to expose. The
-# env signatures stay as a fallback for anyone invoking this by hand, and the
-# CLI keeps its own copy (TERMINAL_SIGNATURES in cli/src/commands/client/
-# common.ts) because it runs in the terminal's shell, where they do hold.
+# There is deliberately no environment-sniffing fallback. This script had one,
+# and it carried both defects the CLI was just fixed for: it looked for
+# CODEX_SANDBOX, which a non-sandboxed Codex never sets, and it matched
+# inherited variables, so a Codex spawned from a ZCode shell signed as
+# zcode-terminal. Guessing wrong here is worse than not guessing: an
+# unrecognized caller is told so, and never borrows a name.
+#
+# The CLI resolves the same question by walking the process ancestry
+# (detectTerminalSlug in cli/src/commands/client/common.ts). This script does
+# not repeat that logic — a second copy is what drifted last time — because the
+# registration already knows the answer.
 #
 # The key rides the rules request as a bearer token; the server answers with the
 # identity line already on the front of the text (MUL-113, decision 7f198bd4).
-# An unknown caller deliberately gets no identity rather than inheriting
-# somebody else's.
 TERMINAL_SLUG="${1:-}"
-if [ -z "$TERMINAL_SLUG" ]; then
-  if [ -n "${CLAUDECODE:-}${CLAUDE_CODE_SESSION_ID:-}${CLAUDE_PROJECT_DIR:-}" ]; then
-    TERMINAL_SLUG="claude-terminal"
-  elif [ -n "${CODEX_SANDBOX:-}" ]; then
-    TERMINAL_SLUG="codex-terminal"
-  elif [ -n "${ZCODE_BASE_URL:-}" ]; then
-    TERMINAL_SLUG="zcode-terminal"
-  fi
-fi
 
 KEY_FILE=""
 case "$TERMINAL_SLUG" in
@@ -91,16 +84,23 @@ if [ -n "$INJECT_TEXT" ]; then
   mkdir -p "$MIRROR_DIR" 2>/dev/null || true
   printf '%s\n' "$INJECT_TEXT" > "$MIRROR_FILE" 2>/dev/null || true
 
-  # Claude-family: additionalContext must be a STRING. Embedding the endpoint's
-  # {"mode","text"} object raw nested it here instead, so the fetched Team Rules
-  # never reached the session.
-  if [ -n "${CLAUDE_CODE_SESSION_ID:-}" ] || [ -n "${CLAUDE_PROJECT_DIR:-}" ]; then
-    INJECT_TEXT="$INJECT_TEXT" python3 -c '
+  # One channel for every terminal: a JSON object on stdout, where
+  # additionalContext must be a STRING (embedding the endpoint's {"mode","text"}
+  # object raw nested it here instead, and the fetched Team Rules never reached
+  # the session).
+  #
+  # Codex used to get plain text on stderr, and it was silently discarded: the
+  # hook ran, the audit mirror held the right content, and the session still had
+  # no idea who it was. Codex reads the same hookSpecificOutput contract Claude
+  # does — ~/.codex/hooks/global-repo-policy-guard.py is the working proof — so
+  # both now emit it (MUL-113).
+  INJECT_TEXT="$INJECT_TEXT" python3 -c '
 import json, os
 print(json.dumps({"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": os.environ["INJECT_TEXT"]}}, ensure_ascii=False))
 '
-  else
-    # Codex/zcode/grok: plain text to stderr.
+  # ZCode has not been confirmed to read that contract, so it keeps the plain
+  # stderr copy as well. Harmless to a terminal that ignores it.
+  if [ -z "${CLAUDE_CODE_SESSION_ID:-}${CLAUDE_PROJECT_DIR:-}${CODEX_THREAD_ID:-}" ]; then
     printf '%s\n' "$INJECT_TEXT" >&2
   fi
 fi
