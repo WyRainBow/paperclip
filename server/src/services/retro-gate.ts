@@ -1,7 +1,8 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import {
   activityLog,
+  agents,
   documents,
   feedbackVotes,
   issueComments,
@@ -11,6 +12,8 @@ import {
   issueWatchdogs,
   issues,
   labels,
+  teamRuleNotes,
+  teamRuleNoteVersions,
 } from "@paperclipai/db";
 import { logActivity } from "./activity-log.js";
 import { logger } from "../middleware/logger.js";
@@ -192,13 +195,56 @@ export async function computeFrictionScore(db: Db, companyId: string, issueId: s
 }
 
 const SIGNAL_LABELS: Record<FrictionSignal["key"], string> = {
-  rollback: "状态回退",
-  blocked: "进过 blocked",
-  review_rounds: "评审打到第 2 轮及以后",
-  recovery: "动用过 recovery",
-  down_votes: "收到 down 票",
-  watchdog: "watchdog 触发过",
+  rollback: "被打回重做过",
+  blocked: "卡在 blocked 等过",
+  review_rounds: "评审打到了第二轮以后",
+  recovery: "动用过 recovery 换手",
+  down_votes: "收到差评",
+  watchdog: "watchdog 报过警",
 };
+
+/**
+ * Down-vote reasons on this card, in plain words — the concrete "what went
+ * wrong" half of the question the gate asks. Asset-version votes carry the
+ * asset title so the boss sees WHICH rule misled the work, not just a uuid.
+ */
+async function downVoteReasonLines(db: Db, companyId: string, issueId: string): Promise<string[]> {
+  const votes = await db
+    .select({
+      reason: feedbackVotes.reason,
+      targetType: feedbackVotes.targetType,
+      targetId: feedbackVotes.targetId,
+    })
+    .from(feedbackVotes)
+    .where(and(
+      eq(feedbackVotes.companyId, companyId),
+      eq(feedbackVotes.issueId, issueId),
+      eq(feedbackVotes.vote, "down"),
+    ))
+    .orderBy(desc(feedbackVotes.createdAt))
+    .limit(3);
+
+  const lines: string[] = [];
+  for (const vote of votes) {
+    const reason = vote.reason?.trim() || "（没写理由）";
+    if (vote.targetType === "team_rule_note_version") {
+      const [row] = await db
+        .select({ title: teamRuleNotes.title })
+        .from(teamRuleNoteVersions)
+        .innerJoin(teamRuleNotes, eq(teamRuleNoteVersions.noteId, teamRuleNotes.id))
+        .where(eq(teamRuleNoteVersions.id, vote.targetId))
+        .limit(1);
+      lines.push(row ? `规则「${row.title}」被投差评：${reason}` : `一条规则被投差评：${reason}`);
+    } else if (vote.targetType === "team_wiki_page_version") {
+      lines.push(`一页团队 Wiki 被投差评：${reason}`);
+    } else if (vote.targetType === "company_skill_version") {
+      lines.push(`一个团队 Skill 被投差评：${reason}`);
+    } else {
+      lines.push(`差评：${reason}`);
+    }
+  }
+  return lines;
+}
 
 async function ensureRetroOwedLabel(db: Db, companyId: string): Promise<string> {
   const existing = await db
@@ -263,18 +309,45 @@ export async function recordRetroGate(db: Db, input: RetroGateInput): Promise<Fr
       .values({ companyId: input.companyId, issueId: input.issueId, labelId })
       .onConflictDoNothing();
 
-    const breakdown = score.signals
-      .map((signal) => `${SIGNAL_LABELS[signal.key]} ×${signal.count}（+${signal.points}）`)
-      .join("、");
+    const problems: string[] = score.signals
+      .filter((signal) => signal.key !== "down_votes")
+      .map((signal) => `${SIGNAL_LABELS[signal.key]} ×${signal.count}`);
+    problems.push(...await downVoteReasonLines(db, input.companyId, input.issueId));
+
+    // Who worked this card — the question names them so the "记" reply has a
+    // standing addressee. The agent is woken by the boss's reply (comment
+    // wakeup on its card) and drafts from the facts already on the card.
+    const worked = await db
+      .select({ name: agents.name })
+      .from(issues)
+      .innerJoin(agents, eq(
+        issues.assigneeAgentId ?? issues.drivingAgentId,
+        agents.id,
+      ))
+      .where(eq(issues.id, input.issueId))
+      .limit(1)
+      .then((rows) => rows[0] ?? null)
+      .catch(() => null);
+    const standbyLine = worked
+      ? `@${worked.name} 待命：老板回「记」，你就按三段式起草（素材用卡上的事实和差评理由），跑 \`workspace remember\` 落 cases/，落完把页面链接贴回这张卡。`
+      : "回「记」后由这张卡的执行 Agent 起草三段式并落 cases/。";
+
     await db.insert(issueComments).values({
       companyId: input.companyId,
       issueId: input.issueId,
       authorType: "system",
       body: [
-        `收尾闸门（${input.enteredStatus === "done" ? "收卡" : "送审"}）：这张卡摩擦分 ${score.total}（阈 ${RETRO_OWED_SCORE_THRESHOLD}），已打 \`retro-owed\` 标签。`,
-        `触发信号：${breakdown}。`,
-        "分数只说明走得磕绊，不说明一定有值得沉淀的东西——跑 team-interview-retro 时以卡上事实为准，复盘结论由人裁决。",
-      ].join("\n\n"),
+        `这张卡走得磕绊（摩擦分 ${score.total}，阈 ${RETRO_OWED_SCORE_THRESHOLD}），这次遇到的问题是：`,
+        ...problems.map((line) => `- ${line}`),
+        "",
+        "**要不要把这次的教训记成一条经验 wiki？**",
+        "- 回「**记**」：按「什么情况适用 / 该怎么做 / 别踩什么」三段起草一条，写进团队 Wiki 的 cases/，下次干活就能被搜到",
+        "- 回「**跳过**」：不记，直接收卡",
+        "",
+        standbyLine,
+        "",
+        "（分数只说明走得磕绊，不说明一定值得沉淀——决定权在你。卡已打 `retro-owed` 标签备查。）",
+      ].join("\n"),
       presentation: { kind: "progress_note", tone: "info", detailsDefaultOpen: false },
       metadata: {
         version: 1,
