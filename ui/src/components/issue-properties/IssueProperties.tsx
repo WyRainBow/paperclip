@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import { createPortal } from "react-dom";
 import { PROPERTIES_PANE_HEADER_SLOT_ID } from "../PropertiesPanel";
+import { usePanel } from "@/context/PanelContext";
 import { pickTextColorForPillBg } from "@/lib/color-contrast";
 import { issueStatusText } from "@/lib/status-colors";
 import { copyTextToClipboard } from "@/lib/clipboard";
@@ -170,6 +171,14 @@ export interface IssuePropertiesDocumentDeepLink {
 const ISSUE_BLOCKER_SEARCH_LIMIT = 50;
 const ISSUE_PROPERTY_RELATION_PREVIEW_COUNT = 5;
 
+/** Pane header titles keyed by pane tab value; matches the tab strip labels. */
+const PANE_TAB_TITLE: Record<string, string> = {
+  properties: "Properties",
+  plans: "Plan",
+  artifacts: "Artifacts",
+  progress: "Progress",
+};
+
 export function IssueProperties({
   issue,
   childIssues = [],
@@ -200,10 +209,12 @@ export function IssueProperties({
   // stacked sections, matching what the page around it renders. This pane is
   // always task-scoped, so the flag alone is a sufficient gate.
   const taskChatShellEnabled = experimentalSettings?.enableClassicTaskInterface === false;
-  // When hosted by the resizable PropertiesPanel, the tab strip portals into
-  // the pane's header bar (left of the window controls). The slot only exists
-  // once the panel has committed, hence the effect; inline hosts (mobile sheet)
-  // keep the tab strip in place.
+  // Only the redesigned pane hosts the tab strip in its header bar (left of
+  // the window controls). The classic pane keeps the strip inline above the
+  // body — four labels don't fit a default-width header — and names itself
+  // via PanelContext.panelTitle instead (see the effect below). The slot only
+  // exists once the panel has committed, hence the effect; inline hosts
+  // (mobile sheet) keep the tab strip in place.
   const [paneHeaderSlot, setPaneHeaderSlot] = useState<HTMLElement | null>(null);
   useEffect(() => {
     if (!taskChatShellEnabled || inline) {
@@ -2695,6 +2706,16 @@ export function IssueProperties({
     || (paneTab === "progress" && !hasProgressTab)
       ? "properties"
       : paneTab;
+  // Name the pane after the selected tab so the classic header's corner label
+  // follows the strip (user 2026-08-28: clicking Progress/Plan left the title
+  // frozen on "Properties"). Inline hosts don't own the pane header, so they
+  // stay out of it entirely.
+  const { setPanelTitle } = usePanel();
+  useEffect(() => {
+    if (inline) return undefined;
+    setPanelTitle(PANE_TAB_TITLE[activePaneTab] ?? "Properties");
+    return () => setPanelTitle(null);
+  }, [activePaneTab, inline, setPanelTitle]);
   // In the pane header the strip stretches to the bar's full height and the
   // active underline drops to bottom-0, so it hugs the header's border line.
   const paneTabTriggerClass = paneHeaderSlot
@@ -2705,7 +2726,12 @@ export function IssueProperties({
       variant="line"
       className={
         paneHeaderSlot
-          ? "items-stretch justify-start gap-1 p-0 group-data-[orientation=horizontal]/tabs:h-full"
+          // In the pane header the strip stretches to the bar's full height
+          // and the active underline drops to bottom-0, so it hugs the
+          // header's border line. A narrow pane gives the strip less width
+          // than four labels need, so the strip scrolls horizontally inside
+          // its slot instead of running under the window controls.
+          ? "min-w-0 overflow-x-auto items-stretch justify-start gap-1 p-0 group-data-[orientation=horizontal]/tabs:h-full"
           : "w-full justify-start gap-1"
       }
     >

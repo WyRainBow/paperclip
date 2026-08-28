@@ -364,5 +364,8 @@
   "Personal assets": "个人资产",
   "Templates": "模板",
   "Team Templates": "Team Templates",
-  "When the task was filed.": "任务创建的时间。"
+  "When the task was filed.": "任务创建的时间。",
+  "New document": "新建文档",
+  "Upload attachment": "上传附件",
+  "Upload": "上传"
 }

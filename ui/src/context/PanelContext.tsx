@@ -5,6 +5,11 @@ const STORAGE_KEY = "paperclip:panel-visible";
 interface PanelContextValue {
   panelContent: ReactNode | null;
   panelVisible: boolean;
+  /** Optional header title for the pane; panel content sets it so the
+   * classic pane's corner label can follow the active tab (Plan, Progress…).
+   * Null falls back to the pane's default title. */
+  panelTitle: string | null;
+  setPanelTitle: (title: string | null) => void;
   openPanel: (content: ReactNode) => void;
   closePanel: () => void;
   setPanelVisible: (visible: boolean) => void;
@@ -33,13 +38,20 @@ function writePreference(visible: boolean) {
 export function PanelProvider({ children }: { children: ReactNode }) {
   const [panelContent, setPanelContent] = useState<ReactNode | null>(null);
   const [panelVisible, setPanelVisibleState] = useState(readPreference);
+  const [panelTitle, setPanelTitleState] = useState<string | null>(null);
 
   const openPanel = useCallback((content: ReactNode) => {
     setPanelContent(content);
+    setPanelTitleState(null);
   }, []);
 
   const closePanel = useCallback(() => {
     setPanelContent(null);
+    setPanelTitleState(null);
+  }, []);
+
+  const setPanelTitle = useCallback((title: string | null) => {
+    setPanelTitleState(title);
   }, []);
 
   const setPanelVisible = useCallback((visible: boolean) => {
@@ -57,7 +69,7 @@ export function PanelProvider({ children }: { children: ReactNode }) {
 
   return (
     <PanelContext.Provider
-      value={{ panelContent, panelVisible, openPanel, closePanel, setPanelVisible, togglePanelVisible }}
+      value={{ panelContent, panelVisible, panelTitle, setPanelTitle, openPanel, closePanel, setPanelVisible, togglePanelVisible }}
     >
       {children}
     </PanelContext.Provider>

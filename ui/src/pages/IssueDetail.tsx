@@ -763,7 +763,7 @@ function IssueDetailLoadingState({
       className={
         taskChatShellEnabled
           ? "mx-auto w-full max-w-(--tc-shell-max-w) space-y-6"
-          : "max-w-3xl space-y-6"
+          : "mx-auto w-full max-w-3xl space-y-6"
       }
     >
       <div className="space-y-3">
@@ -4465,8 +4465,8 @@ export function IssueDetail() {
         <Paperclip className="h-3.5 w-3.5 mr-1.5" />
         {uploadAttachment.isPending || importMarkdownDocument.isPending ? "Uploading..." : (
           <>
-            <span className="hidden sm:inline">Upload attachment</span>
-            <span className="sm:hidden">Upload</span>
+            <span className="hidden sm:inline">{t("Upload attachment")}</span>
+            <span className="sm:hidden">{t("Upload")}</span>
           </>
         )}
       </Button>
@@ -4950,7 +4950,7 @@ export function IssueDetail() {
             : // Fill main exactly so the outer page never scrolls — the
               // thread's own viewport is the only scroll surface.
               "flex h-full min-h-0 w-full flex-col gap-6"
-          : "max-w-3xl space-y-6"
+          : "mx-auto w-full max-w-3xl space-y-6"
       }
     >
       {/* Parent chain breadcrumb (redesign: rendered inside the thread viewport) */}

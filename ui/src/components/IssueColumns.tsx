@@ -63,10 +63,10 @@ function issueTrailingGridTemplate(columns: InboxIssueColumn[]): string {
       if (column === "workspace") return "minmax(6rem, 9rem)";
       if (column === "parent") return "minmax(3.5rem, 5.5rem)";
       if (column === "labels") return "minmax(3rem, 6rem)";
-      // Timestamps read "8月27日 19:34", and "2025年8月27日 19:34" once the year
-      // differs — 4.5rem clipped them to "8月27日 19:…", which is the one part
-      // of a timestamp a reader actually needs.
-      if (column === "created" || column === "updated") return "minmax(6.5rem, 8.5rem)";
+      // Timestamps read the full "2026年8月27日 19:34:05" (listTimestamp now
+      // always carries the year and seconds), so these columns need more room
+      // than the old minute-only "8月27日 19:34" did.
+      if (column === "created" || column === "updated") return "minmax(8rem, 11rem)";
       return "minmax(3.5rem, 4.5rem)";
     })
     .join(" ");

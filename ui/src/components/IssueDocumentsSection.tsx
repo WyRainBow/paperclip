@@ -11,6 +11,7 @@ import type {
   IssueDocument,
 } from "@paperclipai/shared";
 import { isSystemIssueDocumentKey } from "@paperclipai/shared";
+import { useTranslation } from "@/i18n";
 import { useLocation } from "@/lib/router";
 import { ApiError } from "../api/client";
 import { issuesApi } from "../api/issues";
@@ -272,6 +273,7 @@ export function IssueDocumentsSection({
   externalReferences?: MarkdownExternalReferenceMap;
 }) {
   const queryClient = useQueryClient();
+  const { t } = useTranslation();
   const location = useLocation();
   const documentSubject = useMemo(() => {
     if (subject) return subject;
@@ -888,8 +890,8 @@ export function IssueDocumentsSection({
           {extraActions}
           <Button variant="outline" size="sm" onClick={beginNewDocument} className="shrink-0">
             <Plus className="mr-1.5 h-3.5 w-3.5" />
-            <span className="hidden sm:inline">New document</span>
-            <span className="sm:hidden">New</span>
+            <span className="hidden sm:inline">{t("New document")}</span>
+            <span className="sm:hidden">{t("New")}</span>
           </Button>
         </div>
       ) : (
@@ -899,8 +901,8 @@ export function IssueDocumentsSection({
             {extraActions}
             <Button variant="outline" size="sm" onClick={beginNewDocument} className="shrink-0">
               <Plus className="mr-1.5 h-3.5 w-3.5" />
-              <span className="hidden sm:inline">New document</span>
-              <span className="sm:hidden">New</span>
+              <span className="hidden sm:inline">{t("New document")}</span>
+              <span className="sm:hidden">{t("New")}</span>
             </Button>
           </div>
         </div>
