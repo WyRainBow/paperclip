@@ -167,6 +167,72 @@ function authorLabel(agentId: string | null, agentNames: Map<string, string>) {
   return agentNames.get(agentId) ?? "已移除的 Agent";
 }
 
+/**
+ * The page body is a snapshot, not a live mirror of the file — nothing watches
+ * the filesystem, so an edit to the local CLAUDE.md shows up here only after a
+ * `personal-file sync`. Readers who don't know that assume the page is stale or
+ * broken, so the flow is spelled out where the pages are listed.
+ */
+function PersonalSyncHelp({ companyId }: { companyId: string | null }) {
+  const [open, setOpen] = useState(false);
+  const company = companyId ?? "<company-id>";
+  const steps: Array<{ label: string; command: string; note?: string }> = [
+    {
+      label: "查页面 id",
+      command: `paperclipai personal-file list -C ${company}`,
+      note: "输出里的 title 就是这台机器上的文件绝对路径，sync 按它去读文件。",
+    },
+    {
+      label: "同步（改完文件跑这条）",
+      command: `paperclipai personal-file sync -C ${company} <pageId> --label "改了什么"`,
+      note: "内容和最新版本一致时打印 unchanged，不产生新版本。",
+    },
+    {
+      label: "首次登记一个新文件",
+      command: `paperclipai personal-file register -C ${company} --kind claude/CLAUDE.md --path /Users/你/.claude/CLAUDE.md`,
+      note: "--kind 是这里的页面路径，--path 是文件在本机的绝对路径；登记后再跑一次 sync 才有内容。",
+    },
+    {
+      label: "回滚",
+      command: `paperclipai personal-file show -C ${company} <pageId> --revision <n> > /Users/你/.claude/CLAUDE.md`,
+      note: "这里只导出，不会替你写文件——覆盖是手动的那一步。",
+    },
+  ];
+
+  return (
+    <div className="rounded-lg border border-border p-4">
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        className="flex w-full items-start justify-between gap-3 text-left"
+      >
+        <span className="text-sm font-medium text-foreground">
+          本机改了 CLAUDE.md 之后，怎么同步到这里
+        </span>
+        <span className="shrink-0 text-xs text-muted-foreground">{open ? "收起" : "展开"}</span>
+      </button>
+      <p className="mt-1 text-sm text-muted-foreground">
+        这里的页面是快照，不会自动跟着文件走。文件改完要在终端跑一次 sync，才会存下新版本。
+      </p>
+      {open ? (
+        <ol className="mt-3 space-y-3">
+          {steps.map((step, index) => (
+            <li key={step.label} className="text-sm">
+              <span className="font-medium text-foreground">
+                {index + 1}. {step.label}
+              </span>
+              <pre className="mt-1 overflow-x-auto rounded-md bg-muted px-3 py-2 text-xs text-foreground">
+                <code>{step.command}</code>
+              </pre>
+              {step.note ? <p className="mt-1 text-xs text-muted-foreground">{step.note}</p> : null}
+            </li>
+          ))}
+        </ol>
+      ) : null}
+    </div>
+  );
+}
+
 export function TeamWiki({ fixedSpace }: { fixedSpace?: Space } = {}) {
   const params = useParams();
   const navigate = useNavigate();
@@ -284,6 +350,8 @@ export function TeamWiki({ fixedSpace }: { fixedSpace?: Space } = {}) {
       )}
 
       <p className="text-sm text-muted-foreground">{meta.blurb}</p>
+
+      {space === "personal" ? <PersonalSyncHelp companyId={selectedCompanyId} /> : null}
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="relative min-w-56 flex-1">
