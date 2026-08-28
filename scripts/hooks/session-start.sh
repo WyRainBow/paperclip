@@ -16,24 +16,37 @@ if [ -z "$COMPANY_ID" ]; then
 fi
 
 # --- this terminal's credential ----------------------------------------------
-# Which terminal is running us, from the variables its own app exports. Asking
-# each terminal's config to inject the key failed twice (ZCode's settings.json
-# env never reaches Bash children, Codex does not pass it to hook subprocesses),
-# so the signature comes from the app itself and there is nothing to configure.
-# Kept in step with TERMINAL_SIGNATURES in cli/src/commands/client/common.ts.
+# Which terminal is running us, named by the registration itself: each terminal
+# registers this hook in its own config file, so that file already knows who it
+# is and passes the slug as $1.
+#
+# Sniffing the environment instead does not survive here. Codex runs hook
+# subprocesses without CODEX_SANDBOX and ZCode's settings.json `env` never
+# reaches child processes at all, so both fell through to "no signature" and
+# started as local-board — the failure the identity line exists to expose. The
+# env signatures stay as a fallback for anyone invoking this by hand, and the
+# CLI keeps its own copy (TERMINAL_SIGNATURES in cli/src/commands/client/
+# common.ts) because it runs in the terminal's shell, where they do hold.
 #
 # The key rides the rules request as a bearer token; the server answers with the
 # identity line already on the front of the text (MUL-113, decision 7f198bd4).
-# No signature means a plain shell, which deliberately gets no identity rather
-# than inheriting somebody else's.
-KEY_FILE=""
-if [ -n "${CLAUDECODE:-}${CLAUDE_CODE_SESSION_ID:-}${CLAUDE_PROJECT_DIR:-}" ]; then
-  KEY_FILE="$HOME/.paperclip/keys/claude-terminal"
-elif [ -n "${CODEX_SANDBOX:-}" ]; then
-  KEY_FILE="$HOME/.paperclip/keys/codex-terminal"
-elif [ -n "${ZCODE_BASE_URL:-}" ]; then
-  KEY_FILE="$HOME/.paperclip/keys/zcode-terminal"
+# An unknown caller deliberately gets no identity rather than inheriting
+# somebody else's.
+TERMINAL_SLUG="${1:-}"
+if [ -z "$TERMINAL_SLUG" ]; then
+  if [ -n "${CLAUDECODE:-}${CLAUDE_CODE_SESSION_ID:-}${CLAUDE_PROJECT_DIR:-}" ]; then
+    TERMINAL_SLUG="claude-terminal"
+  elif [ -n "${CODEX_SANDBOX:-}" ]; then
+    TERMINAL_SLUG="codex-terminal"
+  elif [ -n "${ZCODE_BASE_URL:-}" ]; then
+    TERMINAL_SLUG="zcode-terminal"
+  fi
 fi
+
+KEY_FILE=""
+case "$TERMINAL_SLUG" in
+  claude-terminal|codex-terminal|zcode-terminal) KEY_FILE="$HOME/.paperclip/keys/$TERMINAL_SLUG" ;;
+esac
 
 AUTH_HEADER=""
 if [ -n "$KEY_FILE" ] && [ -r "$KEY_FILE" ]; then
