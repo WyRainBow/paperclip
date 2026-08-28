@@ -341,7 +341,7 @@
   "Tags": "标签",
   "ID": "ID",
   "Parent task": "父任务",
-  "Last updated": "最后更新",
+  "Last updated": "更新时间",
   "Task state chip on the left edge.": "左缘的任务状态色标。",
   "Ticket identifier like PAP-1009.": "工单编号，如 PAP-1009。",
   "Responsible agent or board user.": "负责的 agent 或 board 用户。",
@@ -363,5 +363,6 @@
   "Personal files": "个人文件",
   "Personal assets": "个人资产",
   "Templates": "模板",
-  "Team Templates": "Team Templates"
+  "Team Templates": "Team Templates",
+  "When the task was filed.": "任务创建的时间。"
 }

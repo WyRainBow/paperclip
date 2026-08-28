@@ -22,7 +22,7 @@ import { Identity } from "./Identity";
 import { StatusIcon } from "./StatusIcon";
 import { Badge } from "@/components/ui/badge";
 
-export const issueTrailingColumns: InboxIssueColumn[] = ["assignee", "kickedOffBy", "project", "workspace", "parent", "labels", "updated"];
+export const issueTrailingColumns: InboxIssueColumn[] = ["assignee", "kickedOffBy", "project", "workspace", "parent", "labels", "created", "updated"];
 
 const issueColumnLabels: Record<InboxIssueColumn, string> = {
   status: "Status",
@@ -33,6 +33,7 @@ const issueColumnLabels: Record<InboxIssueColumn, string> = {
   workspace: "Workspace",
   parent: "Parent task",
   labels: "Tags",
+  created: "Created",
   updated: "Last updated",
 };
 
@@ -45,6 +46,7 @@ const issueColumnDescriptions: Record<InboxIssueColumn, string> = {
   workspace: "Execution or project workspace used for the task.",
   parent: "Parent task identifier and title.",
   labels: "Task labels and tags.",
+  created: "When the task was filed.",
   updated: "Latest visible activity time.",
 };
 
@@ -61,6 +63,10 @@ function issueTrailingGridTemplate(columns: InboxIssueColumn[]): string {
       if (column === "workspace") return "minmax(6rem, 9rem)";
       if (column === "parent") return "minmax(3.5rem, 5.5rem)";
       if (column === "labels") return "minmax(3rem, 6rem)";
+      // Timestamps read "8月27日 19:34", and "2025年8月27日 19:34" once the year
+      // differs — 4.5rem clipped them to "8月27日 19:…", which is the one part
+      // of a timestamp a reader actually needs.
+      if (column === "created" || column === "updated") return "minmax(6.5rem, 8.5rem)";
       return "minmax(3.5rem, 4.5rem)";
     })
     .join(" ");
@@ -91,7 +97,15 @@ export function InboxIssueTrailingColumnsHeader({
         style={{ gridTemplateColumns: issueTrailingGridTemplate(columns) }}
       >
         {columns.map((column) => (
-          <span key={column} className="min-w-0 truncate">
+          <span
+            key={column}
+            className={cn(
+              "min-w-0 truncate",
+              // Timestamp cells are right-aligned, so their headers must be too
+              // or the label floats away from the column it names.
+              (column === "created" || column === "updated") && "text-right",
+            )}
+          >
             {t(issueColumnLabels[column])}
           </span>
         ))}
@@ -304,6 +318,7 @@ export function InboxIssueTrailingColumns({
   onFilterWorkspace?: (workspaceId: string) => void;
 }) {
   const activityText = timeAgo(issue.lastActivityAt ?? issue.lastExternalCommentAt ?? issue.updatedAt);
+  const createdText = timeAgo(issue.createdAt);
   const userLabel = assigneeUserName ?? formatAssigneeUserLabel(issue.assigneeUserId, currentUserId) ?? "User";
   const originatingActor = deriveOriginatingActor(issue);
   const originatingUserId = originatingActor?.kind === "user" ? originatingActor.id : null;
@@ -505,9 +520,17 @@ export function InboxIssueTrailingColumns({
           );
         }
 
+        if (column === "created") {
+          return (
+            <span key={column} className="min-w-0 whitespace-nowrap text-right text-(length:--text-micro) font-medium tabular-nums text-muted-foreground">
+              {createdText}
+            </span>
+          );
+        }
+
         if (column === "updated") {
           return (
-            <span key={column} className="min-w-0 truncate text-right text-(length:--text-micro) font-medium text-muted-foreground">
+            <span key={column} className="min-w-0 whitespace-nowrap text-right text-(length:--text-micro) font-medium tabular-nums text-muted-foreground">
               {activityText}
             </span>
           );
