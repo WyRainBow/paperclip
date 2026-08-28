@@ -1,5 +1,26 @@
-export const FEEDBACK_TARGET_TYPES = ["issue_comment", "issue_document_revision"] as const;
+/**
+ * `issue_comment` / `issue_document_revision` vote on agent work product from
+ * a specific card. The three `*_version` types (MUL-133 件二) vote on team
+ * assets at a pinned revision: the vote targets the VERSION id, not the asset
+ * id, so a defect report still points at the exact text it was written against
+ * after the rule/skill/page is edited again.
+ */
+export const FEEDBACK_TARGET_TYPES = [
+  "issue_comment",
+  "issue_document_revision",
+  "team_rule_note_version",
+  "company_skill_version",
+  "team_wiki_page_version",
+] as const;
 export type FeedbackTargetType = (typeof FEEDBACK_TARGET_TYPES)[number];
+
+/** The target types that point at a team-asset version rather than issue content. */
+export const ASSET_VERSION_FEEDBACK_TARGET_TYPES = [
+  "team_rule_note_version",
+  "company_skill_version",
+  "team_wiki_page_version",
+] as const;
+export type AssetVersionFeedbackTargetType = (typeof ASSET_VERSION_FEEDBACK_TARGET_TYPES)[number];
 
 export const FEEDBACK_VOTE_VALUES = ["up", "down"] as const;
 export type FeedbackVoteValue = (typeof FEEDBACK_VOTE_VALUES)[number];

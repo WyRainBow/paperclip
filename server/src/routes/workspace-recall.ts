@@ -1,11 +1,14 @@
 import { and, asc, eq, ilike, or, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { teamWikiPages, teamRuleNotes, agents } from "@paperclipai/db";
+import { teamWikiPages, teamRuleNotes, agents, issues } from "@paperclipai/db";
 import { Router, type Request, type Response } from "express";
 import { assertCompanyAccess } from "./authz.js";
 import { badRequest } from "../errors.js";
+import { type AssetKind, adoptionBoost, citedCountsByAsset, recordServed } from "../services/asset-citations.js";
 
 const DEFAULT_BUDGET_CHARS = 2000;
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // CJK-aware token estimation (OV pattern): CJK chars ≈ 1.5 tokens,
 // ASCII ≈ 0.25 tokens. This is an estimate — the goal is budget
@@ -29,6 +32,17 @@ interface RecallHit {
   title: string;
   snippet: string;
   score: number;
+  /**
+   * The asset's real primary key, carried out to the caller so a session can
+   * declare what it used (MUL-133). `path` was never enough for that: a wiki
+   * path moves when a page is renamed, and the rules path here is a truncated
+   * id built for display. Adoption has to be keyed on something that does not
+   * change under the citation.
+   */
+  assetKind: AssetKind;
+  assetId: string;
+  /** How much of this hit's score came from prior adoption, not from the query. */
+  adoptionBoost: number;
 }
 
 /**
@@ -174,6 +188,11 @@ export function workspaceRecallRoutes(db: Db): Router {
 
     const hits: RecallHit[] = [];
 
+    // Adoption counts for the whole company, fetched once. Assets a session
+    // previously declared it used rank above equally-relevant ones that
+    // nobody has ever cited (MUL-133 decision 61891ec2, option b).
+    const citedCounts = await citedCountsByAsset(db, companyId);
+
     // The query is a set of terms, not one literal substring. Matching the
     // whole string verbatim meant any multi-word query silently missed: "skills
     // 改内容" found nothing while the page written about exactly that sat in
@@ -202,6 +221,7 @@ export function workspaceRecallRoutes(db: Db): Router {
     // Team Wiki: every term must hit title, body, or path
     const wikiRows = await db
       .select({
+        id: teamWikiPages.id,
         space: teamWikiPages.space,
         path: teamWikiPages.path,
         title: teamWikiPages.title,
@@ -226,13 +246,17 @@ export function workspaceRecallRoutes(db: Db): Router {
       const { idx, matched } = matchIn(row.body);
       const start = Math.max(0, idx - 100);
       const snippet = row.body.slice(start, start + Math.min(400, row.body.length - start));
+      const boost = adoptionBoost(citedCounts.get(`wiki:${row.id}`) ?? 0);
       hits.push({
         source: "wiki",
         space: row.space,
         path: row.path,
         title: row.title,
         snippet: idx >= 0 ? (start > 0 ? "…" : "") + snippet : row.body.slice(0, 300) + "…",
-        score: idx >= 0 ? 1 + matched : 1,
+        score: (idx >= 0 ? 1 + matched : 1) + boost,
+        assetKind: "wiki",
+        assetId: row.id,
+        adoptionBoost: boost,
       });
     }
 
@@ -261,13 +285,17 @@ export function workspaceRecallRoutes(db: Db): Router {
       const { idx, matched } = matchIn(row.body);
       const start = Math.max(0, idx - 100);
       const snippet = row.body.slice(start, start + Math.min(400, row.body.length - start));
+      const boost = adoptionBoost(citedCounts.get(`rule:${row.id}`) ?? 0);
       hits.push({
         source: "rules",
         space: null,
         path: `team-rules/${row.id.slice(0, 8)}`,
         title: row.title,
         snippet: idx >= 0 ? (start > 0 ? "…" : "") + snippet : row.body.slice(0, 300) + "…",
-        score: idx >= 0 ? 1 + matched : 1,
+        score: (idx >= 0 ? 1 + matched : 1) + boost,
+        assetKind: "rule",
+        assetId: row.id,
+        adoptionBoost: boost,
       });
     }
 
@@ -288,9 +316,53 @@ export function workspaceRecallRoutes(db: Db): Router {
       }
     }
 
+    // Each reference line ends with the ref the caller pastes back into
+    // `workspace cite`. Making the declaration a copy of a line already on
+    // screen is the whole trick: teamai-cli's equivalent asks the model to
+    // reconstruct doc ids from memory at the end of a long session, and
+    // documents that models simply skip it.
     const references = results
-      .map((hit) => `[${hit.source}${hit.space ? `/${hit.space}` : ""}] ${hit.path ?? hit.title}`)
+      .map((hit) => `[${hit.source}${hit.space ? `/${hit.space}` : ""}] ${hit.path ?? hit.title} → ${hit.assetKind}:${hit.assetId}`)
       .join("\n");
+
+    // The served half of the ledger. Written after the response is assembled
+    // and before it is sent, so what is recorded is exactly what the caller
+    // received — including the degraded, title-only entries, which were still
+    // put in front of the session and still spent budget.
+    //
+    // The `issue` param is validated before use. `recordServed` swallows its
+    // own errors (a ledger write must not fail recall), so a malformed issue
+    // id reaching the insert would not 500 — it would silently drop the whole
+    // served batch and the ranking signal with it. Failing the request with a
+    // 400 instead keeps the caller's typo loud, and checking company
+    // ownership keeps a cross-company card id from leaking into this
+    // company's ledger through the insert's plain FK.
+    const servedIssueIdRaw = typeof req.query.issue === "string" ? req.query.issue : null;
+    let servedIssueId: string | null = null;
+    if (servedIssueIdRaw) {
+      if (!UUID_RE.test(servedIssueIdRaw)) {
+        throw badRequest(`issue "${servedIssueIdRaw}" is not a uuid`);
+      }
+      const [issueRow] = await db
+        .select({ id: issues.id })
+        .from(issues)
+        .where(and(eq(issues.id, servedIssueIdRaw), eq(issues.companyId, companyId)))
+        .limit(1);;
+      if (!issueRow) throw badRequest(`issue "${servedIssueIdRaw}" not found in this company`);
+      servedIssueId = issueRow.id;
+    }
+    const servedSessionId = typeof req.query.session === "string" ? req.query.session.slice(0, 200) : null;
+    await recordServed(
+      db,
+      {
+        companyId,
+        issueId: servedIssueId,
+        agentId: req.actor.type === "agent" ? (req.actor.agentId ?? null) : null,
+        sessionId: servedSessionId,
+      },
+      query,
+      results.map((hit) => ({ kind: hit.assetKind, id: hit.assetId, score: hit.score })),
+    );
 
     res.json({
       query,

@@ -1,5 +1,6 @@
 export { teamRuleNotes, teamRuleNoteVersions } from "./team_rules.js";
 export { teamWikiPages, teamWikiPageVersions, TEAM_WIKI_SPACES, type TeamWikiSpace } from "./team_wiki.js";
+export { workspaceAssetCitations } from "./workspace_asset_citations.js";
 export { companies } from "./companies.js";
 export { companyLogos } from "./company_logos.js";
 export { companyTransferRuns } from "./company_transfer_runs.js";

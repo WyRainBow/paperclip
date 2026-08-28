@@ -193,6 +193,7 @@ import {
 } from "../services/execution-workspaces.js";
 import { decisionTrainingService } from "../services/decision-training.js";
 import { feedbackService } from "../services/feedback.js";
+import { recordRetroGate } from "../services/retro-gate.js";
 import { instanceSettingsService } from "../services/instance-settings.js";
 import {
   ISSUE_BLOCKER_DIAGNOSTICS_MAX_BLOCKERS,
@@ -10090,6 +10091,22 @@ export function issueRoutes(
       return;
     }
     for (const publication of postCommitActivityPublications) publishActivity(publication);
+
+    // 收尾闸门 (MUL-133 件三): entering in_review or done scores the card's
+    // friction from server-side facts. Scored on every transition (activity
+    // row, for threshold sampling); over the provisional threshold it also
+    // tags retro-owed and files one note. Never blocks the transition.
+    if (
+      existing.status !== issue.status
+      && (issue.status === "in_review" || issue.status === "done")
+    ) {
+      await recordRetroGate(db, {
+        companyId: issue.companyId,
+        issueId: issue.id,
+        identifier: issue.identifier ?? null,
+        enteredStatus: issue.status,
+      });
+    }
 
     if (enteringBlocked) {
       const blockedIssue = issue;

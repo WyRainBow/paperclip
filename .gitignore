@@ -71,3 +71,6 @@ tests/storybook-visual/playwright-report/
 .claude/worktrees/
 .herenow
 .playwright-mcp/
+
+# codegraph index (per-worktree, never committed)
+.codegraph/
