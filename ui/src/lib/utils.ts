@@ -76,20 +76,13 @@ export function formatShortDate(date: Date | string): string {
 }
 
 /**
- * Absolute local time to the minute, for list rows and headers: `8月27日
- * 00:40`, or `2026年8月27日 00:40` once the year differs from today's.
- *
- * Seconds are left to `chineseTimestamp` / `absoluteTimestamp`, which audit
- * surfaces use — a list row does not need them, an audit record does.
+ * Absolute local timestamp to the second, for list rows and headers:
+ * `2026年8月27日 00:40:05`. The year and seconds are always on (user
+ * 2026-08-28) — a row timestamp must not need hover context to place itself
+ * in time.
  */
 export function listTimestamp(date: Date | string): string {
-  const value = new Date(date);
-  if (!Number.isFinite(value.getTime())) return "";
-  const pad = (n: number) => String(n).padStart(2, "0");
-  const time = `${pad(value.getHours())}:${pad(value.getMinutes())}`;
-  const day = `${value.getMonth() + 1}月${value.getDate()}日`;
-  const sameYear = value.getFullYear() === new Date().getFullYear();
-  return sameYear ? `${day} ${time}` : `${value.getFullYear()}年${day} ${time}`;
+  return chineseTimestamp(date);
 }
 
 /** Absolute local time. Was relative ("3m ago") until 2026-08-27. */

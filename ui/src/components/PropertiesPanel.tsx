@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 export function PropertiesPanel() {
-  const { panelContent, panelVisible, setPanelVisible } = usePanel();
+  const { panelContent, panelVisible, setPanelVisible, panelTitle } = usePanel();
   const { enabled: classicTaskInterfaceEnabled } = useClassicTaskInterfaceEnabled();
   // The classic panel was pinned at 320px, so long values (session ids, agent
   // names, timestamps) had nowhere to go. It now shares the redesign's stored
@@ -62,14 +62,18 @@ export function PropertiesPanel() {
           title="拖动调整宽度，双击恢复默认"
         />
         <div className="flex min-w-0 flex-1 flex-col min-h-0">
+          {/* The title mirrors the active pane tab (PanelContext.panelTitle,
+              set by IssueProperties), so switching to Plan/Progress renames
+              the corner instead of freezing on "Properties". Panels that
+              don't report a title keep the default. */}
           <div className="flex items-center justify-between px-4 py-2 border-b border-border">
-            <span className="text-sm font-medium">Properties</span>
+            <span className="text-sm font-medium">{panelTitle ?? "Properties"}</span>
             <Button variant="ghost" size="icon-xs" onClick={() => setPanelVisible(false)}>
               <X className="h-4 w-4" />
             </Button>
           </div>
           <ScrollArea className="flex-1">
-            <div className="p-4">{panelContent}</div>
+            <div className="mx-auto w-full max-w-3xl p-4">{panelContent}</div>
           </ScrollArea>
         </div>
       </aside>
@@ -404,7 +408,7 @@ function ResizablePropertiesPanel({
           <div className="flex items-center justify-between gap-2 px-4 border-b border-border">
             <div
               id={PROPERTIES_PANE_HEADER_SLOT_ID}
-              className="flex min-w-0 flex-1 items-center self-stretch"
+              className="flex min-w-0 flex-1 items-center self-stretch overflow-hidden"
             />
             <div className="flex items-center gap-1 py-2">
               <Button
@@ -427,8 +431,11 @@ function ResizablePropertiesPanel({
             </div>
           </div>
           <ScrollArea className="flex-1">
+            {/* Reading-width cap: a wide dragged pane must not stretch
+                document/progress lines across its full width. The maximized
+                inline maxWidth (840) overrides the class while fixed. */}
             <div
-              className={cn("p-4", maximized && "mx-auto w-full px-9")}
+              className={cn("mx-auto w-full max-w-3xl p-4", maximized && "px-9")}
               style={maximized ? { maxWidth: MAXIMIZED_CONTENT_MAX_WIDTH } : undefined}
             >
               {panelContent}
