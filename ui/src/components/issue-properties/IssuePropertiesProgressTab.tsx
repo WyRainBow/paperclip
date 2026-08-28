@@ -3,7 +3,9 @@ import { Activity } from "lucide-react";
 import { issuesApi } from "@/api/issues";
 import { agentsApi } from "@/api/agents";
 import { queryKeys } from "@/lib/queryKeys";
-import type { IssueComment } from "@paperclipai/shared";
+import { AgentIcon, agentCustomIcon } from "@/components/AgentIconPicker";
+import { MarkdownBody } from "@/components/MarkdownBody";
+import type { Agent, IssueComment } from "@paperclipai/shared";
 
 interface IssuePropertiesProgressTabProps {
   issueId: string;
@@ -35,14 +37,16 @@ export function IssuePropertiesProgressTab({ issueId, companyId }: IssueProperti
     queryKey: [...queryKeys.issues.comments(issueId), "progress-ledger"],
     queryFn: () => issuesApi.listComments(issueId, { order: "desc", limit: 200 }),
   });
+  // Terminated agents keep their notes in the ledger, so their icon has to keep
+  // resolving too — otherwise a retired agent's entries lose their face.
   const { data: agents } = useQuery({
-    queryKey: queryKeys.agents.list(companyId),
-    queryFn: () => agentsApi.list(companyId),
+    queryKey: [...queryKeys.agents.list(companyId), "with-terminated"],
+    queryFn: () => agentsApi.list(companyId, { includeTerminated: true }),
   });
 
   const notes = (Array.isArray(comments) ? comments : []).filter(isProgressNoteComment);
-  const agentName = (id: string | null) =>
-    (id && (agents ?? []).find((agent) => agent.id === id)?.name) || null;
+  const agentById = (id: string | null): Agent | null =>
+    (id && (agents ?? []).find((agent) => agent.id === id)) || null;
 
   return (
     <div className="space-y-2" data-testid="issue-progress-tab">
@@ -56,15 +60,26 @@ export function IssuePropertiesProgressTab({ issueId, companyId }: IssueProperti
       ) : (
         <ol className="space-y-1.5">
           {notes.map((note) => {
+            const agent = agentById(note.authorAgentId);
             const who = note.authorAgentId
-              ? agentName(note.authorAgentId) ?? "agent"
+              ? agent?.name ?? "agent"
               : note.authorUserId ?? "board";
             return (
               <li
                 key={note.id}
                 className="flex items-start gap-2 rounded-lg border border-border/60 bg-muted/20 px-3 py-2 text-sm"
               >
-                <Activity className="mt-0.5 h-4 w-4 shrink-0 text-sky-600 dark:text-sky-400" aria-hidden />
+                {/* The writer's own icon, same as chat and the discussion bubbles —
+                    scanning "who did what, in order" is the whole point of this
+                    ledger, and a generic pulse glyph on every row defeats it.
+                    Falls back to the pulse for board/user entries. */}
+                {agent ? (
+                  <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center overflow-hidden rounded-full">
+                    <AgentIcon icon={agent.icon} customIconUrl={agentCustomIcon(agent)} className="h-4 w-4" />
+                  </span>
+                ) : (
+                  <Activity className="mt-0.5 h-4 w-4 shrink-0 text-sky-600 dark:text-sky-400" aria-hidden />
+                )}
                 <div className="min-w-0 flex-1">
                   <div className="flex items-baseline justify-between gap-2">
                     <span className="text-xs font-medium text-foreground">{who}</span>
@@ -72,7 +87,17 @@ export function IssuePropertiesProgressTab({ issueId, companyId }: IssueProperti
                       {relativeTime(note.createdAt)}
                     </span>
                   </div>
-                  <p className="mt-0.5 whitespace-pre-wrap text-sm leading-6 text-foreground/90">{note.body}</p>
+                  {/* Rendered as markdown, not pre-wrapped text: a wrap-up note runs
+                      to several sections and read as one block it is a wall.
+                      softBreaks keeps single newlines meaningful for notes that
+                      were written as plain text. */}
+                  <MarkdownBody
+                    className="mt-0.5 text-sm leading-6 text-foreground/90"
+                    softBreaks
+                    linkIssueReferences
+                  >
+                    {note.body}
+                  </MarkdownBody>
                 </div>
               </li>
             );
