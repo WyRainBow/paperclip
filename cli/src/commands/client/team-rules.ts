@@ -49,7 +49,7 @@ export function registerTeamRulesCommands(program: Command): void {
     teamRules
       .command("show")
       .description("Print the current Team Rules full text")
-      .requiredOption("-C, --company-id <id>", "Company ID")
+      .option("-C, --company-id <id>", "Company ID")
       .action(async (opts: { companyId: string; json?: boolean }) => {
         try {
           const ctx = resolveCommandContext(opts, { requireCompany: true });
@@ -69,7 +69,7 @@ export function registerTeamRulesCommands(program: Command): void {
     teamRules
       .command("edit")
       .description("Replace the Team Rules body (full text via --body-file or stdin); each text change appends a revision")
-      .requiredOption("-C, --company-id <id>", "Company ID")
+      .option("-C, --company-id <id>", "Company ID")
       .option("--body-file <path>", "Read the new full body from a file ('-' for stdin)")
       .option("--title <text>", "Also update the note title")
       .option("--label <text>", "Version label recorded on this revision")
@@ -109,7 +109,7 @@ export function registerTeamRulesCommands(program: Command): void {
     teamRules
       .command("versions")
       .description("List the Team Rules revision history (newest first)")
-      .requiredOption("-C, --company-id <id>", "Company ID")
+      .option("-C, --company-id <id>", "Company ID")
       .action(async (opts: { companyId: string; json?: boolean }) => {
         try {
           const ctx = resolveCommandContext(opts, { requireCompany: true });
@@ -139,7 +139,7 @@ export function registerTeamRulesCommands(program: Command): void {
     teamRules
       .command("show-version")
       .description("Print one revision's full text")
-      .requiredOption("-C, --company-id <id>", "Company ID")
+      .option("-C, --company-id <id>", "Company ID")
       .requiredOption("--revision <n>", "Revision number")
       .action(async (opts: { companyId: string; revision: string; json?: boolean }) => {
         try {
@@ -165,7 +165,7 @@ export function registerTeamRulesCommands(program: Command): void {
     teamRules
       .command("restore")
       .description("Restore an earlier revision (lands as a new revision on top; history stays intact)")
-      .requiredOption("-C, --company-id <id>", "Company ID")
+      .option("-C, --company-id <id>", "Company ID")
       .requiredOption("--revision <n>", "Revision number to restore")
       .action(async (opts: { companyId: string; revision: string; json?: boolean }) => {
         try {

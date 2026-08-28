@@ -35,7 +35,7 @@ const WIKI = (companyId: string | undefined) => apiPath`/api/companies/${company
     personalFile
       .command("list")
       .description("List registered personal files")
-      .requiredOption("-C, --company-id <id>", "Company ID")
+      .option("-C, --company-id <id>", "Company ID")
       .action(async (opts: { companyId: string; json?: boolean }) => {
         try {
           const ctx = resolveCommandContext(opts, { requireCompany: true });
@@ -57,7 +57,7 @@ const WIKI = (companyId: string | undefined) => apiPath`/api/companies/${company
     personalFile
       .command("register")
       .description("Register a personal directive file as a personal-space wiki page")
-      .requiredOption("-C, --company-id <id>", "Company ID")
+      .option("-C, --company-id <id>", "Company ID")
       .requiredOption("--kind <kind>", "claude-md | agents-md | workspace-agents (becomes the page path)")
       .requiredOption("--path <path>", "Absolute filesystem path of the file")
       .action(async (opts: { companyId: string; kind: string; path: string; json?: boolean }) => {
@@ -79,7 +79,7 @@ const WIKI = (companyId: string | undefined) => apiPath`/api/companies/${company
     personalFile
       .command("sync")
       .description("Check in the file's current content; no-op when unchanged")
-      .requiredOption("-C, --company-id <id>", "Company ID")
+      .option("-C, --company-id <id>", "Company ID")
       .argument("<pageId>", "Wiki page id (see list)")
       .option("--label <text>", "Optional note for this revision")
       .action(async (pageId: string, opts: { companyId: string; label?: string; json?: boolean }) => {
@@ -112,7 +112,7 @@ const WIKI = (companyId: string | undefined) => apiPath`/api/companies/${company
     personalFile
       .command("versions")
       .description("List versions of a registered personal file")
-      .requiredOption("-C, --company-id <id>", "Company ID")
+      .option("-C, --company-id <id>", "Company ID")
       .argument("<pageId>", "Wiki page id")
       .action(async (pageId: string, opts: { companyId: string; json?: boolean }) => {
         try {
@@ -131,7 +131,7 @@ const WIKI = (companyId: string | undefined) => apiPath`/api/companies/${company
     personalFile
       .command("show")
       .description("Print one version's content (view or export; writing back is manual)")
-      .requiredOption("-C, --company-id <id>", "Company ID")
+      .option("-C, --company-id <id>", "Company ID")
       .argument("<pageId>", "Wiki page id")
       .requiredOption("--revision <n>", "Revision number")
       .action(async (pageId: string, opts: { companyId: string; revision: string; json?: boolean }) => {

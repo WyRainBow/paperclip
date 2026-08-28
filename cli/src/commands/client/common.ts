@@ -48,6 +48,10 @@ export function addCommonClientOptions(command: Command, opts?: { includeCompany
   return command;
 }
 
+// Single-company deployment (operator's setup, 2026-08-28): every company-scoped
+// command works bare. Flag > env > context profile > this constant.
+const DEFAULT_COMPANY_ID = "b982ca51-95fb-4ba2-afa6-a3444d6c3c54";
+
 export function resolveCommandContext(
   options: BaseClientOptions,
   opts?: { requireCompany?: boolean },
@@ -65,7 +69,8 @@ export function resolveCommandContext(
   const companyId =
     options.companyId?.trim() ||
     process.env.PAPERCLIP_COMPANY_ID?.trim() ||
-    profile.companyId;
+    profile.companyId ||
+    DEFAULT_COMPANY_ID;
 
   if (opts?.requireCompany && !companyId) {
     throw new Error(

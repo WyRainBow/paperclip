@@ -95,7 +95,7 @@ export function registerGoalCommands(program: Command): void {
     goal
       .command("create")
       .description("Create a goal")
-      .requiredOption("-C, --company-id <id>", "Company ID")
+      .option("-C, --company-id <id>", "Company ID")
       .requiredOption("--title <title>", "Goal title")
       .option("--description <text>", "Goal description")
       .option("--level <level>", "Goal level")
