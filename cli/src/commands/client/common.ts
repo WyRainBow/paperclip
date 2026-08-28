@@ -1,4 +1,6 @@
 import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import pc from "picocolors";
 import type { Command } from "commander";
 import { getStoredBoardCredential, loginBoardCli } from "../../client/board-auth.js";
@@ -25,7 +27,7 @@ export interface ResolvedClientContext {
   profileName: string;
   profile: ClientContextProfile;
   json: boolean;
-  authSource: "explicit" | "env" | "env_file" | "profile_env" | "stored_board" | "none";
+  authSource: "explicit" | "env" | "env_file" | "terminal" | "profile_env" | "stored_board" | "none";
 }
 
 export function addCommonClientOptions(command: Command, opts?: { includeCompany?: boolean }): Command {
@@ -35,7 +37,7 @@ export function addCommonClientOptions(command: Command, opts?: { includeCompany
     .option("--context <path>", "Path to CLI context file")
     .option("--profile <name>", "CLI context profile name")
     .option("--api-base <url>", "Base URL for the Paperclip API")
-    .option("--api-key <token>", "Bearer token for agent-authenticated calls; falls back to $PAPERCLIP_API_KEY, then the file named by $PAPERCLIP_API_KEY_FILE")
+    .option("--api-key <token>", "Bearer token for agent-authenticated calls; falls back to $PAPERCLIP_API_KEY, then $PAPERCLIP_API_KEY_FILE, then this terminal's own key under ~/.paperclip/keys/")
     .option("--run-id <id>", "Heartbeat run id for agent-authenticated mutations (checkout/release/interactions/in-progress update); falls back to $PAPERCLIP_RUN_ID")
     .option("--json", "Output raw JSON");
 
@@ -166,6 +168,71 @@ export function inferContentTypeFromPath(filePath: string): string | undefined {
 }
 
 /**
+ * Which terminal is running us, inferred from the variables its own app exports
+ * into every child process (MUL-113).
+ *
+ * Asking each terminal's config to inject the identity failed twice: ZCode's
+ * settings.json `env` never reaches Bash children at all, and Codex does not
+ * pass it to hook subprocesses, so both silently ran as local-board. These
+ * signatures come from the app itself rather than from user config, so there is
+ * nothing to configure per machine and nothing to drift.
+ */
+const TERMINAL_SIGNATURES: Array<{ slug: string; envVars: string[] }> = [
+  { slug: "claude-terminal", envVars: ["CLAUDECODE", "CLAUDE_CODE_SESSION_ID", "CLAUDE_PROJECT_DIR"] },
+  { slug: "codex-terminal", envVars: ["CODEX_SANDBOX"] },
+  { slug: "zcode-terminal", envVars: ["ZCODE_BASE_URL"] },
+];
+
+/** The terminal we appear to be running inside, or null in a plain shell. */
+export function detectTerminalSlug(): string | null {
+  for (const signature of TERMINAL_SIGNATURES) {
+    if (signature.envVars.some((name) => (process.env[name] ?? "").trim() !== "")) return signature.slug;
+  }
+  return null;
+}
+
+export function terminalKeyPath(slug: string): string {
+  return path.join(os.homedir(), ".paperclip", "keys", slug);
+}
+
+/**
+ * Resolves this terminal's key from ~/.paperclip/keys/<slug> with no
+ * configuration at all.
+ *
+ * A plain shell matches no signature and gets no identity, which is the point:
+ * an unrecognized caller must never inherit somebody else's name. A recognized
+ * terminal whose key file is missing is an error rather than a fallback, for
+ * the same reason the env-file source is (see below).
+ */
+function readKeyFromTerminalDiscovery(): string | undefined {
+  const slug = detectTerminalSlug();
+  if (!slug) return undefined;
+
+  const filePath = terminalKeyPath(slug);
+  let raw: string;
+  try {
+    raw = fs.readFileSync(filePath, "utf8");
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `This looks like a ${slug} session, but its key file could not be read: ${filePath} (${reason})\n` +
+        "Refusing to fall back to an unauthenticated (local-board) request — mint the key in the UI and write it to that path.",
+    );
+  }
+
+  const value = raw.trim();
+  if (!value) {
+    throw new Error(
+      `This looks like a ${slug} session, but its key file is empty: ${filePath}\n` +
+        "Refusing to fall back to an unauthenticated (local-board) request.",
+    );
+  }
+
+  warnOnLooseKeyFilePermissions(filePath);
+  return value;
+}
+
+/**
  * Reads the key file named by PAPERCLIP_API_KEY_FILE.
  *
  * Failing loudly is the whole point of this source (MUL-104). The mechanism it
@@ -224,7 +291,7 @@ function warnOnLooseKeyFilePermissions(filePath: string): void {
 function resolveApiKey(
   options: Pick<BaseClientOptions, "apiKey">,
   profile: ClientContextProfile,
-): { value: string | undefined; source: "explicit" | "env" | "env_file" | "profile_env" | "none" } {
+): { value: string | undefined; source: "explicit" | "env" | "env_file" | "terminal" | "profile_env" | "none" } {
   const optionValue = options.apiKey?.trim();
   if (optionValue) return { value: optionValue, source: "explicit" };
 
@@ -233,6 +300,9 @@ function resolveApiKey(
 
   const envFileValue = readKeyFromEnvFile();
   if (envFileValue) return { value: envFileValue, source: "env_file" };
+
+  const terminalValue = readKeyFromTerminalDiscovery();
+  if (terminalValue) return { value: terminalValue, source: "terminal" };
 
   const profileEnvValue = readKeyFromProfileEnv(profile);
   if (profileEnvValue) return { value: profileEnvValue, source: "profile_env" };

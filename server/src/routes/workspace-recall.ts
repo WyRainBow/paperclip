@@ -1,6 +1,6 @@
 import { and, asc, eq, ilike, or, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { teamWikiPages, teamRuleNotes } from "@paperclipai/db";
+import { teamWikiPages, teamRuleNotes, agents } from "@paperclipai/db";
 import { Router, type Request, type Response } from "express";
 import { assertCompanyAccess } from "./authz.js";
 import { badRequest } from "../errors.js";
@@ -71,6 +71,34 @@ export function workspaceRecallRoutes(db: Db): Router {
         .limit(20);
 
       const lines: string[] = [];
+      // Who is asking, answered before anything else (MUL-113). A session used
+      // to start knowing the rules but not its own name, so confirming identity
+      // meant a human telling it to run `whoami` by hand. The caller already
+      // authenticated to reach here, so the answer is free — and stating it
+      // where the caller cannot miss it is the whole point.
+      //
+      // An unauthenticated caller is told so rather than passed over: silently
+      // starting with no identity is how a terminal ends up working as
+      // local-board under nobody's name, which is the failure MUL-104 chased
+      // for a day.
+      if (req.actor.type === "agent" && req.actor.agentId) {
+        const [agent] = await db
+          .select({ name: agents.name })
+          .from(agents)
+          .where(eq(agents.id, req.actor.agentId))
+          .limit(1);
+        lines.push(
+          agent?.name
+            ? `你是 ${agent.name}（agent id ${req.actor.agentId}）`
+            : `你是 agent ${req.actor.agentId}（名称未取到）`,
+        );
+      } else {
+        lines.push(
+          "身份未取到：本次请求没有 agent 凭证，当前以 local-board 身份读取。" +
+            "终端会话应能自动发现自己的 key（~/.paperclip/keys/<终端>），先修凭证再干活。",
+        );
+      }
+      lines.push("");
       lines.push("=== Team Rules（全文） ===");
       for (const note of ruleNotes) {
         lines.push(note.body);

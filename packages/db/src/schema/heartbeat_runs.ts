@@ -75,13 +75,12 @@ export const heartbeatRuns = pgTable(
       table.livenessState,
       table.createdAt,
     ),
-    // One active synthetic run per terminal agent. Enforced in the database
-    // because ensureTerminalContributorRun's reuse lookup is a plain select and
-    // a session's first concurrent writes would otherwise each insert a row
-    // (MUL-104).
-    terminalContributorActiveUniq: uniqueIndex("heartbeat_runs_terminal_contributor_active_uniq")
-      .on(table.companyId, table.agentId)
-      .where(sql`${table.invocationSource} = 'terminal_contributor' AND ${table.status} = 'running'`),
+    // One active synthetic run per terminal agent is enforced by the partial
+    // unique index heartbeat_runs_terminal_contributor_active_uniq, declared in
+    // migration 0237 rather than here: a `.where()` referencing this table's own
+    // columns is evaluated while the table is still being constructed and throws
+    // at import time, taking the whole server down with it (MUL-104). The index
+    // exists in the database; nothing at runtime needs it declared.
     companyStatusLastOutputIdx: index("heartbeat_runs_company_status_last_output_idx").on(
       table.companyId,
       table.status,

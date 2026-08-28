@@ -20,16 +20,34 @@ export function createDecisionWakeOriginAgent(
   wakeup: HeartbeatWakeup | null,
 ): DecisionServiceOptions["wakeOriginAgent"] {
   if (!wakeup) return async () => null;
-  return async (input) => wakeup(input.agentId, {
-    source: "automation",
-    triggerDetail: "system",
-    reason: `decision_${input.outcome}`,
-    payload: {
-      issueId: input.issueId,
-      decisionId: input.decisionId,
-      outcome: input.outcome,
-    },
-  });
+  return async (input) => {
+    try {
+      return await wakeup(input.agentId, {
+        source: "automation",
+        triggerDetail: "system",
+        reason: `decision_${input.outcome}`,
+        payload: {
+          issueId: input.issueId,
+          decisionId: input.decisionId,
+          outcome: input.outcome,
+        },
+      });
+    } catch (error) {
+      // A continuation that cannot be delivered must not undo the verdict.
+      // Terminal agents (claude/codex/zcode in the operator's own shell) have no
+      // launchable adapter, so waking them always fails — and because the wake
+      // ran inside the decide path, every such decision came back as
+      // "409 adapter_not_launchable" even though it had already been recorded.
+      // Worse, a pending continuation replayed at boot took the whole server
+      // down with it. The verdict is the durable part; the wake is best-effort,
+      // and a human returning to the card is the fallback (MUL-104 / MUL-113).
+      console.warn(
+        `[decisions] continuation wakeup skipped for agent ${input.agentId} on decision ${input.decisionId}: ` +
+          (error instanceof Error ? error.message : String(error)),
+      );
+      return null;
+    }
+  };
 }
 
 export function createDecisionRetentionNotifyOriginAgent(

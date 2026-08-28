@@ -15,81 +15,49 @@ if [ -z "$COMPANY_ID" ]; then
   exit 0
 fi
 
-# --- identity line -----------------------------------------------------------
-# A session arrives holding its credential but with no idea whose it is, so
-# confirming identity used to mean a human asking it to run `whoami` by hand
-# (MUL-113). The credential is right here, so resolve it and say so up front.
+# --- this terminal's credential ----------------------------------------------
+# Which terminal is running us, from the variables its own app exports. Asking
+# each terminal's config to inject the key failed twice (ZCode's settings.json
+# env never reaches Bash children, Codex does not pass it to hook subprocesses),
+# so the signature comes from the app itself and there is nothing to configure.
+# Kept in step with TERMINAL_SIGNATURES in cli/src/commands/client/common.ts.
 #
-# Every failure is reported rather than skipped: a session that silently starts
-# without an identity keeps working as local-board under the wrong name, which
-# is the exact failure MUL-104 spent a day chasing. Each cause is worded
-# distinctly so the reader knows whether to fix a config, a file, or a key.
-resolve_identity_line() {
-  local key_file="${PAPERCLIP_API_KEY_FILE:-}"
-  local key body http
+# The key rides the rules request as a bearer token; the server answers with the
+# identity line already on the front of the text (MUL-113, decision 7f198bd4).
+# No signature means a plain shell, which deliberately gets no identity rather
+# than inheriting somebody else's.
+KEY_FILE=""
+if [ -n "${CLAUDECODE:-}${CLAUDE_CODE_SESSION_ID:-}${CLAUDE_PROJECT_DIR:-}" ]; then
+  KEY_FILE="$HOME/.paperclip/keys/claude-terminal"
+elif [ -n "${CODEX_SANDBOX:-}" ]; then
+  KEY_FILE="$HOME/.paperclip/keys/codex-terminal"
+elif [ -n "${ZCODE_BASE_URL:-}" ]; then
+  KEY_FILE="$HOME/.paperclip/keys/zcode-terminal"
+fi
 
-  if [ -z "$key_file" ]; then
-    printf '身份未取到：PAPERCLIP_API_KEY_FILE 未设置（应由本终端的工具配置注入）'
-    return
-  fi
-  if [ ! -r "$key_file" ]; then
-    printf '身份未取到：key 文件不可读 %s' "$key_file"
-    return
-  fi
+AUTH_HEADER=""
+if [ -n "$KEY_FILE" ] && [ -r "$KEY_FILE" ]; then
   # `echo`-written keys carry a trailing newline that would corrupt the header.
-  key=$(tr -d '\r\n' < "$key_file")
-  if [ -z "$key" ]; then
-    printf '身份未取到：key 文件为空 %s' "$key_file"
-    return
-  fi
+  KEY=$(tr -d '\r\n' < "$KEY_FILE")
+  [ -n "$KEY" ] && AUTH_HEADER="Authorization: Bearer ${KEY}"
+fi
 
-  body=$(curl -s --max-time 3 -w '\n%{http_code}' \
-    -H "Authorization: Bearer ${key}" \
-    "${API_BASE}/api/agents/me" 2>/dev/null) || {
-    printf '身份未取到：无法连接 %s' "$API_BASE"
-    return
-  }
-  http=$(printf '%s' "$body" | tail -n 1)
-  body=$(printf '%s' "$body" | sed '$d')
-
-  if [ "$http" != "200" ]; then
-    printf '%s' "$body" | python3 -c '
-import json, sys
-raw = sys.stdin.read()
-try:
-    message = json.loads(raw).get("error") or raw.strip()
-except Exception:
-    message = raw.strip()
-print("身份未取到：服务端拒绝（HTTP '"$http"'）%s" % (" " + message if message else ""), end="")
-' 2>/dev/null || printf '身份未取到：服务端拒绝（HTTP %s）' "$http"
-    return
-  fi
-
-  printf '%s' "$body" | python3 -c '
-import json, sys
-try:
-    agent = json.load(sys.stdin)
-except Exception:
-    print("身份未取到：服务端响应无法解析", end=""); sys.exit(0)
-name, agent_id = agent.get("name"), agent.get("id")
-if not name or not agent_id:
-    print("身份未取到：服务端响应缺少 name 或 id", end=""); sys.exit(0)
-print("你是 %s（agent id %s）" % (name, agent_id), end="")
-' 2>/dev/null || printf '身份未取到：服务端响应无法解析'
-}
-
-IDENTITY_LINE=$(resolve_identity_line)
 
 # The rules fetch may fail; the identity line still has to reach the session,
 # so this is deliberately not an early exit.
-MAP=$(curl -sf --max-time 3 \
-  "${API_BASE}/api/companies/${COMPANY_ID}/workspace/recall?mode=directory&budget=${BUDGET}" 2>/dev/null) || MAP=""
+if [ -n "$AUTH_HEADER" ]; then
+  MAP=$(curl -sf --max-time 3 -H "$AUTH_HEADER" \
+    "${API_BASE}/api/companies/${COMPANY_ID}/workspace/recall?mode=directory&budget=${BUDGET}" 2>/dev/null) || MAP=""
+else
+  MAP=$(curl -sf --max-time 3 \
+    "${API_BASE}/api/companies/${COMPANY_ID}/workspace/recall?mode=directory&budget=${BUDGET}" 2>/dev/null) || MAP=""
+fi
 
 # Identity first, rules after. Both branches build the same string so the two
 # terminal families see identical content (MUL-64 regressed once by letting
 # them drift, so keep them structurally identical).
-INJECT_TEXT=$(printf '%s' "$MAP" | IDENTITY_LINE="$IDENTITY_LINE" python3 -c '
-import json, os, sys
+INJECT_TEXT=$(printf '%s' "$MAP" | python3 -c '
+import json, sys
 raw = sys.stdin.read()
 text = ""
 if raw.strip():
@@ -98,8 +66,7 @@ if raw.strip():
         text = payload.get("text") or "" if isinstance(payload, dict) else ""
     except Exception:
         text = ""
-identity = os.environ.get("IDENTITY_LINE", "").strip()
-print("\n\n".join(part for part in (identity, text) if part), end="")
+print(text, end="")
 ')
 
 if [ -n "$INJECT_TEXT" ]; then
