@@ -13,14 +13,19 @@ import {
   type AgentWakeupResponse,
   type Issue,
 } from "@paperclipai/shared";
-import {
-  removeMaintainerOnlySkillSymlinks,
-  resolvePaperclipSkillsDir,
-} from "@paperclipai/adapter-utils/server-utils";
+import { resolvePaperclipSkillsDir } from "@paperclipai/adapter-utils/server-utils";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  claudeSkillsHome,
+  codexSkillsHome,
+  installSkillsForTarget,
+  kimiSkillsHome,
+  zcodeSkillsHome,
+  type SkillsInstallSummary,
+} from "./skill-links.js";
 import {
   addCommonClientOptions,
   apiPath,
@@ -92,127 +97,7 @@ interface CreatedAgentKey {
   createdAt: string;
 }
 
-interface SkillsInstallSummary {
-  tool: "codex" | "claude" | "kimi" | "zcode";
-  target: string;
-  linked: string[];
-  removed: string[];
-  skipped: string[];
-  failed: Array<{ name: string; error: string }>;
-}
-
 const __moduleDir = path.dirname(fileURLToPath(import.meta.url));
-
-function codexSkillsHome(): string {
-  const fromEnv = process.env.CODEX_HOME?.trim();
-  const base = fromEnv && fromEnv.length > 0 ? fromEnv : path.join(os.homedir(), ".codex");
-  return path.join(base, "skills");
-}
-
-function claudeSkillsHome(): string {
-  const fromEnv = process.env.CLAUDE_HOME?.trim();
-  const base = fromEnv && fromEnv.length > 0 ? fromEnv : path.join(os.homedir(), ".claude");
-  return path.join(base, "skills");
-}
-
-function kimiSkillsHome(): string {
-  const fromEnv = process.env.KIMI_CODE_HOME?.trim();
-  const base = fromEnv && fromEnv.length > 0 ? fromEnv : path.join(os.homedir(), ".kimi-code");
-  return path.join(base, "skills");
-}
-
-// ZCode discovers skills in ~/.agents/skills (the cross-tool shared dir) in
-// addition to its own ~/.zcode/skills — installing into the shared dir keeps
-// one link serving ZCode today and any other tool that adopts the convention.
-function zcodeSkillsHome(): string {
-  const fromEnv = process.env.ZCODE_HOME?.trim();
-  const base = fromEnv && fromEnv.length > 0 ? fromEnv : path.join(os.homedir(), ".agents");
-  return path.join(base, "skills");
-}
-
-async function installSkillsForTarget(
-  sourceSkillsDir: string,
-  targetSkillsDir: string,
-  tool: "codex" | "claude" | "kimi" | "zcode",
-): Promise<SkillsInstallSummary> {
-  const summary: SkillsInstallSummary = {
-    tool,
-    target: targetSkillsDir,
-    linked: [],
-    removed: [],
-    skipped: [],
-    failed: [],
-  };
-
-  await fs.mkdir(targetSkillsDir, { recursive: true });
-  const entries = await fs.readdir(sourceSkillsDir, { withFileTypes: true });
-  summary.removed = await removeMaintainerOnlySkillSymlinks(
-    targetSkillsDir,
-    entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name),
-  );
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
-    const source = path.join(sourceSkillsDir, entry.name);
-    const target = path.join(targetSkillsDir, entry.name);
-    const existing = await fs.lstat(target).catch(() => null);
-    if (existing) {
-      if (existing.isSymbolicLink()) {
-        let linkedPath: string | null = null;
-        try {
-          linkedPath = await fs.readlink(target);
-        } catch (err) {
-          await fs.unlink(target);
-          try {
-            await fs.symlink(source, target);
-            summary.linked.push(entry.name);
-            continue;
-          } catch (linkErr) {
-            summary.failed.push({
-              name: entry.name,
-              error:
-                err instanceof Error && linkErr instanceof Error
-                  ? `${err.message}; then ${linkErr.message}`
-                  : err instanceof Error
-                    ? err.message
-                    : `Failed to recover broken symlink: ${String(err)}`,
-            });
-            continue;
-          }
-        }
-
-        const resolvedLinkedPath = path.isAbsolute(linkedPath)
-          ? linkedPath
-          : path.resolve(path.dirname(target), linkedPath);
-        const linkedTargetExists = await fs
-          .stat(resolvedLinkedPath)
-          .then(() => true)
-          .catch(() => false);
-
-        if (!linkedTargetExists) {
-          await fs.unlink(target);
-        } else {
-          summary.skipped.push(entry.name);
-          continue;
-        }
-      } else {
-        summary.skipped.push(entry.name);
-        continue;
-      }
-    }
-
-    try {
-      await fs.symlink(source, target);
-      summary.linked.push(entry.name);
-    } catch (err) {
-      summary.failed.push({
-        name: entry.name,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
-  }
-
-  return summary;
-}
 
 function buildAgentEnvExports(input: {
   apiBase: string;
@@ -815,11 +700,12 @@ export function registerAgentCommands(program: Command): void {
               );
             }
 
+            const sources = [{ dir: skillsDir, label: "skills" }];
             installSummaries.push(
-              await installSkillsForTarget(skillsDir, codexSkillsHome(), "codex"),
-              await installSkillsForTarget(skillsDir, claudeSkillsHome(), "claude"),
-              await installSkillsForTarget(skillsDir, kimiSkillsHome(), "kimi"),
-              await installSkillsForTarget(skillsDir, zcodeSkillsHome(), "zcode"),
+              await installSkillsForTarget(sources, codexSkillsHome(), "codex"),
+              await installSkillsForTarget(sources, claudeSkillsHome(), "claude"),
+              await installSkillsForTarget(sources, kimiSkillsHome(), "kimi"),
+              await installSkillsForTarget(sources, zcodeSkillsHome(), "zcode"),
             );
           }
 
