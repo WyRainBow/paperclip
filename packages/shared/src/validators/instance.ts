@@ -56,7 +56,10 @@ export const instanceExperimentalSettingsSchema = z.object({
   enablePipelines: z.boolean().default(false),
   enableCases: z.boolean().default(false),
   enableConferenceRoomChat: z.boolean().default(false),
-  enableClassicTaskInterface: z.boolean().default(false),
+  // Classic is the product default (MUL-122): the chat-first shell hides the
+  // tab strip, which leaves Discussion with nowhere to live. Opt into chat-first
+  // by setting this false.
+  enableClassicTaskInterface: z.boolean().default(true),
   enableTaskWatchdogs: z.boolean().default(false),
   // Auto-raised "Review silent active run" tasks. On by default so existing
   // installs keep their safety net; terminal-contributor sessions look silent

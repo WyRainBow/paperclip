@@ -9,6 +9,7 @@ import { ThemeProvider } from "@/context/ThemeContext";
 import { TaskChatThread } from "./TaskChatThread";
 
 const transcriptState = vi.hoisted(() => ({ transcriptByRun: new Map() }));
+const planDocState = vi.hoisted(() => ({ data: null as unknown }));
 const sidebarState = vi.hoisted(() => ({ isMobile: false }));
 
 vi.mock("@/components/transcript/useLiveRunTranscripts", () => ({
@@ -18,7 +19,7 @@ vi.mock("@/context/SidebarContext", () => ({
   useSidebar: () => ({ isMobile: sidebarState.isMobile }),
 }));
 vi.mock("@/hooks/useIssuePlanDocument", () => ({
-  useIssuePlanDocument: () => ({ data: null }),
+  useIssuePlanDocument: () => planDocState,
 }));
 vi.mock("@/lib/router", () => ({
   Link: ({ to, children, ...props }: { to: string; children: React.ReactNode }) => (
@@ -41,6 +42,7 @@ let root: Root | null = null;
 beforeEach(() => {
   localStorage.clear();
   transcriptState.transcriptByRun.clear();
+  planDocState.data = null;
   sidebarState.isMobile = false;
   container = document.createElement("div");
   document.body.appendChild(container);
@@ -113,6 +115,61 @@ describe("TaskChatThread draft pass-through", () => {
 
     expect(container.querySelector('[data-testid="mock-editor"]')?.textContent)
       .toBe("half-written thought");
+  });
+});
+
+describe("TaskChatThread chronology with progress notes (MUL-120)", () => {
+  it("slots a comment at its own timestamp even when a progress note precedes it", () => {
+    // The adapter drops progress notes, so pairing the filtered item list against
+    // an unfiltered comment list by index hands each bubble the wrong sort key.
+    // Here the reply really happens after the plan marker; with the misalignment
+    // it inherits the progress note's earlier time and jumps above it.
+    planDocState.data = {
+      id: "plan-doc-1",
+      latestRevisionId: "plan-rev-1",
+      latestRevisionNumber: 1,
+      updatedAt: new Date("2026-08-15T12:02:00.000Z"),
+    };
+
+    render(
+      <TaskChatThread
+        comments={[
+          {
+            id: "comment-progress",
+            companyId: "company-1",
+            issueId: "issue-1",
+            authorType: "agent",
+            authorAgentId: "agent-1",
+            authorUserId: null,
+            body: "接卡：MUL-113 → in_progress",
+            presentation: { kind: "progress_note", tone: "info", detailsDefaultOpen: false },
+            metadata: null,
+            createdAt: new Date("2026-08-15T12:00:00.000Z"),
+            updatedAt: new Date("2026-08-15T12:00:00.000Z"),
+          },
+          {
+            id: "comment-reply",
+            companyId: "company-1",
+            issueId: "issue-1",
+            authorType: "user",
+            authorAgentId: null,
+            authorUserId: "user-1",
+            body: "REPLY_AFTER_PLAN",
+            presentation: null,
+            metadata: null,
+            createdAt: new Date("2026-08-15T12:05:00.000Z"),
+            updatedAt: new Date("2026-08-15T12:05:00.000Z"),
+          },
+        ] as never}
+        onAdd={async () => {}}
+      />,
+    );
+
+    const text = container.textContent ?? "";
+    expect(text).toContain("REPLY_AFTER_PLAN");
+    expect(text).not.toContain("接卡：MUL-113");
+    expect(text.indexOf("Plan created")).toBeGreaterThan(-1);
+    expect(text.indexOf("Plan created")).toBeLessThan(text.indexOf("REPLY_AFTER_PLAN"));
   });
 });
 

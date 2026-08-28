@@ -31,7 +31,7 @@ describe("instance settings service", () => {
       enableStreamlinedLeftNavigation: true,
       enableApps: false,
       enableConferenceRoomChat: false,
-      enableClassicTaskInterface: false,
+      enableClassicTaskInterface: true,
       enableExternalObjects: false,
       enableSmokeLab: false,
       enablePipelines: false,
@@ -75,18 +75,19 @@ describe("instance settings service", () => {
     ).toBe(false);
   });
 
-  it("defaults enableClassicTaskInterface to false for empty and legacy stored settings", () => {
-    expect(normalizeExperimentalSettings(undefined).enableClassicTaskInterface).toBe(false);
-    expect(normalizeExperimentalSettings({}).enableClassicTaskInterface).toBe(false);
-    // The retired enableTaskChatRedesign key must not bleed into the new flag:
-    // an install that had the chat redesign ON opted into chat-style, which is
-    // now the default — not into the classic view.
+  it("defaults enableClassicTaskInterface to true for empty and legacy stored settings (MUL-122)", () => {
+    expect(normalizeExperimentalSettings(undefined).enableClassicTaskInterface).toBe(true);
+    expect(normalizeExperimentalSettings({}).enableClassicTaskInterface).toBe(true);
+    // The retired enableTaskChatRedesign key must not bleed into the new flag.
+    // Classic is the default now, so an install that once had the chat
+    // redesign ON still lands on classic unless it says otherwise — that key
+    // predates the flag and cannot stand in for an explicit opt-out.
     expect(
       normalizeExperimentalSettings({ enableTaskChatRedesign: true }).enableClassicTaskInterface,
-    ).toBe(false);
-    expect(
-      normalizeExperimentalSettings({ enableClassicTaskInterface: true }).enableClassicTaskInterface,
     ).toBe(true);
+    expect(
+      normalizeExperimentalSettings({ enableClassicTaskInterface: false }).enableClassicTaskInterface,
+    ).toBe(false);
   });
 
   it("defaults enableSimplifiedEnglishInteractions to false for empty and legacy stored settings", () => {

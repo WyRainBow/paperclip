@@ -195,11 +195,11 @@ export function IssueProperties({
   });
   const taskWatchdogsEnabled = experimentalSettings?.enableTaskWatchdogs === true;
   // Classic Task Interface: gate the Properties | Plans | Artifacts tab shell.
-  // Flag ON renders the legacy stacked sections verbatim (no Tabs wrapper);
-  // flag OFF — including while settings load — renders the chat-style tab
-  // shell. This pane is always task-scoped, so the flag alone is a sufficient
-  // gate.
-  const taskChatShellEnabled = experimentalSettings?.enableClassicTaskInterface !== true;
+  // Classic is the default (MUL-122), so only an explicit `false` selects the
+  // chat-style tab shell; while settings load the pane renders the legacy
+  // stacked sections, matching what the page around it renders. This pane is
+  // always task-scoped, so the flag alone is a sufficient gate.
+  const taskChatShellEnabled = experimentalSettings?.enableClassicTaskInterface === false;
   // When hosted by the resizable PropertiesPanel, the tab strip portals into
   // the pane's header bar (left of the window controls). The slot only exists
   // once the panel has committed, hence the effect; inline hosts (mobile sheet)

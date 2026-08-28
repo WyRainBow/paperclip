@@ -683,6 +683,13 @@ export const issueCommentPresentationSchema = z.object({
   // machine could read back (MUL-61, user: 保留模型名/effort).
   answerModel: z.string().trim().max(120).optional(),
   answerEffort: z.string().trim().max(40).optional(),
+  // The asking side's model. In a two-agent review the question is authored by
+  // a model too, and which one asked shapes the answer as much as which one
+  // answered — the same reason Team Rules already require the model in the
+  // archive label. Only the answer side had a slot, so that half was lost
+  // (MUL-123).
+  questionModel: z.string().trim().max(120).optional(),
+  questionEffort: z.string().trim().max(40).optional(),
 }).strict();
 
 export type IssueCommentPresentation = z.infer<typeof issueCommentPresentationSchema>;

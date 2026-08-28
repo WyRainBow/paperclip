@@ -11,6 +11,18 @@ describe("instance experimental settings validators", () => {
     expect(settings.enableServerInfoDebugView).toBe(false);
   });
 
+  it("defaults the classic task interface ON — it is the product default now (MUL-122)", () => {
+    const settings = instanceExperimentalSettingsSchema.parse({});
+
+    expect(settings.enableClassicTaskInterface).toBe(true);
+  });
+
+  it("still lets an instance opt into the chat-first shell explicitly", () => {
+    const settings = instanceExperimentalSettingsSchema.parse({ enableClassicTaskInterface: false });
+
+    expect(settings.enableClassicTaskInterface).toBe(false);
+  });
+
   it("defaults workspace branch repair settings on", () => {
     const settings = instanceExperimentalSettingsSchema.parse({});
 

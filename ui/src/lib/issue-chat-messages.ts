@@ -516,13 +516,12 @@ function createCommentMessage(args: {
   // Comments without a presentation keep today's routing (graceful fallback for
   // old data both directions).
   const renderAsSystemNotice = isSystemAuthor || comment.presentation?.kind === "system_notice";
-  const renderAsProgressNote = comment.presentation?.kind === "progress_note";
   const authorAgentId = effectiveCommentAuthorAgentId(comment);
   const authorName = authorNameForComment(comment, agentMap, currentUserId, userLabelMap, {
     isSystemNotice: isSystemAuthor,
   });
   const custom = {
-    kind: renderAsProgressNote ? "progress_note" : renderAsSystemNotice ? "system_notice" : "comment",
+    kind: renderAsSystemNotice ? "system_notice" : "comment",
     commentId: comment.id,
     anchorId: `comment-${comment.id}`,
     authorName,
@@ -1099,6 +1098,11 @@ export function buildIssueChatMessages(args: {
   const orderedMessages: MessageWithOrder[] = [];
 
   for (const comment of sortByCreated(comments)) {
+    // Progress notes live in the Progress tab only, never in chat (MUL-119).
+    // Same filter the chat-style adapter applies (task-chat-adapter.ts); the
+    // classic thread was missing it, so every note rendered twice — once as an
+    // ordinary agent bubble here, once in the ledger.
+    if (comment.presentation?.kind === "progress_note") continue;
     orderedMessages.push({
       createdAtMs: toTimestamp(comment.createdAt),
       order: 1,

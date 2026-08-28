@@ -107,10 +107,10 @@ export const INSTANCE_FEATURE_CATALOG: Record<InstanceFeatureKey, FeatureCatalog
   enableClassicTaskInterface: {
     title: "Classic Task Interface",
     description:
-      "Restore the pre-chat task detail page: the page-level header with inline description editor, the plain comment thread, and the fixed Properties sidebar. Chat-only features (streaming activity folding, inline plan/question cards, the three-mode composer) are unavailable in the classic view.",
+      "The default task detail page: a page-level header with inline description editor, the plain comment thread, the full tab strip (Chat, Activity, Related work, Decision, Discussion) and the fixed Properties sidebar. Turn this OFF for the chat-first shell, where the thread is the whole page — that shell hides the tab strip, so Discussion becomes unreachable, and chat-only features (streaming activity folding, inline plan/question cards, the three-mode composer) apply only there.",
     tier: "preference",
-    cloudDefault: false,
-    selfHostedDefault: false,
+    cloudDefault: true,
+    selfHostedDefault: true,
   },
   enableStaleActiveRunEvaluations: {
     title: "Silent-run review tasks",

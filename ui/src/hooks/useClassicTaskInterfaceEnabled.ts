@@ -16,14 +16,16 @@ function getDetachedClient(): QueryClient {
 }
 
 /**
- * Classic Task Interface experimental flag (`enableClassicTaskInterface`).
+ * Classic Task Interface flag (`enableClassicTaskInterface`), the product
+ * default since MUL-122.
  *
  * Wraps the shared experimental-settings query so gated call sites don't
- * repeat the boilerplate. Fail-closed to chat-style: `enabled` stays false
- * while the query is in flight, on fetch errors, and in renders without a
- * QueryClientProvider (isolated unit-test mounts), so the default chat-style
- * view is what renders unless the classic opt-in is provably on. `loaded`
- * lets hosts that care distinguish "flag is off" from "flag not yet known".
+ * repeat the boilerplate. Fails toward classic: `enabled` stays true while the
+ * query is in flight, on fetch errors, and in renders without a
+ * QueryClientProvider (isolated unit-test mounts). Only a settings payload
+ * that says `false` selects the chat-first shell — so a page never paints the
+ * chat shell for a beat and then swaps to classic once settings land.
+ * `loaded` lets hosts that care distinguish "opted out" from "not yet known".
  */
 export function useClassicTaskInterfaceEnabled(): { enabled: boolean; loaded: boolean } {
   const contextClient = useContext(QueryClientContext);
@@ -36,7 +38,7 @@ export function useClassicTaskInterfaceEnabled(): { enabled: boolean; loaded: bo
     contextClient ?? getDetachedClient(),
   );
   if (!contextClient) {
-    return { enabled: false, loaded: true };
+    return { enabled: true, loaded: true };
   }
-  return { enabled: data?.enableClassicTaskInterface === true, loaded: isFetched };
+  return { enabled: data?.enableClassicTaskInterface !== false, loaded: isFetched };
 }

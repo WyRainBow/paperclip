@@ -77,6 +77,7 @@ interface IssueUpdateOptions extends BaseClientOptions {
   status?: string;
   priority?: string;
   assigneeAgentId?: string;
+  assigneeUserId?: string;
   projectId?: string;
   goalId?: string;
   parentId?: string;
@@ -111,6 +112,8 @@ interface IssueQaOptions extends BaseClientOptions {
   answerDocTitle?: string;
   answerModel?: string;
   answerEffort?: string;
+  questionModel?: string;
+  questionEffort?: string;
 }
 
 interface IssueQaListOptions extends BaseClientOptions {}
@@ -542,6 +545,12 @@ export function registerIssueCommands(program: Command): void {
       .option("--status <status>", "Issue status")
       .option("--priority <priority>", "Issue priority")
       .option("--assignee-agent-id <id>", "Assignee agent ID")
+      // Handing a card to a person is the `human_assignee_user_id` review path:
+      // an agent cannot move a card to in_review without one of the five paths,
+      // and this is the only one that means "a human is looking at it next".
+      // The flag was missing, so agents had no way to finish a card from the
+      // terminal (MUL-118).
+      .option("--assignee-user-id <id>", "Assignee user ID (e.g. local-board) — hands the card to a person and opens the in_review path")
       .option("--project-id <id>", "Project ID")
       .option("--goal-id <id>", "Goal ID")
       .option("--parent-id <id>", "Parent issue ID")
@@ -558,6 +567,7 @@ export function registerIssueCommands(program: Command): void {
             status: opts.status,
             priority: opts.priority,
             assigneeAgentId: opts.assigneeAgentId,
+            assigneeUserId: opts.assigneeUserId,
             projectId: opts.projectId,
             goalId: opts.goalId,
             parentId: opts.parentId,
@@ -567,7 +577,9 @@ export function registerIssueCommands(program: Command): void {
             hiddenAt: parseHiddenAt(opts.hiddenAt),
           });
 
-          if (opts.status && !opts.assigneeAgentId) {
+          // Assigning to a person is a handover, not a claim — auto-claiming on
+          // top would set an agent assignee and trip the one-assignee rule.
+          if (opts.status && !opts.assigneeAgentId && !opts.assigneeUserId) {
             const existing = await ctx.api.get<Issue>(apiPath`/api/issues/${issueId}`).catch(() => null);
             if (existing) await autoClaimIfUnclaimed(ctx, existing);
           }
@@ -713,8 +725,10 @@ export function registerIssueCommands(program: Command): void {
       .command("qa")
       .description("File a Q&A pair as a discussion thread (two linked comments, bubble-rendered)")
       .argument("<issueId>", "Issue ID or identifier")
-      .requiredOption("--question <text>", "The question (left bubble)")
-      .requiredOption("--answer <text>", "The answer (right bubble)")
+      // Sides follow the review roles, not question/answer (MUL-51): the side
+      // that commissioned the review sits right, the responding agent left.
+      .requiredOption("--question <text>", "The question — the side that commissioned the review (right bubble)")
+      .requiredOption("--answer <text>", "The answer — the responding agent (left bubble)")
       .option("--label <text>", "Optional label for the thread")
       .option("--answer-agent <name>", "Agent name/id that gave the answer (attribution when filing on behalf)")
       .option("--question-agent <name>", "Agent name/id that asked — who commissioned this review. Defaults to $PAPERCLIP_AGENT_ID")
@@ -722,6 +736,11 @@ export function registerIssueCommands(program: Command): void {
       .option("--answer-doc-key <key>", "File the full answer as an issue document under this key (e.g. review-r1); the bubble then holds only the verdict line plus a link")
       .option("--answer-doc-title <title>", "Title for the answer document")
       .option("--answer-model <model>", "Model that produced the answer (e.g. gpt-5.6-sol) — structured, not label text")
+      // Which model asked shapes the answer as much as which model answered, and
+      // Team Rules already require the model in the archive label — the CLI just
+      // had no slot for the asking half (MUL-123).
+      .option("--question-model <model>", "Model that asked (e.g. claude-opus-5) — structured, not label text")
+      .option("--question-effort <effort>", "Reasoning effort of the question (e.g. high)")
       .option("--answer-effort <effort>", "Reasoning effort of the answer (e.g. high)")
       .action(async (issueId: string, opts: IssueQaOptions) => {
         try {
@@ -785,6 +804,8 @@ export function registerIssueCommands(program: Command): void {
                 role: "question",
                 label: opts.label ?? null,
                 ...(questionAgentId ? { questionAgentId } : {}),
+                ...(opts.questionModel ? { questionModel: opts.questionModel } : {}),
+                ...(opts.questionEffort ? { questionEffort: opts.questionEffort } : {}),
               },
             },
           );
