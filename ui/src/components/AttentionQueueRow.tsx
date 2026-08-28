@@ -397,6 +397,14 @@ export const AttentionQueueRow = memo(function AttentionQueueRow({
         <CollapsibleContent data-decision-disclosure className="-mt-4">
           <div className="flex flex-col gap-4 pt-4">
             {hasImages && <ExpandedImages images={images} issueHref={issueHref} />}
+            {subjectDescription(item) !== null && (
+              <p
+                className="whitespace-pre-wrap rounded-md bg-muted/40 p-3 text-xs leading-relaxed text-muted-foreground line-clamp-[10]"
+                data-attention-subject-description
+              >
+                {subjectDescription(item)}
+              </p>
+            )}
             {triageEnabled && <DecisionTriageStrip item={item} companyId={companyId} agents={agents} />}
             {inline && (
               <InlineResolver
@@ -759,6 +767,16 @@ function reappearLabel(snoozedUntil: string): string {
  * buttons. The issue-thread interaction card keeps its verbs internally — it is
  * shared with the issue thread surface — so there the toggle gets its own row.
  */
+/**
+ * The card body, when the feed carried it (MUL-137). The review inbox renders
+ * it in the expanded row so the boss reads what a card actually asks for
+ * before deciding — a title-only shell forced opening every card to audit it.
+ */
+function subjectDescription(item: AttentionItem): string | null {
+  const raw = item.subject.metadata?.description;
+  return typeof raw === "string" && raw.trim().length > 0 ? raw.trim() : null;
+}
+
 function InlineResolver({
   item,
   companyId,

@@ -127,6 +127,12 @@ type IssueSummaryRow = {
   identifier: string | null;
   title: string;
   status: string;
+  /**
+   * Only present when the row was selected with the column (MUL-137): the
+   * review inbox renders the body so the boss can read what a card asks for
+   * before deciding, instead of a title-only shell.
+   */
+  description?: string;
   priority: string;
   /** Who may give the `in_review` verdict; `null`/absent ≡ "anyone" (PAP-16506). */
   reviewPolicy?: IssueReviewPolicy | null;
@@ -351,6 +357,8 @@ function issueSubject(prefix: string, issue: IssueSubjectRow): AttentionSubject 
       // Only present when the row was selected with the column, so subjects
       // built from narrower selects do not claim a policy they never read.
       ...(issue.reviewPolicy !== undefined ? { reviewPolicy: issue.reviewPolicy } : {}),
+      // Same narrow-select contract as reviewPolicy (MUL-137).
+      ...(issue.description !== undefined ? { description: issue.description.slice(0, 4000) } : {}),
     },
   };
 }
@@ -1635,6 +1643,7 @@ export function attentionService(db: Db, serviceOptions: AttentionServiceOptions
           identifier: issues.identifier,
           title: issues.title,
           status: issues.status,
+          description: issues.description,
           priority: issues.priority,
           assigneeAgentId: issues.assigneeAgentId,
           assigneeUserId: issues.assigneeUserId,
@@ -1680,7 +1689,11 @@ export function attentionService(db: Db, serviceOptions: AttentionServiceOptions
         // it is resolved in-row with the three review verbs (PAP-16080 §4.4).
         // Covered reviews still deep-link — their real action lives elsewhere
         // (the pending interaction/approval card, a monitor, a live run).
-        const reviewSubject = issueSubject(prefix, issue);
+        // The review row carries the body (MUL-137): the deciding surface
+        // shows what the card asks for. Injected here rather than in
+        // issueSummaryMap so only review items pay the payload, not every
+        // issue-backed subject in the feed.
+        const reviewSubject = issueSubject(prefix, { ...issue, description: review.description });
         add(createItem({
           companyId,
           sourceKind: "review",

@@ -56,7 +56,7 @@ interface IssueBaseOptions extends BaseClientOptions {
 
 interface IssueCreateOptions extends BaseClientOptions {
   title: string;
-  description?: string;
+  description: string;
   status?: string;
   priority?: string;
   assigneeAgentId?: string;
@@ -401,7 +401,7 @@ export function registerIssueCommands(program: Command): void {
       .description("Create an issue")
       .option("-C, --company-id <id>", "Company ID")
       .requiredOption("--title <title>", "Issue title")
-      .option("--description <text>", "Issue description")
+      .requiredOption("--description <text>", "Issue description — required (MUL-137). Open with a one-line `> quote` summary; thick content goes into requirements / tech-proposal documents")
       .option("--status <status>", "Issue status")
       .option("--priority <priority>", "Issue priority")
       .option("--assignee-agent-id <id>", "Assignee agent ID")
