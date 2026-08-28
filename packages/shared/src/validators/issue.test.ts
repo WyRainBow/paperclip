@@ -3,6 +3,7 @@ import { MAX_ISSUE_REQUEST_DEPTH } from "../index.js";
 import {
   addIssueCommentSchema,
   createIssueSchema,
+  issueCommentPresentationSchema,
   issueBlockedInboxAttentionSchema,
   resolveIssueRecoveryActionSchema,
   respondIssueThreadInteractionSchema,
@@ -28,6 +29,24 @@ describe("issue validators", () => {
     });
     expect(stalledReviewDecisionSchema.parse({ action: "approve" })).toEqual({ action: "approve" });
     expect(stalledReviewDecisionSchema.parse({ action: "send_back" })).toEqual({ action: "send_back" });
+  });
+
+  it("records which model asked, not only which model answered (MUL-123)", () => {
+    const parsed = issueCommentPresentationSchema.parse({
+      kind: "discussion_qa",
+      role: "question",
+      questionModel: "claude-opus-5",
+      questionEffort: "high",
+    });
+
+    expect(parsed.questionModel).toBe("claude-opus-5");
+    expect(parsed.questionEffort).toBe("high");
+  });
+
+  it("still rejects presentation keys it does not know", () => {
+    expect(() =>
+      issueCommentPresentationSchema.parse({ kind: "discussion_qa", questionMdoel: "typo" }),
+    ).toThrow();
   });
 
   it("passes real line breaks through unchanged", () => {

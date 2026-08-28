@@ -112,6 +112,8 @@ interface IssueQaOptions extends BaseClientOptions {
   answerDocTitle?: string;
   answerModel?: string;
   answerEffort?: string;
+  questionModel?: string;
+  questionEffort?: string;
 }
 
 interface IssueQaListOptions extends BaseClientOptions {}
@@ -734,6 +736,11 @@ export function registerIssueCommands(program: Command): void {
       .option("--answer-doc-key <key>", "File the full answer as an issue document under this key (e.g. review-r1); the bubble then holds only the verdict line plus a link")
       .option("--answer-doc-title <title>", "Title for the answer document")
       .option("--answer-model <model>", "Model that produced the answer (e.g. gpt-5.6-sol) — structured, not label text")
+      // Which model asked shapes the answer as much as which model answered, and
+      // Team Rules already require the model in the archive label — the CLI just
+      // had no slot for the asking half (MUL-123).
+      .option("--question-model <model>", "Model that asked (e.g. claude-opus-5) — structured, not label text")
+      .option("--question-effort <effort>", "Reasoning effort of the question (e.g. high)")
       .option("--answer-effort <effort>", "Reasoning effort of the answer (e.g. high)")
       .action(async (issueId: string, opts: IssueQaOptions) => {
         try {
@@ -797,6 +804,8 @@ export function registerIssueCommands(program: Command): void {
                 role: "question",
                 label: opts.label ?? null,
                 ...(questionAgentId ? { questionAgentId } : {}),
+                ...(opts.questionModel ? { questionModel: opts.questionModel } : {}),
+                ...(opts.questionEffort ? { questionEffort: opts.questionEffort } : {}),
               },
             },
           );

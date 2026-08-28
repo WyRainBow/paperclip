@@ -51,6 +51,8 @@ interface DiscussionComment {
     docTitle?: string;
     answerModel?: string;
     answerEffort?: string;
+    questionModel?: string;
+    questionEffort?: string;
   } | null;
 }
 
@@ -157,6 +159,11 @@ export function IssueDiscussionPanel({ issueId, issueIdentifier }: { issueId: st
             // Both sides can be filed on behalf, so each carries its own
             // attributed agent id; authorAgentId is only the writer.
             const attributedAgentId = msg.presentation?.answerAgentId ?? msg.presentation?.questionAgentId ?? null;
+            // Each side carries its own model. Before MUL-123 both bubbles read
+            // answerModel, so a question could only ever show the answerer's
+            // model — and since nothing wrote one on the question, it showed none.
+            const model = role === "question" ? msg.presentation?.questionModel : msg.presentation?.answerModel;
+            const effort = role === "question" ? msg.presentation?.questionEffort : msg.presentation?.answerEffort;
             const isAgent = Boolean(msg.authorAgentId) || Boolean(answerAgentName) || Boolean(attributedAgentId);
             const agent = (attributedAgentId ? agentMap.get(attributedAgentId) : null)
               ?? (msg.authorAgentId ? agentMap.get(msg.authorAgentId) : null)
@@ -206,9 +213,9 @@ export function IssueDiscussionPanel({ issueId, issueIdentifier }: { issueId: st
                     ) : (
                       displayName
                     )}
-                    {msg.presentation?.answerModel ? (
+                    {model ? (
                       <span className="font-mono text-muted-foreground/80">
-                        · {msg.presentation.answerModel}{msg.presentation.answerEffort ? ` ${msg.presentation.answerEffort}` : ""}
+                        · {model}{effort ? ` ${effort}` : ""}
                       </span>
                     ) : null}
                     <span>· {chineseTimestamp(msg.createdAt)}</span>
