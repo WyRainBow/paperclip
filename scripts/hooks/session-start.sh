@@ -54,9 +54,6 @@ fi
 # it could see, so it asks for the compact profile and fetches the rules itself
 # (MUL-117). Pass `compact` as $2 to opt any other terminal in.
 PROFILE="${2:-}"
-if [ -z "$PROFILE" ] && [ "$TERMINAL_SLUG" = "codex-terminal" ]; then
-  PROFILE="compact"
-fi
 QUERY="mode=directory&budget=${BUDGET}"
 [ "$PROFILE" = "compact" ] && QUERY="${QUERY}&profile=compact"
 
