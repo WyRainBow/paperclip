@@ -315,6 +315,46 @@ function assertImportedSkillKeyAllowed(skill: ImportedSkill) {
   );
 }
 
+/** Team-library slugs carry a `team-` prefix. */
+export const TEAM_SKILL_SLUG_PREFIX = "team-";
+
+/**
+ * Company-library skills must be named `Team-*`.
+ *
+ * Every terminal links team-managed skills into the same directory as the ones
+ * it installed for itself, so without the prefix the only way to tell whose a
+ * skill is is to read where each symlink points — and getting that wrong means
+ * editing something the whole team shares. Convention alone did not hold: the
+ * library had accumulated `agent-reach`, `handoff`, `terminal-collab` and five
+ * others before anyone noticed, so the rule is enforced where skills are
+ * written rather than written down somewhere and hoped for.
+ *
+ * Bundled (`paperclipai/paperclip/*`) and plugin skills are exempt: they are
+ * not the team's to rename.
+ */
+function assertTeamSkillNamingConvention(companyId: string, skill: ImportedSkill) {
+  // Anything that lands in this company's library is distributed to every
+  // terminal by `skills pull`, whatever namespace its key happens to use — a
+  // local-path import keyed `local/<hash>/<slug>` ships exactly like a
+  // `company/<id>/<slug>` one. Checking only the latter left the import path
+  // wide open, so the exemptions are named instead: bundled and plugin skills
+  // are not the team's to rename.
+  if (skill.key.startsWith("paperclipai/paperclip/") || skill.key.startsWith("plugin/")) return;
+  const slug = normalizeSkillSlug(skill.slug) ?? skill.slug;
+  if (slug.startsWith(TEAM_SKILL_SLUG_PREFIX)) return;
+  throw unprocessable(
+    `Team skills must be named with a "Team-" prefix. "${skill.name}" (slug "${slug}") would enter the company library unprefixed — ` +
+      `rename it to "Team-${skill.name.replace(/^Team-/i, "")}" with slug "${TEAM_SKILL_SLUG_PREFIX}${slug}" and retry.`,
+    {
+      code: "team_skill_prefix_required",
+      skillKey: skill.key,
+      slug,
+      suggestedName: `Team-${skill.name.replace(/^Team-/i, "")}`,
+      suggestedSlug: `${TEAM_SKILL_SLUG_PREFIX}${slug}`,
+    },
+  );
+}
+
 type SkillSourceMeta = {
   skillKey?: string;
   sourceKind?: string;
@@ -4075,6 +4115,9 @@ export function companySkillService(db: Db) {
       throw unprocessable("Skill name must contain at least one letter or number to derive a slug.");
     }
     const newKey = `company/${companyId}/${newSlug}`;
+    // Renaming is the other way a team skill could end up unprefixed, so it
+    // answers to the same rule the write path does.
+    assertTeamSkillNamingConvention(companyId, { key: newKey, slug: newSlug, name: newName } as ImportedSkill);
 
     const previousName = skill.name;
     const previousSlug = skill.slug;
@@ -5903,6 +5946,7 @@ export function companySkillService(db: Db) {
     // package before returning the existing skill.
     for (const skill of importedSkills) {
       assertImportedSkillKeyAllowed(skill);
+      assertTeamSkillNamingConvention(companyId, skill);
       assertImportedSkillSourceAllowed(skill);
     }
 
@@ -6029,6 +6073,7 @@ export function companySkillService(db: Db) {
     const out: CompanySkill[] = [];
     for (const skill of imported) {
       assertImportedSkillKeyAllowed(skill);
+      assertTeamSkillNamingConvention(companyId, skill);
       assertImportedSkillSourceAllowed(skill);
       const existing = await getByKey(companyId, skill.key);
       const existingMeta = existing ? getSkillMeta(existing) : {};
