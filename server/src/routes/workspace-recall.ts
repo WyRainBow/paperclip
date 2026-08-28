@@ -174,7 +174,32 @@ export function workspaceRecallRoutes(db: Db): Router {
 
     const hits: RecallHit[] = [];
 
-    // Team Wiki: title + body + path ilike
+    // The query is a set of terms, not one literal substring. Matching the
+    // whole string verbatim meant any multi-word query silently missed: "skills
+    // 改内容" found nothing while the page written about exactly that sat in
+    // the wiki, because those characters never appear contiguously. Each term
+    // must appear somewhere in the row (any field), so word order and spacing
+    // stop mattering; a single-term query behaves exactly as before. This is
+    // the cheap fix — semantic recall stays parked per MUL-80's verdict, and
+    // this failure was tokenization, not semantics.
+    const terms = query.split(/\s+/).filter((term) => term.length > 0);
+
+    /** First position of any term in the text, plus how many terms hit it. */
+    const matchIn = (text: string): { idx: number; matched: number } => {
+      const lower = text.toLowerCase();
+      let idx = -1;
+      let matched = 0;
+      for (const term of terms) {
+        const i = lower.indexOf(term.toLowerCase());
+        if (i >= 0) {
+          matched += 1;
+          if (idx < 0 || i < idx) idx = i;
+        }
+      }
+      return { idx, matched };
+    };
+
+    // Team Wiki: every term must hit title, body, or path
     const wikiRows = await db
       .select({
         space: teamWikiPages.space,
@@ -186,17 +211,19 @@ export function workspaceRecallRoutes(db: Db): Router {
       .where(
         and(
           eq(teamWikiPages.companyId, companyId),
-          or(
-            ilike(teamWikiPages.title, `%${query}%`),
-            ilike(teamWikiPages.body, `%${query}%`),
-            ilike(teamWikiPages.path, `%${query}%`),
+          ...terms.map((term) =>
+            or(
+              ilike(teamWikiPages.title, `%${term}%`),
+              ilike(teamWikiPages.body, `%${term}%`),
+              ilike(teamWikiPages.path, `%${term}%`),
+            ),
           ),
         ),
       )
       .limit(30);
 
     for (const row of wikiRows) {
-      const idx = row.body.toLowerCase().indexOf(query.toLowerCase());
+      const { idx, matched } = matchIn(row.body);
       const start = Math.max(0, idx - 100);
       const snippet = row.body.slice(start, start + Math.min(400, row.body.length - start));
       hits.push({
@@ -205,11 +232,11 @@ export function workspaceRecallRoutes(db: Db): Router {
         path: row.path,
         title: row.title,
         snippet: idx >= 0 ? (start > 0 ? "…" : "") + snippet : row.body.slice(0, 300) + "…",
-        score: idx >= 0 ? 2 : 1,
+        score: idx >= 0 ? 1 + matched : 1,
       });
     }
 
-    // Team Rules: title + body ilike
+    // Team Rules: every term must hit title or body
     const rulesRows = await db
       .select({
         id: teamRuleNotes.id,
@@ -220,16 +247,18 @@ export function workspaceRecallRoutes(db: Db): Router {
       .where(
         and(
           eq(teamRuleNotes.companyId, companyId),
-          or(
-            ilike(teamRuleNotes.title, `%${query}%`),
-            ilike(teamRuleNotes.body, `%${query}%`),
+          ...terms.map((term) =>
+            or(
+              ilike(teamRuleNotes.title, `%${term}%`),
+              ilike(teamRuleNotes.body, `%${term}%`),
+            ),
           ),
         ),
       )
       .limit(10);
 
     for (const row of rulesRows) {
-      const idx = row.body.toLowerCase().indexOf(query.toLowerCase());
+      const { idx, matched } = matchIn(row.body);
       const start = Math.max(0, idx - 100);
       const snippet = row.body.slice(start, start + Math.min(400, row.body.length - start));
       hits.push({
@@ -238,7 +267,7 @@ export function workspaceRecallRoutes(db: Db): Router {
         path: `team-rules/${row.id.slice(0, 8)}`,
         title: row.title,
         snippet: idx >= 0 ? (start > 0 ? "…" : "") + snippet : row.body.slice(0, 300) + "…",
-        score: idx >= 0 ? 2 : 1,
+        score: idx >= 0 ? 1 + matched : 1,
       });
     }
 
