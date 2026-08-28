@@ -47,6 +47,15 @@ export function workspaceRecallRoutes(db: Db): Router {
 
     const query = typeof req.query.q === "string" ? req.query.q.trim() : "";
     const mode = typeof req.query.mode === "string" ? req.query.mode : "search";
+    // Compact directory mode: identity plus a pointer, nothing else.
+    //
+    // Codex ingests only the opening lines of a SessionStart hook's context and
+    // drops the rest — a session there reported the rules "truncated" and then
+    // answered a rules question wrong, from the half it could see. Half a
+    // rulebook read as if it were whole is worse than none, so that terminal is
+    // given the identity line and told to fetch the rules instead of being sent
+    // a document it cannot hold (MUL-117).
+    const compact = String(req.query.profile ?? "") === "compact";
     // Directory mode: return a compact asset map (titles + paths only) for
     // the SessionStart injection hook; no body search needed.
     const budgetRaw = Number.parseInt(String(req.query.budget ?? ""), 10);
@@ -98,6 +107,25 @@ export function workspaceRecallRoutes(db: Db): Router {
             "终端会话应能自动发现自己的 key（~/.paperclip/keys/<终端>），先修凭证再干活。",
         );
       }
+      if (compact) {
+        lines.push("");
+        lines.push(
+          "本次未注入 Team Rules 全文（本终端只能接收开头少量内容，长文会被截断成半部规则）。" +
+            "做任何 Paperclip 相关动作之前，先跑一次 `paperclip workspace rules` 读全文，会话内只需一次。",
+        );
+        const compactText = lines.join("\n");
+        res.json({
+          mode: "directory",
+          profile: "compact",
+          text: compactText,
+          budgetTokens: null,
+          usedTokens: estimateTokens(compactText),
+          usedChars: compactText.length,
+          overBudget: false,
+        });
+        return;
+      }
+
       lines.push("");
       lines.push("=== Team Rules（全文） ===");
       for (const note of ruleNotes) {

@@ -49,14 +49,25 @@ if [ -n "$KEY_FILE" ] && [ -r "$KEY_FILE" ]; then
 fi
 
 
+# Codex keeps only the opening lines of a hook's context. Sending it the full
+# rules produced a session that believed it had them and answered from the half
+# it could see, so it asks for the compact profile and fetches the rules itself
+# (MUL-117). Pass `compact` as $2 to opt any other terminal in.
+PROFILE="${2:-}"
+if [ -z "$PROFILE" ] && [ "$TERMINAL_SLUG" = "codex-terminal" ]; then
+  PROFILE="compact"
+fi
+QUERY="mode=directory&budget=${BUDGET}"
+[ "$PROFILE" = "compact" ] && QUERY="${QUERY}&profile=compact"
+
 # The rules fetch may fail; the identity line still has to reach the session,
 # so this is deliberately not an early exit.
 if [ -n "$AUTH_HEADER" ]; then
   MAP=$(curl -sf --max-time 3 -H "$AUTH_HEADER" \
-    "${API_BASE}/api/companies/${COMPANY_ID}/workspace/recall?mode=directory&budget=${BUDGET}" 2>/dev/null) || MAP=""
+    "${API_BASE}/api/companies/${COMPANY_ID}/workspace/recall?${QUERY}" 2>/dev/null) || MAP=""
 else
   MAP=$(curl -sf --max-time 3 \
-    "${API_BASE}/api/companies/${COMPANY_ID}/workspace/recall?mode=directory&budget=${BUDGET}" 2>/dev/null) || MAP=""
+    "${API_BASE}/api/companies/${COMPANY_ID}/workspace/recall?${QUERY}" 2>/dev/null) || MAP=""
 fi
 
 # Identity first, rules after. Both branches build the same string so the two
