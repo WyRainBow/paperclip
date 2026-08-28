@@ -49,6 +49,15 @@ import { instanceSettingsService } from "../services/instance-settings.js";
 import { ensureHumanRoleDefaultGrants } from "../services/principal-access-compatibility.js";
 import { forbidden, unauthorized, unprocessable } from "../errors.js";
 
+
+/** HTTP methods that can change state, and therefore need a run to attribute
+ *  the change to. GET/HEAD/OPTIONS read only. */
+const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
+function isMutatingMethod(method: string | undefined): boolean {
+  return MUTATING_METHODS.has((method ?? "").toUpperCase());
+}
+
 export { isCloudManagedInstance } from "../services/cloud-instance.js";
 
 function hashToken(token: string) {
@@ -425,7 +434,13 @@ export function actorMiddleware(db: Db, opts: ActorMiddlewareOptions): RequestHa
 
     const keyScope = normalizeAgentApiKeyScope(key.scopeConfig);
     let contributorRunId: string | undefined;
-    if (!runIdHeader && keyScope.kind === "terminal_contributor") {
+    // Only mutations get a synthetic session run (MUL-104). The run exists so
+    // write paths have something to attribute to — reads attribute to nothing,
+    // and no GET route reads `actor.runId`. Creating one on every read meant a
+    // terminal that merely pulled Team Rules surfaced as an "Agent run" in the
+    // UI, which is the noise this removes. Consequence, recorded deliberately:
+    // a run now spans from a session's first write, not from its first request.
+    if (!runIdHeader && keyScope.kind === "terminal_contributor" && isMutatingMethod(req.method)) {
       contributorRunId = await ensureTerminalContributorRun(db, {
         companyId: key.companyId,
         agentId: key.agentId,

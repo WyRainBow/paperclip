@@ -49,6 +49,10 @@ export async function ensureTerminalContributorRun(
     return existing.id;
   }
 
+  // Since MUL-104 the run is opened by a session's first *write*, so its first
+  // concurrent writes all miss the lookup above and race here. The partial
+  // unique index (heartbeat_runs_terminal_contributor_active_uniq) turns the
+  // losers into a no-op insert, and they then re-read the winner's row.
   const [created] = await db
     .insert(heartbeatRuns)
     .values({
@@ -61,6 +65,27 @@ export async function ensureTerminalContributorRun(
       startedAt: new Date(),
       contextSnapshot: { kind: "terminal_contributor", keyId: input.keyId },
     })
+    .onConflictDoNothing()
     .returning({ id: heartbeatRuns.id });
-  return created.id;
+  if (created) return created.id;
+
+  const winner = await db
+    .select({ id: heartbeatRuns.id })
+    .from(heartbeatRuns)
+    .where(
+      and(
+        eq(heartbeatRuns.companyId, input.companyId),
+        eq(heartbeatRuns.agentId, input.agentId),
+        eq(heartbeatRuns.status, "running"),
+        eq(heartbeatRuns.invocationSource, "terminal_contributor"),
+      ),
+    )
+    .orderBy(desc(heartbeatRuns.updatedAt))
+    .limit(1)
+    .then((rows) => rows[0] ?? null);
+
+  if (!winner) {
+    throw new Error("failed to create or find a terminal contributor run");
+  }
+  return winner.id;
 }

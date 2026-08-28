@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { type AnyPgColumn, pgTable, uuid, text, timestamp, jsonb, index, integer, bigint, boolean } from "drizzle-orm/pg-core";
+import { type AnyPgColumn, pgTable, uuid, text, timestamp, jsonb, index, uniqueIndex, integer, bigint, boolean } from "drizzle-orm/pg-core";
 import { companies } from "./companies.js";
 import { agents } from "./agents.js";
 import { agentWakeupRequests } from "./agent_wakeup_requests.js";
@@ -75,6 +75,13 @@ export const heartbeatRuns = pgTable(
       table.livenessState,
       table.createdAt,
     ),
+    // One active synthetic run per terminal agent. Enforced in the database
+    // because ensureTerminalContributorRun's reuse lookup is a plain select and
+    // a session's first concurrent writes would otherwise each insert a row
+    // (MUL-104).
+    terminalContributorActiveUniq: uniqueIndex("heartbeat_runs_terminal_contributor_active_uniq")
+      .on(table.companyId, table.agentId)
+      .where(sql`${table.invocationSource} = 'terminal_contributor' AND ${table.status} = 'running'`),
     companyStatusLastOutputIdx: index("heartbeat_runs_company_status_last_output_idx").on(
       table.companyId,
       table.status,

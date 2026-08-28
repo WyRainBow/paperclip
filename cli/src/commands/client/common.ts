@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import pc from "picocolors";
 import type { Command } from "commander";
 import { getStoredBoardCredential, loginBoardCli } from "../../client/board-auth.js";
@@ -24,7 +25,7 @@ export interface ResolvedClientContext {
   profileName: string;
   profile: ClientContextProfile;
   json: boolean;
-  authSource: "explicit" | "env" | "profile_env" | "stored_board" | "none";
+  authSource: "explicit" | "env" | "env_file" | "profile_env" | "stored_board" | "none";
 }
 
 export function addCommonClientOptions(command: Command, opts?: { includeCompany?: boolean }): Command {
@@ -34,7 +35,7 @@ export function addCommonClientOptions(command: Command, opts?: { includeCompany
     .option("--context <path>", "Path to CLI context file")
     .option("--profile <name>", "CLI context profile name")
     .option("--api-base <url>", "Base URL for the Paperclip API")
-    .option("--api-key <token>", "Bearer token for agent-authenticated calls")
+    .option("--api-key <token>", "Bearer token for agent-authenticated calls; falls back to $PAPERCLIP_API_KEY, then the file named by $PAPERCLIP_API_KEY_FILE")
     .option("--run-id <id>", "Heartbeat run id for agent-authenticated mutations (checkout/release/interactions/in-progress update); falls back to $PAPERCLIP_RUN_ID")
     .option("--json", "Output raw JSON");
 
@@ -164,15 +165,74 @@ export function inferContentTypeFromPath(filePath: string): string | undefined {
   }[ext];
 }
 
+/**
+ * Reads the key file named by PAPERCLIP_API_KEY_FILE.
+ *
+ * Failing loudly is the whole point of this source (MUL-104). The mechanism it
+ * replaces — a zshenv branch that skipped itself when the key file was missing
+ * — left Codex（Terminal） with no credentials for a day without anyone
+ * noticing, because a credential-less CLI silently degrades to local-board and
+ * keeps working under the wrong identity. So a file that is set but unusable is
+ * a hard exit, never a fallback.
+ */
+function readKeyFromEnvFile(): string | undefined {
+  const filePath = process.env.PAPERCLIP_API_KEY_FILE?.trim();
+  if (!filePath) return undefined;
+
+  let raw: string;
+  try {
+    raw = fs.readFileSync(filePath, "utf8");
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `PAPERCLIP_API_KEY_FILE is set to ${filePath} but the file could not be read: ${reason}\n` +
+        "Refusing to fall back to an unauthenticated (local-board) request — mint the key in the UI and write it to that path.",
+    );
+  }
+
+  // `echo` writes a trailing newline; an untrimmed key reaches the server as a
+  // malformed bearer token and the 401 says nothing about whitespace.
+  const value = raw.trim();
+  if (!value) {
+    throw new Error(
+      `PAPERCLIP_API_KEY_FILE is set to ${filePath} but the file is empty.\n` +
+        "Refusing to fall back to an unauthenticated (local-board) request.",
+    );
+  }
+
+  warnOnLooseKeyFilePermissions(filePath);
+  return value;
+}
+
+/** A key readable by group or others is a leak waiting to happen, but it still
+ *  works, so this warns instead of blocking. */
+function warnOnLooseKeyFilePermissions(filePath: string): void {
+  try {
+    const mode = fs.statSync(filePath).mode & 0o077;
+    if (mode !== 0) {
+      console.error(
+        pc.yellow(
+          `warning: ${filePath} is readable by group/other (mode ${(fs.statSync(filePath).mode & 0o777).toString(8)}); run \`chmod 600 ${filePath}\``,
+        ),
+      );
+    }
+  } catch {
+    // Permission reporting is best-effort; the key already read fine.
+  }
+}
+
 function resolveApiKey(
   options: Pick<BaseClientOptions, "apiKey">,
   profile: ClientContextProfile,
-): { value: string | undefined; source: "explicit" | "env" | "profile_env" | "none" } {
+): { value: string | undefined; source: "explicit" | "env" | "env_file" | "profile_env" | "none" } {
   const optionValue = options.apiKey?.trim();
   if (optionValue) return { value: optionValue, source: "explicit" };
 
   const envValue = process.env.PAPERCLIP_API_KEY?.trim();
   if (envValue) return { value: envValue, source: "env" };
+
+  const envFileValue = readKeyFromEnvFile();
+  if (envFileValue) return { value: envFileValue, source: "env_file" };
 
   const profileEnvValue = readKeyFromProfileEnv(profile);
   if (profileEnvValue) return { value: profileEnvValue, source: "profile_env" };

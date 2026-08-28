@@ -4497,11 +4497,16 @@ function KeysTab({ agentId, companyId }: { agentId: string; companyId?: string }
         </p>
         <p className="text-xs text-muted-foreground">
           <span className="font-medium text-foreground">一个 Agent 只能有一把生效中的 Key。</span>
-          {" "}已经有一把还去创建会被服务端拒绝（409）——Key 就是这个 Agent 的终端身份凭证，
-          明文常驻在对应终端的 <code className="font-mono">~/.zshenv</code>（按终端分流，
-          Claude 会话只读 Claude 的 Key，Codex 只读 Codex 的），
-          再铸一把只会让旧的那把继续留在别人机器上生效。
-          丢了就先吊销下面那把，再创建新的。
+          {" "}已经有一把还去创建会被服务端拒绝（409）。Key 就是这个 Agent 的终端身份凭证，
+          再铸一把只会让旧的那把继续留在别人机器上生效。丢了就先吊销下面那把，再创建新的。
+        </p>
+        <p className="text-xs text-muted-foreground">
+          Key 明文只落在这个 Agent 自己的密钥文件里，
+          <code className="font-mono">~/.paperclip/keys/&lt;agent-slug&gt;</code>（单行、
+          <code className="font-mono">chmod 600</code>）。终端的工具配置里只写
+          <code className="font-mono">PAPERCLIP_AGENT_ID</code> 和
+          <code className="font-mono">PAPERCLIP_API_KEY_FILE</code> 两个变量指向它，
+          明文不进任何配置文件。文件缺失时 CLI 直接报错退出，不会悄悄降级成 local-board。
         </p>
         <div className="flex items-center gap-2">
           <Input

@@ -281,6 +281,14 @@ function configPatchFromSnapshot(snapshot: unknown): Partial<typeof agents.$infe
   };
 }
 
+
+/** Scopes that stand for "this agent's terminal credential", as opposed to the
+ *  short-lived machinery scopes (task_bridge / skill_test). One live key per
+ *  agent is enforced across this set, not per individual scope (MUL-104). */
+function isIdentityKeyScope(kind: string): boolean {
+  return kind === "standard" || kind === "terminal_contributor";
+}
+
 export function hasAgentShortnameCollision(
   candidateName: string,
   existingAgents: AgentShortnameRow[],
@@ -1119,22 +1127,27 @@ export function agentService(db: Db) {
         throw conflict("Cannot create keys for terminated agents");
       }
 
-      // One live standard key per agent, enforced (user 2026-08-27). A standard
+      // One live identity key per agent, enforced (user 2026-08-27). An identity
       // key IS the agent's terminal credential — every session shares the one
       // key, and each "just mint another" left the old plaintext live in
       // someone's dotfiles while the roster filled with parallel credentials
       // (six in two days). Scoped keys (task_bridge / skill_test) are
       // short-lived machinery, not identity, and stay unlimited.
-      if (scope.kind === "standard") {
-        const liveStandard = (await db
+      //
+      // `terminal_contributor` counts as identity too (MUL-104). It is the scope
+      // the terminals actually authenticate with, so leaving it out of this
+      // guard meant the one-key rule could be walked straight around by minting
+      // the other kind.
+      if (isIdentityKeyScope(scope.kind)) {
+        const liveIdentity = (await db
           .select({ id: agentApiKeys.id, name: agentApiKeys.name, scopeConfig: agentApiKeys.scopeConfig })
           .from(agentApiKeys)
           .where(and(eq(agentApiKeys.agentId, id), isNull(agentApiKeys.revokedAt))))
-          .filter((key) => normalizeAgentApiKeyScope(key.scopeConfig).kind === "standard");
-        if (liveStandard.length > 0) {
+          .filter((key) => isIdentityKeyScope(normalizeAgentApiKeyScope(key.scopeConfig).kind));
+        if (liveIdentity.length > 0) {
           throw conflict(
-            `Agent already has a live standard key ("${liveStandard[0].name}"). One credential per agent: revoke it first (DELETE /api/agents/${id}/keys/${liveStandard[0].id}) if it is lost, or keep using it — the plaintext lives in the terminal's ~/.zshenv.`,
-            { code: "agent_standard_key_exists", keyId: liveStandard[0].id, keyName: liveStandard[0].name },
+            `Agent already has a live identity key ("${liveIdentity[0].name}"). One credential per agent: revoke it first (DELETE /api/agents/${id}/keys/${liveIdentity[0].id}) if it is lost, or keep using it — the plaintext lives in that terminal's key file under ~/.paperclip/keys/.`,
+            { code: "agent_standard_key_exists", keyId: liveIdentity[0].id, keyName: liveIdentity[0].name },
           );
         }
       }
