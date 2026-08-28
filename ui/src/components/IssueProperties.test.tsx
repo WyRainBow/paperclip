@@ -616,6 +616,43 @@ describe("IssueProperties", () => {
     act(() => root.unmount());
   });
 
+  it("keeps the 分支 row on a card with no branch, showing 未登记", async () => {
+    const root = renderProperties(container, {
+      issue: createIssue({ workingBranch: null }),
+      childIssues: [],
+      onUpdate: vi.fn(),
+      inline: true,
+    });
+    await flush();
+
+    await waitForAssertion(() => {
+      // The row is a default field now: present even with nothing registered,
+      // so "no branch" reads as a fact rather than a missing section.
+      expect(container.querySelector('[data-property-label="分支"]')).not.toBeNull();
+      expect(container.textContent).toContain("未登记");
+    });
+
+    act(() => root.unmount());
+  });
+
+  it("shows the branch name itself once one is registered", async () => {
+    const root = renderProperties(container, {
+      issue: createIssue({ workingBranch: "feature/wy/MUL-1/demo" }),
+      childIssues: [],
+      onUpdate: vi.fn(),
+      inline: true,
+    });
+    await flush();
+
+    await waitForAssertion(() => {
+      expect(container.querySelector('[data-property-label="分支"]')).not.toBeNull();
+      expect(container.textContent).toContain("feature/wy/MUL-1/demo");
+      expect(container.textContent).not.toContain("未登记");
+    });
+
+    act(() => root.unmount());
+  });
+
   it("hides the Priority property row while priority UI is off (PAP-411)", async () => {
     const root = renderProperties(container, {
       issue: createIssue({ priority: "high" }),
