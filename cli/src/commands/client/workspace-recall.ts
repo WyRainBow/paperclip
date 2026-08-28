@@ -37,6 +37,12 @@ interface AssetHealthRow {
   lastServedAt: string | null;
   lastCitedAt: string | null;
   deadWeight: boolean;
+  downVotes: number;
+  downVoteIssueIds: string[];
+  disputed: boolean;
+  latestVersionId: string | null;
+  latestRevisionNumber: number | null;
+  lastRevisedAt: string | null;
 }
 
 export function registerWorkspaceRecallCommands(program: Command): void {
@@ -131,10 +137,63 @@ export function registerWorkspaceRecallCommands(program: Command): void {
           }
           console.error(`资产 ${assets.length} 条，死重候选 ${resp?.deadWeightCount ?? 0} 条\n`);
           for (const row of assets) {
-            const flag = row.deadWeight ? " ⚠死重" : "";
-            console.log(`[${row.assetKind}] ${row.title}${row.path ? ` (${row.path})` : ""}${flag}`);
-            console.log(`  发出 ${row.servedCount} 次 / 采纳 ${row.citedCount} 次 · ${row.assetKind}:${row.assetId}`);
+            const flags = [
+              row.deadWeight ? "⚠死重" : null,
+              row.disputed ? "⚠有争议" : null,
+            ].filter(Boolean).join(" ");
+            console.log(`[${row.assetKind}] ${row.title}${row.path ? ` (${row.path})` : ""}${flags ? ` ${flags}` : ""}`);
+            const versionRef = row.latestVersionId
+              ? ` · 版本 r${row.latestRevisionNumber}=${row.latestVersionId.slice(0, 8)}（缺陷票投这个 id）`
+              : "";
+            console.log(`  发出 ${row.servedCount} 次 / 采纳 ${row.citedCount} 次 / down 票 ${row.downVotes} 次（${row.downVoteIssueIds.length} 张卡） · ${row.assetKind}:${row.assetId}${versionRef}`);
           }
+        } catch (err) {
+          handleCommandError(err);
+        }
+      }),
+  );
+
+  addCommonClientOptions(
+    existing
+      .command("remember")
+      .description("File a reusable experience into Team Wiki agent/cases — Situation/Approach/Reflect, versioned by title, recallable at once")
+      .option("-C, --company-id <id>", "Company ID (falls back to PAPERCLIP_COMPANY_ID env or context profile)")
+      .requiredOption("--title <title>", "Name the generalizable pattern, not the incident (same title = new revision of the same page)")
+      .requiredOption("--situation <text>", "Entry conditions: when this entire pattern applies")
+      .requiredOption("--approach <text>", "Imperative DOs: the optimized execution path, direct tool actions only")
+      .requiredOption("--reflect <text>", "Hard DON'Ts: negative rules, boundaries, failure-prevention heuristics")
+      .option("--issue <id>", "Card this experience came from — lets a human verify against the card")
+      .option("--supersedes <path>", "agent-space path of the experience this one replaces (old page is kept, not deleted)")
+      .action(async (opts: { companyId?: string; title: string; situation: string; approach: string; reflect: string; issue?: string; supersedes?: string; json?: boolean }) => {
+        try {
+          const ctx = resolveCommandContext(opts, { requireCompany: true });
+          const resp = await ctx.api.post<{
+            pageId: string;
+            path: string;
+            space: string;
+            title: string;
+            revisionNumber: number;
+            created: boolean;
+            assetRef: string;
+            note: string;
+          }>(
+            apiPath`/api/companies/${ctx.companyId}/workspace/remember`,
+            {
+              title: opts.title,
+              situation: opts.situation,
+              approach: opts.approach,
+              reflect: opts.reflect,
+              issueId: opts.issue,
+              supersedesPath: opts.supersedes,
+            },
+          );
+          if (opts.json) {
+            printOutput(resp, { json: true });
+            return;
+          }
+          if (!resp) throw new Error("remember returned no data");
+          console.log(`${resp.created ? "新经验页" : "同名经验已更新"}：${resp.space}/${resp.path}（r${resp.revisionNumber}）`);
+          console.log(`引用 ref：${resp.assetRef} · ${resp.note}`);
         } catch (err) {
           handleCommandError(err);
         }

@@ -1,10 +1,10 @@
 import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import { and, asc, desc, eq, getTableColumns, gte, isNull, lte, ne, or } from "drizzle-orm";
-import type { Db } from "@paperclipai/db";
-import {
+import type { Db } from "@paperclipai/db";import {
   agents,
   companies,
+  companySkillVersions,
   companySkills,
   costEvents,
   documentRevisions,
@@ -17,6 +17,10 @@ import {
   issueComments,
   issueDocuments,
   issues,
+  teamRuleNotes,
+  teamRuleNoteVersions,
+  teamWikiPageVersions,
+  teamWikiPages,
 } from "@paperclipai/db";
 import { readPaperclipSkillSyncPreference } from "@paperclipai/adapter-utils/server-utils";
 import { claudeConfigDir, parseClaudeStreamJson } from "@paperclipai/adapter-claude-local/server";
@@ -919,7 +923,158 @@ async function resolveFeedbackTarget(
     return record;
   }
 
+  // The three asset-version targets (MUL-133 件二). Unlike comments and
+  // document revisions, these carry no agent-authorship requirement: Team
+  // Rules are usually written by the boss, and a defect vote is exactly how a
+  // human reports that a rule misled the work. The vote pins a VERSION id, so
+  // the record keeps pointing at the text it was cast against after the asset
+  // is edited again. The issueId on the vote is the card that witnessed the
+  // defect, not a linkage on the asset itself.
+  if (
+    targetType === "team_rule_note_version"
+    || targetType === "company_skill_version"
+    || targetType === "team_wiki_page_version"
+  ) {
+    const record = await resolveAssetVersionFeedbackTarget(db, issue, targetType, targetId, issuePath);
+    return record;
+  }
+
   throw unprocessable("Unsupported feedback target type");
+}
+
+async function resolveAssetVersionFeedbackTarget(
+  db: Pick<Db, "select">,
+  issue: IssueFeedbackContext,
+  targetType: "team_rule_note_version" | "company_skill_version" | "team_wiki_page_version",
+  targetId: string,
+  issuePath: string | null,
+): Promise<ResolvedFeedbackTarget> {
+  let row: {
+    versionId: string;
+    revisionNumber: number;
+    label: string | null;
+    body: string;
+    createdAt: Date;
+    authorAgentId: string | null;
+    authorUserId: string | null;
+    assetTitle: string;
+    assetPath: string | null;
+    companyId: string;
+  } | null = null;
+
+  if (targetType === "team_rule_note_version") {
+    const rows = await db
+      .select({
+        versionId: teamRuleNoteVersions.id,
+        revisionNumber: teamRuleNoteVersions.revisionNumber,
+        label: teamRuleNoteVersions.label,
+        body: teamRuleNoteVersions.body,
+        createdAt: teamRuleNoteVersions.createdAt,
+        authorAgentId: teamRuleNoteVersions.authorAgentId,
+        authorUserId: teamRuleNoteVersions.authorUserId,
+        assetTitle: teamRuleNotes.title,
+        assetPath: teamRuleNotes.id,
+        companyId: teamRuleNoteVersions.companyId,
+      })
+      .from(teamRuleNoteVersions)
+      .innerJoin(teamRuleNotes, eq(teamRuleNoteVersions.noteId, teamRuleNotes.id))
+      .where(eq(teamRuleNoteVersions.id, targetId))
+      .then((rows) => rows[0] ?? null);
+    row = rows;
+  } else if (targetType === "company_skill_version") {
+    const rows = await db
+      .select({
+        versionId: companySkillVersions.id,
+        revisionNumber: companySkillVersions.revisionNumber,
+        label: companySkillVersions.label,
+        releaseName: companySkillVersions.releaseName,
+        releaseId: companySkillVersions.releaseId,
+        createdAt: companySkillVersions.createdAt,
+        authorAgentId: companySkillVersions.authorAgentId,
+        authorUserId: companySkillVersions.authorUserId,
+        assetTitle: companySkills.name,
+        assetPath: companySkills.id,
+        companyId: companySkillVersions.companyId,
+      })
+      .from(companySkillVersions)
+      .innerJoin(companySkills, eq(companySkillVersions.companySkillId, companySkills.id))
+      .where(eq(companySkillVersions.id, targetId))
+      .then((rows) => rows[0] ?? null);
+    row = rows
+      ? {
+          versionId: rows.versionId,
+          revisionNumber: rows.revisionNumber,
+          label: rows.label,
+          body: rows.releaseName ?? rows.releaseId ?? "",
+          createdAt: rows.createdAt,
+          authorAgentId: rows.authorAgentId,
+          authorUserId: rows.authorUserId,
+          assetTitle: rows.assetTitle,
+          assetPath: rows.assetPath,
+          companyId: rows.companyId,
+        }
+      : null;
+  } else {
+    const rows = await db
+      .select({
+        versionId: teamWikiPageVersions.id,
+        revisionNumber: teamWikiPageVersions.revisionNumber,
+        label: teamWikiPageVersions.label,
+        body: teamWikiPageVersions.body,
+        createdAt: teamWikiPageVersions.createdAt,
+        authorAgentId: teamWikiPageVersions.authorAgentId,
+        authorUserId: teamWikiPageVersions.authorUserId,
+        assetTitle: teamWikiPageVersions.title,
+        assetPath: teamWikiPageVersions.path,
+        companyId: teamWikiPageVersions.companyId,
+      })
+      .from(teamWikiPageVersions)
+      .where(eq(teamWikiPageVersions.id, targetId))
+      .then((rows) => rows[0] ?? null);
+    row = rows;
+  }
+
+  if (!row || row.companyId !== issue.companyId) {
+    throw notFound("Feedback target not found");
+  }
+
+  const kindLabel = targetType === "team_rule_note_version"
+    ? "Rule"
+    : targetType === "company_skill_version"
+      ? "Skill"
+      : "Wiki";
+  const record: ResolvedFeedbackTarget = {
+    targetType,
+    targetId,
+    label: `${kindLabel}「${row.assetTitle}」rev ${row.revisionNumber}`,
+    body: row.body,
+    createdAt: row.createdAt,
+    authorAgentId: row.authorAgentId,
+    authorUserId: row.authorUserId,
+    authorType: row.authorAgentId ? "agent" : row.authorUserId ? "user" : "system",
+    presentation: null,
+    metadata: null,
+    createdByRunId: null,
+    documentId: null,
+    documentKey: null,
+    documentTitle: null,
+    revisionNumber: row.revisionNumber,
+    issuePath,
+    targetPath: row.assetPath,
+    payloadTarget: {
+      type: targetType,
+      id: row.versionId,
+      revisionNumber: row.revisionNumber,
+      assetTitle: row.assetTitle,
+      assetPath: row.assetPath,
+      createdAt: row.createdAt.toISOString(),
+      authorAgentId: row.authorAgentId,
+      authorUserId: row.authorUserId,
+      issuePath,
+      targetPath: row.assetPath,
+    },
+  };
+  return record;
 }
 
 async function listIssueContextItems(

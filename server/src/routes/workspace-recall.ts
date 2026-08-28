@@ -1,12 +1,14 @@
 import { and, asc, eq, ilike, or, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { teamWikiPages, teamRuleNotes, agents } from "@paperclipai/db";
+import { teamWikiPages, teamRuleNotes, agents, issues } from "@paperclipai/db";
 import { Router, type Request, type Response } from "express";
 import { assertCompanyAccess } from "./authz.js";
 import { badRequest } from "../errors.js";
 import { type AssetKind, adoptionBoost, citedCountsByAsset, recordServed } from "../services/asset-citations.js";
 
 const DEFAULT_BUDGET_CHARS = 2000;
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // CJK-aware token estimation (OV pattern): CJK chars ≈ 1.5 tokens,
 // ASCII ≈ 0.25 tokens. This is an estimate — the goal is budget
@@ -327,8 +329,29 @@ export function workspaceRecallRoutes(db: Db): Router {
     // and before it is sent, so what is recorded is exactly what the caller
     // received — including the degraded, title-only entries, which were still
     // put in front of the session and still spent budget.
-    const servedIssueId = typeof req.query.issue === "string" ? req.query.issue : null;
-    const servedSessionId = typeof req.query.session === "string" ? req.query.session : null;
+    //
+    // The `issue` param is validated before use. `recordServed` swallows its
+    // own errors (a ledger write must not fail recall), so a malformed issue
+    // id reaching the insert would not 500 — it would silently drop the whole
+    // served batch and the ranking signal with it. Failing the request with a
+    // 400 instead keeps the caller's typo loud, and checking company
+    // ownership keeps a cross-company card id from leaking into this
+    // company's ledger through the insert's plain FK.
+    const servedIssueIdRaw = typeof req.query.issue === "string" ? req.query.issue : null;
+    let servedIssueId: string | null = null;
+    if (servedIssueIdRaw) {
+      if (!UUID_RE.test(servedIssueIdRaw)) {
+        throw badRequest(`issue "${servedIssueIdRaw}" is not a uuid`);
+      }
+      const [issueRow] = await db
+        .select({ id: issues.id })
+        .from(issues)
+        .where(and(eq(issues.id, servedIssueIdRaw), eq(issues.companyId, companyId)))
+        .limit(1);;
+      if (!issueRow) throw badRequest(`issue "${servedIssueIdRaw}" not found in this company`);
+      servedIssueId = issueRow.id;
+    }
+    const servedSessionId = typeof req.query.session === "string" ? req.query.session.slice(0, 200) : null;
     await recordServed(
       db,
       {

@@ -121,14 +121,44 @@ npx paperclipai workspace recall --query "分支登记" --issue <issue-id> --com
 # asset on the same issue is a no-op, not an error.
 npx paperclipai workspace cite --asset rule:<uuid> --asset wiki:<uuid> --issue <issue-id> --company-id <company-id>
 
-# Served/cited counts per asset. Names dead-weight candidates; prunes nothing.
+# Served/cited/down-vote counts per asset, latest version ref included.
+# Names dead-weight and disputed candidates; prunes nothing.
 npx paperclipai workspace assets-health --company-id <company-id>
 npx paperclipai workspace assets-health --dead-only --company-id <company-id>
+
+# File a reusable experience into Team Wiki agent/cases (OV `remember` shape:
+# Situation/Approach/Reflect). Same title revises the same page; recallable
+# immediately.
+npx paperclipai workspace remember \
+  --title "分支命名模式" \
+  --situation "…" --approach "…" --reflect "…" \
+  --issue <issue-id> --company-id <company-id>
 ```
 
 An asset counts as dead weight once it has been served at least five times and
 cited zero times. Below that it is simply new, and calling it dead would retire
-pages before anyone had the chance to use them.
+pages before anyone had the chance to use them. An asset counts as disputed
+when down votes came from at least two different cards — the problem follows
+the asset, not one unlucky session.
+
+Defect votes go to an asset's **version id**, not its asset id, so the vote
+keeps pointing at the text it was cast against after the next edit:
+
+```sh
+# Board user, on any issue that witnessed the defect. Find the current
+# version id in `assets-health` output (版本 rN=<first 8 chars>).
+curl -X POST "$API/api/issues/<issue-id>/feedback-votes" -H "Authorization: Bearer $TOKEN" \
+  -d '{"targetType":"team_rule_note_version","targetId":"<version-uuid>","vote":"down","reason":"这条规则漏了…"}'
+# targetType also accepts company_skill_version and team_wiki_page_version.
+```
+
+Close-out gate: pushing a card to `in_review` or `done` scores its friction
+from server-side facts (rollbacks, blocked entries, review round ≥2, recovery
+actions, down votes, watchdog). Every score lands in the activity log as
+`issue.friction_scored` for threshold sampling; at or over 20 points the card
+is tagged `retro-owed` with one progress note naming the signals. Nothing is
+gated and no case is written automatically — the retro skill and a human
+decide the rest.
 
 ## Approval Commands
 

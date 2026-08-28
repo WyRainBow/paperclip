@@ -1,6 +1,15 @@
 import { and, eq, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { companySkills, teamRuleNotes, teamWikiPages, workspaceAssetCitations } from "@paperclipai/db";
+import {
+  companySkillVersions,
+  companySkills,
+  feedbackVotes,
+  teamRuleNotes,
+  teamRuleNoteVersions,
+  teamWikiPages,
+  teamWikiPageVersions,
+  workspaceAssetCitations,
+} from "@paperclipai/db";
 
 /**
  * The citation ledger: which team asset was handed to a session, and which one
@@ -150,6 +159,20 @@ export interface AssetHealthRow {
   lastCitedAt: string | null;
   /** Served enough to have had its chance, and never once cited. */
   deadWeight: boolean;
+  /** Down votes pinned to any version of this asset (MUL-133 件二). */
+  downVotes: number;
+  /** Issues those down votes came from — one row each, for spread checks. */
+  downVoteIssueIds: string[];
+  /**
+   * Down votes from at least two different cards: the problem follows the
+   * asset, not one unlucky session.
+   */
+  disputed: boolean;
+  /** Latest pinned revision, the ref a defect vote targets. */
+  latestVersionId: string | null;
+  latestRevisionNumber: number | null;
+  /** When the asset last changed. Surfaced for a human; 久未动 is a judgement call, not a flag. */
+  lastRevisedAt: string | null;
 }
 
 /**
@@ -158,6 +181,68 @@ export interface AssetHealthRow {
  * had a chance to use them.
  */
 export const DEAD_WEIGHT_MIN_SERVED = 5;
+
+/**
+ * Down votes per asset. Votes pin a VERSION id (件二), so attributing them to
+ * the asset means joining each version table back to its parent — one query
+ * per kind, unioned here.
+ */
+async function downVotesByAsset(
+  db: Db,
+  companyId: string,
+): Promise<Map<string, { count: number; issueIds: string[] }>> {
+  const [ruleRows, skillRows, wikiRows] = await Promise.all([
+    db
+      .select({
+        assetId: teamRuleNoteVersions.noteId,
+        issueId: feedbackVotes.issueId,
+      })
+      .from(feedbackVotes)
+      .innerJoin(teamRuleNoteVersions, eq(feedbackVotes.targetId, teamRuleNoteVersions.id))
+      .where(and(
+        eq(feedbackVotes.companyId, companyId),
+        eq(feedbackVotes.targetType, "team_rule_note_version"),
+        eq(feedbackVotes.vote, "down"),
+      )),
+    db
+      .select({
+        assetId: companySkillVersions.companySkillId,
+        issueId: feedbackVotes.issueId,
+      })
+      .from(feedbackVotes)
+      .innerJoin(companySkillVersions, eq(feedbackVotes.targetId, companySkillVersions.id))
+      .where(and(
+        eq(feedbackVotes.companyId, companyId),
+        eq(feedbackVotes.targetType, "company_skill_version"),
+        eq(feedbackVotes.vote, "down"),
+      )),
+    db
+      .select({
+        assetId: teamWikiPageVersions.pageId,
+        issueId: feedbackVotes.issueId,
+      })
+      .from(feedbackVotes)
+      .innerJoin(teamWikiPageVersions, eq(feedbackVotes.targetId, teamWikiPageVersions.id))
+      .where(and(
+        eq(feedbackVotes.companyId, companyId),
+        eq(feedbackVotes.targetType, "team_wiki_page_version"),
+        eq(feedbackVotes.vote, "down"),
+      )),
+  ]);
+
+  const map = new Map<string, { count: number; issueIds: string[] }>();
+  const bump = (kind: AssetKind, row: { assetId: string; issueId: string }) => {
+    const key = `${kind}:${row.assetId}`;
+    const entry = map.get(key) ?? { count: 0, issueIds: [] };
+    entry.count += 1;
+    if (!entry.issueIds.includes(row.issueId)) entry.issueIds.push(row.issueId);
+    map.set(key, entry);
+  };
+  for (const row of ruleRows) bump("rule", row);
+  for (const row of skillRows) bump("skill", row);
+  for (const row of wikiRows) bump("wiki", row);
+  return map;
+}
 
 /**
  * The health view: one row per asset that the ledger has ever touched, plus
@@ -183,7 +268,7 @@ export async function assetHealth(db: Db, companyId: string): Promise<AssetHealt
 
   const stats = new Map(ledger.map((row) => [`${row.assetKind}:${row.assetId}`, row]));
 
-  const [rules, wiki, skills] = await Promise.all([
+  const [rules, wiki, skills, downVotes] = await Promise.all([
     db
       .select({ id: teamRuleNotes.id, title: teamRuleNotes.title })
       .from(teamRuleNotes)
@@ -196,13 +281,62 @@ export async function assetHealth(db: Db, companyId: string): Promise<AssetHealt
       .select({ id: companySkills.id, name: companySkills.name })
       .from(companySkills)
       .where(eq(companySkills.companyId, companyId)),
+    downVotesByAsset(db, companyId),
   ]);
+
+  // Latest pinned revision per asset — the ref a defect vote targets.
+  // Companies have tens of assets, so fetch the company's version rows and
+  // fold latest-per-asset in JS rather than shipping three window functions.
+  type LatestVersion = { assetId: string; versionId: string; revisionNumber: number; createdAt: Date };
+  const foldLatest = (rows: LatestVersion[]) => {
+    const best = new Map<string, LatestVersion>();
+    for (const row of rows) {
+      const current = best.get(row.assetId);
+      if (!current || row.revisionNumber > current.revisionNumber) best.set(row.assetId, row);
+    }
+    return best;
+  };
+  const [ruleVersionRows, wikiVersionRows, skillVersionRows] = await Promise.all([
+    db
+      .select({
+        assetId: teamRuleNoteVersions.noteId,
+        versionId: teamRuleNoteVersions.id,
+        revisionNumber: teamRuleNoteVersions.revisionNumber,
+        createdAt: teamRuleNoteVersions.createdAt,
+      })
+      .from(teamRuleNoteVersions)
+      .where(eq(teamRuleNoteVersions.companyId, companyId)),
+    db
+      .select({
+        assetId: teamWikiPageVersions.pageId,
+        versionId: teamWikiPageVersions.id,
+        revisionNumber: teamWikiPageVersions.revisionNumber,
+        createdAt: teamWikiPageVersions.createdAt,
+      })
+      .from(teamWikiPageVersions)
+      .where(eq(teamWikiPageVersions.companyId, companyId)),
+    db
+      .select({
+        assetId: companySkillVersions.companySkillId,
+        versionId: companySkillVersions.id,
+        revisionNumber: companySkillVersions.revisionNumber,
+        createdAt: companySkillVersions.createdAt,
+      })
+      .from(companySkillVersions)
+      .where(eq(companySkillVersions.companyId, companyId)),
+  ]);
+  const latestVersions = new Map<string, LatestVersion>();
+  for (const row of foldLatest(ruleVersionRows).values()) latestVersions.set(`rule:${row.assetId}`, row);
+  for (const row of foldLatest(wikiVersionRows).values()) latestVersions.set(`wiki:${row.assetId}`, row);
+  for (const row of foldLatest(skillVersionRows).values()) latestVersions.set(`skill:${row.assetId}`, row);
 
   const rows: AssetHealthRow[] = [];
   const push = (kind: AssetKind, id: string, title: string, path: string | null) => {
     const stat = stats.get(`${kind}:${id}`);
     const servedCount = stat?.servedCount ?? 0;
     const citedCount = stat?.citedCount ?? 0;
+    const downVote = downVotes.get(`${kind}:${id}`);
+    const latest = latestVersions.get(`${kind}:${id}`);
     rows.push({
       assetKind: kind,
       assetId: id,
@@ -213,6 +347,12 @@ export async function assetHealth(db: Db, companyId: string): Promise<AssetHealt
       lastServedAt: stat?.lastServedAt ?? null,
       lastCitedAt: stat?.lastCitedAt ?? null,
       deadWeight: servedCount >= DEAD_WEIGHT_MIN_SERVED && citedCount === 0,
+      downVotes: downVote?.count ?? 0,
+      downVoteIssueIds: downVote?.issueIds ?? [],
+      disputed: (downVote?.issueIds.length ?? 0) >= 2,
+      latestVersionId: latest?.versionId ?? null,
+      latestRevisionNumber: latest?.revisionNumber ?? null,
+      lastRevisedAt: latest ? new Date(latest.createdAt).toISOString() : null,
     });
   };
 
