@@ -62,6 +62,10 @@ interface SkillsOptions extends BaseClientOptions {
   companyId?: string;
 }
 
+interface SkillsListOptions extends SkillsOptions {
+  query?: string;
+}
+
 interface SkillFileOptions extends SkillsOptions {
   path?: string;
 }
@@ -221,13 +225,19 @@ export function registerSkillsCommands(program: Command): void {
   addCommonClientOptions(
     skills
       .command("list")
-      .description("List company skills")
-      .action(async (opts: SkillsOptions) => {
+      .description("List company skills; --query filters by name, slug, key, or description")
+      .option("-q, --query <text>", "Only show skills matching this text")
+      .action(async (opts: SkillsListOptions) => {
         try {
           const ctx = resolveCommandContext(opts, { requireCompany: true });
-          const rows = await listCompanySkills(ctx);
+          const all = await listCompanySkills(ctx);
+          const rows = filterCompanySkills(all, opts.query);
           if (ctx.json) {
             printOutput(rows, { json: true });
+            return;
+          }
+          if (opts.query && rows.length === 0) {
+            console.log(`No company skill matches "${opts.query}" (${all.length} skill(s) in the library).`);
             return;
           }
           printCompanySkillRows(rows);
@@ -904,6 +914,24 @@ async function resolveAgent(ctx: ResolvedClientContext, agentRef: string): Promi
     throw new Error(`Agent not found: ${agentRef}`);
   }
   return agent;
+}
+
+/**
+ * Substring match over the fields a person actually remembers a skill by.
+ * `skills search` looks at the shipped catalog, not the company library, so
+ * finding one of your own team's skills had no command at all — only reading
+ * the whole list.
+ */
+function filterCompanySkills<T extends { name?: string; slug?: string; key?: string; description?: string | null }>(
+  rows: T[],
+  query: string | undefined,
+): T[] {
+  const needle = query?.trim().toLowerCase();
+  if (!needle) return rows;
+  return rows.filter((row) =>
+    [row.name, row.slug, row.key, row.description]
+      .some((field) => typeof field === "string" && field.toLowerCase().includes(needle)),
+  );
 }
 
 function printCompanySkillRows(rows: Array<CompanySkillListItem | CompanySkill>): void {
