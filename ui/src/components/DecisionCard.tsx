@@ -400,36 +400,40 @@ export function DecisionCard({
       </div>
 
       {/* Provenance */}
-      <p className="mt-1 flex flex-wrap items-center gap-x-3 text-xs text-muted-foreground">
+      <p className="mt-1 flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-muted-foreground">
         {/* The id is the handle the CLI and API address this decision by, so a
             reader can act on the card they are looking at without a lookup. */}
         <span className="font-mono" title={decision.id}>decision:{decision.id.slice(0, 8)}</span>
-        {" · "}
-        Proposed by{" "}
-        {(() => {
-          const name = originAgentName ?? "";
-          const agent = resolveAgent?.(decision.originAgentId);
-          return agent?.customIconUrl ? (
-            <img src={agent.customIconUrl} alt="" className="inline-block h-3.5 w-3.5 rounded-full align-middle object-cover" />
-          ) : agent?.icon ? (
-            <span className="inline-block h-3 w-3 rounded-full align-middle" style={{ backgroundColor: BRAND_COLORS[name] ?? "#64748b" }} aria-hidden />
-          ) : null;
-        })()}{" "}
-        <span className="font-medium text-foreground">{originAgentName ?? "an agent"}</span>
-        {originIssue && (
-          <>
-            {" "}while running{" "}
-            <a href={originIssue.href} className="font-medium text-primary underline-offset-2 hover:underline">
-              {issueLabel(originIssue, originIssue.id)}
-            </a>
-          </>
-        )}
+        {/* Segments carry their own tight inner spacing so the wide gap-x only
+            separates whole facts, not the words inside one. */}
+        <span className="inline-flex items-center gap-1.5">
+          提案人
+          {(() => {
+            const name = originAgentName ?? "";
+            const agent = resolveAgent?.(decision.originAgentId);
+            return agent?.customIconUrl ? (
+              <img src={agent.customIconUrl} alt="" className="inline-block h-3.5 w-3.5 rounded-full object-cover" />
+            ) : agent?.icon ? (
+              <span className="inline-block h-3 w-3 rounded-full" style={{ backgroundColor: BRAND_COLORS[name] ?? "#64748b" }} aria-hidden />
+            ) : null;
+          })()}
+          <span className="font-medium text-foreground">{originAgentName ?? "某个 agent"}</span>
+          {originIssue && (
+            <>
+              <span>处理</span>
+              <a href={originIssue.href} className="font-medium text-primary underline-offset-2 hover:underline">
+                {issueLabel(originIssue, originIssue.id)}
+              </a>
+              <span>时</span>
+            </>
+          )}
+        </span>
         {decision.createdAt && (
-          <span className="tabular-nums"> · {chineseTimestamp(decision.createdAt)}</span>
+          <span className="tabular-nums">{chineseTimestamp(decision.createdAt)}</span>
         )}
         {targetRefs.length > 0 && (
-          <>
-            {" · 适用于 "}
+          <span className="inline-flex items-center gap-1.5">
+            适用于
             {targetRefs.map(({ id, ref }, index) => (
               <span key={id}>
                 {index > 0 && ", "}
@@ -442,13 +446,10 @@ export function DecisionCard({
                 )}
               </span>
             ))}
-          </>
+          </span>
         )}
         {runHref && (
-          <>
-            {" · "}
-            <a href={runHref} className="hover:underline">view run</a>
-          </>
+          <a href={runHref} className="hover:underline">查看运行</a>
         )}
       </p>
 
@@ -472,10 +473,7 @@ export function DecisionCard({
                 )
               )}
               {decision.decidedAt && (
-                <>
-                  <span className="mx-2 text-muted-foreground">·</span>
-                  <span className="tabular-nums text-muted-foreground">{absoluteTimestamp(decision.decidedAt)}</span>
-                </>
+                <span className="ml-5 tabular-nums text-muted-foreground">{absoluteTimestamp(decision.decidedAt)}</span>
               )}
             </p>
           )}
