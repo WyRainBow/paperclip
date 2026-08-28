@@ -2926,10 +2926,10 @@ describe("IssueProperties", () => {
     ]);
     const root = renderProperties(container, {
       issue: createIssue({
-        archivedAt: new Date("2026-04-06T12:10:00.000Z"),
-        archivedByActorType: "agent",
-        archivedByAgentId: "agent-9",
-        archivedByRunId: "run-1",
+        inboxArchivedAt: new Date("2026-04-06T12:10:00.000Z"),
+        inboxArchivedByActorType: "agent",
+        inboxArchivedByAgentId: "agent-9",
+        inboxArchivedByRunId: "run-1",
       }),
       childIssues: [],
       onUpdate: vi.fn(),
@@ -2972,10 +2972,10 @@ describe("IssueProperties", () => {
     mockIssuesApi.unarchiveFromInbox.mockRejectedValue(new Error("Archive policy denied"));
     const root = renderProperties(container, {
       issue: createIssue({
-        archivedAt: new Date("2026-04-06T12:10:00.000Z"),
-        archivedByActorType: "agent",
-        archivedByAgentId: "agent-9",
-        archivedByRunId: "run-1",
+        inboxArchivedAt: new Date("2026-04-06T12:10:00.000Z"),
+        inboxArchivedByActorType: "agent",
+        inboxArchivedByAgentId: "agent-9",
+        inboxArchivedByRunId: "run-1",
       }),
       childIssues: [],
       onUpdate: vi.fn(),
@@ -3004,9 +3004,9 @@ describe("IssueProperties", () => {
   it("does not render archive attribution for user (manual) archives", async () => {
     const root = renderProperties(container, {
       issue: createIssue({
-        archivedAt: new Date("2026-04-06T12:10:00.000Z"),
-        archivedByActorType: "user",
-        archivedByAgentId: null,
+        inboxArchivedAt: new Date("2026-04-06T12:10:00.000Z"),
+        inboxArchivedByActorType: "user",
+        inboxArchivedByAgentId: null,
       }),
       childIssues: [],
       onUpdate: vi.fn(),

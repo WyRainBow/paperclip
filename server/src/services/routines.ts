@@ -62,6 +62,7 @@ import { logger } from "../middleware/logger.js";
 import { getTelemetryClient } from "../telemetry.js";
 import { getConfiguredSecretProvider } from "../secrets/configured-provider.js";
 import { issueService } from "./issues.js";
+import { withIssueDeleteAllowed } from "./issue-delete-guard.js";
 import { assertAssignableAgent } from "./agent-assignability.js";
 import { visibleIssueCondition } from "./issue-visibility.js";
 import { secretService } from "./secrets.js";
@@ -1966,7 +1967,12 @@ export function routineService(
         return updated ?? createdRun;
       } catch (error) {
         if (createdIssue) {
-          await txDb.delete(issues).where(eq(issues.id, createdIssue.id));
+          // Rolling back the issue this failed run just created is the second
+          // path allowed past the archive-only trigger: the card never became a
+          // real card, so archiving it would only leave litter.
+          const rollbackIssueId = createdIssue.id;
+          await withIssueDeleteAllowed(txDb, () =>
+            txDb.delete(issues).where(eq(issues.id, rollbackIssueId)));
         }
         const failureReason = error instanceof Error ? error.message : String(error);
         const failed = await finalizeRun(createdRun.id, {
