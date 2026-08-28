@@ -3883,6 +3883,78 @@ export function companySkillService(db: Db) {
     await fs.rm(forkDir, { recursive: true, force: true });
   }
 
+  /**
+   * Re-reads a managed local skill's own directory and records whatever is
+   * there now.
+   *
+   * `createManagedLocalSkill` registers exactly one file, SKILL.md, because
+   * that is all it writes. But a skill's references and scripts are part of the
+   * skill: `human-writing`'s SKILL.md tells the reader to open five files under
+   * `references/`, and `pull` materializes from the recorded inventory, so a
+   * skill registered that way arrives without the things it tells you to read.
+   * Nothing complains until someone actually follows those instructions.
+   *
+   * Forking already rebuilds an inventory from disk; this exposes that same
+   * step on its own, for a directory that gained files after registration.
+   */
+  async function rescanManagedLocalSkill(
+    companyId: string,
+    skillId: string,
+  ): Promise<{ skill: CompanySkill; version: CompanySkillVersion; added: string[]; removed: string[] }> {
+    await ensureSkillInventoryCurrent(companyId);
+    const skill = await getById(companyId, skillId);
+    if (!skill) throw notFound("Skill not found");
+    if (!isPaperclipManagedRenameTarget(skill)) {
+      throw unprocessable(
+        "Only Paperclip-managed local skills can be rescanned; remote and project-scanned skills keep their own update semantics",
+        { code: "skill_not_managed_local" },
+      );
+    }
+    const skillDir = normalizeSkillDirectory(skill);
+    if (!skillDir) throw unprocessable("Skill has no local directory", { code: "skill_source_validation_failed" });
+
+    const inventory = await collectLocalSkillInventory(skillDir);
+    const markdown = await fs.readFile(path.join(skillDir, "SKILL.md"), "utf8");
+    const parsed = parseFrontmatterMarkdown(markdown);
+
+    const before = new Set((skill.fileInventory ?? []).map((entry) => entry.path));
+    const after = new Set(inventory.map((entry) => entry.path));
+
+    const [updated] = await upsertImportedSkills(companyId, [{
+      key: skill.key,
+      slug: skill.slug,
+      name: asString(parsed.frontmatter.name) ?? skill.name,
+      description: asString(parsed.frontmatter.description) ?? skill.description,
+      markdown,
+      sourceType: "local_path",
+      sourceLocator: skillDir,
+      sourceRef: null,
+      trustLevel: deriveTrustLevel(inventory),
+      compatibility: skill.compatibility,
+      fileInventory: inventory,
+      metadata: getSkillMeta(skill),
+    }]);
+
+    // `pull` materializes from the latest *version*'s inventory, not from the
+    // skill row, so refreshing the row alone changes nothing a terminal can
+    // see. Cutting a version is what actually publishes the newly-registered
+    // files.
+    const version = await createVersion(
+      companyId,
+      skill.id,
+      { label: "rescan" },
+      null,
+      { skill: updated!, skipInventoryRefresh: true },
+    );
+
+    return {
+      skill: updated!,
+      version,
+      added: [...after].filter((entry) => !before.has(entry)).sort(),
+      removed: [...before].filter((entry) => !after.has(entry)).sort(),
+    };
+  }
+
   async function forkSkill(
     companyId: string,
     skillId: string,
@@ -6919,6 +6991,7 @@ export function companySkillService(db: Db) {
     updateComment,
     deleteComment,
     forkSkill,
+    rescanManagedLocalSkill,
     renameSkill,
     updateStatus,
     readFile,

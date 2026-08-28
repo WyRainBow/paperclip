@@ -118,10 +118,26 @@ export function workspaceRecallRoutes(db: Db): Router {
       const mapText = lines.join("\n");
       const tokenBudget = Math.max(budget, 2000); // directory mode uses larger budget
       const usedTokens = estimateTokens(mapText);
-      const truncated = usedTokens > tokenBudget
-        ? mapText.slice(0, Math.floor(mapText.length * (tokenBudget / usedTokens))) + "\n…(token 预算截断)"
-        : mapText;
-      res.json({ mode: "directory", text: truncated, budgetTokens: tokenBudget, usedTokens, usedChars: truncated.length });
+
+      // Over budget warns instead of truncating (decision 6ce7c5f1). This used
+      // to cut the text mid-line, and the cut lands wherever the byte count
+      // says — in practice the tail of the asset directory, sometimes the tail
+      // of a rule. A session holding half a rulebook does not know which half
+      // is missing and follows the remainder as if it were complete, which is
+      // worse than a context that is merely too large. Growing past the budget
+      // is a real problem, so it is stated at the top where a reader cannot
+      // miss it, and left to a human to fix by trimming the rules.
+      // The warning goes after the identity line, never before it: Team Rules
+      // §0 tells every session that the opening line is who it is, so anything
+      // that displaces it breaks the contract sessions are told to rely on.
+      const overBudget = usedTokens > tokenBudget;
+      let text = mapText;
+      if (overBudget) {
+        const warning = `⚠ Team Rules 与资产目录合计 ${usedTokens} token，已超出注入预算 ${tokenBudget} token。内容仍然完整，但每个会话都在付这份开销，该精简了。`;
+        const [identityLine, ...rest] = mapText.split("\n");
+        text = [identityLine, "", warning, ...rest].join("\n");
+      }
+      res.json({ mode: "directory", text, budgetTokens: tokenBudget, usedTokens, usedChars: text.length, overBudget });
       return;
     }
 

@@ -822,6 +822,34 @@ export function companySkillRoutes(db: Db) {
     res.json(result);
   });
 
+  // Re-reads a managed local skill's directory so files added after it was
+  // registered (references, scripts) become part of the skill (MUL-117).
+  router.post("/companies/:companyId/skills/:skillId/rescan", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    const skillId = req.params.skillId as string;
+    await assertCanMutateCompanySkills(
+      req,
+      companyId,
+      "skills.import",
+      () => skillPolicyResource({ companyId, skillId }),
+    );
+    const result = await svc.rescanManagedLocalSkill(companyId, skillId);
+    const actor = getActorInfo(req);
+    await logActivity(db, {
+      companyId,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      agentId: actor.agentId,
+      runId: actor.runId,
+      agentApiKeyId: actor.agentApiKeyId,
+      action: "company.skill_rescanned",
+      entityType: "company_skill",
+      entityId: skillId,
+      details: { slug: result.skill.slug, added: result.added, removed: result.removed },
+    });
+    res.json(result);
+  });
+
   router.post(
     "/companies/:companyId/skills/:skillId/fork",
     validate(companySkillForkSchema),
