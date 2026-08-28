@@ -77,6 +77,7 @@ interface IssueUpdateOptions extends BaseClientOptions {
   status?: string;
   priority?: string;
   assigneeAgentId?: string;
+  assigneeUserId?: string;
   projectId?: string;
   goalId?: string;
   parentId?: string;
@@ -542,6 +543,12 @@ export function registerIssueCommands(program: Command): void {
       .option("--status <status>", "Issue status")
       .option("--priority <priority>", "Issue priority")
       .option("--assignee-agent-id <id>", "Assignee agent ID")
+      // Handing a card to a person is the `human_assignee_user_id` review path:
+      // an agent cannot move a card to in_review without one of the five paths,
+      // and this is the only one that means "a human is looking at it next".
+      // The flag was missing, so agents had no way to finish a card from the
+      // terminal (MUL-118).
+      .option("--assignee-user-id <id>", "Assignee user ID (e.g. local-board) — hands the card to a person and opens the in_review path")
       .option("--project-id <id>", "Project ID")
       .option("--goal-id <id>", "Goal ID")
       .option("--parent-id <id>", "Parent issue ID")
@@ -558,6 +565,7 @@ export function registerIssueCommands(program: Command): void {
             status: opts.status,
             priority: opts.priority,
             assigneeAgentId: opts.assigneeAgentId,
+            assigneeUserId: opts.assigneeUserId,
             projectId: opts.projectId,
             goalId: opts.goalId,
             parentId: opts.parentId,
@@ -567,7 +575,9 @@ export function registerIssueCommands(program: Command): void {
             hiddenAt: parseHiddenAt(opts.hiddenAt),
           });
 
-          if (opts.status && !opts.assigneeAgentId) {
+          // Assigning to a person is a handover, not a claim — auto-claiming on
+          // top would set an agent assignee and trip the one-assignee rule.
+          if (opts.status && !opts.assigneeAgentId && !opts.assigneeUserId) {
             const existing = await ctx.api.get<Issue>(apiPath`/api/issues/${issueId}`).catch(() => null);
             if (existing) await autoClaimIfUnclaimed(ctx, existing);
           }
