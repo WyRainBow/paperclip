@@ -1689,7 +1689,11 @@ export function attentionService(db: Db, serviceOptions: AttentionServiceOptions
         // it is resolved in-row with the three review verbs (PAP-16080 §4.4).
         // Covered reviews still deep-link — their real action lives elsewhere
         // (the pending interaction/approval card, a monitor, a live run).
-        const reviewSubject = issueSubject(prefix, issue);
+        // The review row carries the body (MUL-137): the deciding surface
+        // shows what the card asks for. Injected here rather than in
+        // issueSummaryMap so only review items pay the payload, not every
+        // issue-backed subject in the feed.
+        const reviewSubject = issueSubject(prefix, { ...issue, description: review.description });
         add(createItem({
           companyId,
           sourceKind: "review",
