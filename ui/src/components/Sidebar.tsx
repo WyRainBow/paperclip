@@ -1,4 +1,5 @@
 import {
+  Archive,
   Inbox,
   ListChecks,
   CircleDot,
@@ -236,6 +237,7 @@ export function Sidebar() {
 
         <SidebarSection label={t("Work")} collapsible={{ open: workOpen, onOpenChange: setWorkOpen }}>
           <SidebarNavItem to="/issues" label={t("Tasks")} icon={CircleDot} />
+          <SidebarNavItem to="/issues/archive" label={t("Archive")} icon={Archive} />
           {showCases ? (
             <SidebarNavItem to="/cases" label={t("Cases")} icon={Layers} textBadge="beta" />
           ) : null}

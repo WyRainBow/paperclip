@@ -65,7 +65,7 @@ import {
   isUuidLike,
   normalizeIssueIdentifier as normalizeIssueReferenceIdentifier,
 } from "@paperclipai/shared";
-import { conflict, HttpError, notFound, unprocessable } from "../errors.js";
+import { conflict, forbidden, HttpError, notFound, unprocessable } from "../errors.js";
 import { isForeignKeyViolation } from "../db-errors.js";
 import { logger } from "../middleware/logger.js";
 import { parseObject } from "../adapters/utils.js";
@@ -120,7 +120,7 @@ import {
   type IssueGraphLivenessInput,
   type IssueLivenessFinding,
 } from "./recovery/issue-graph-liveness.js";
-import { visibleIssueCondition } from "./issue-visibility.js";
+import { archivedIssueCondition, visibleIssueCondition } from "./issue-visibility.js";
 import { finalizeStatusCardsForStalledGeneration } from "./status-card-finalization.js";
 import { finalizeSummarySlotsForTerminalIssue } from "./summary-slot-finalization.js";
 import {
@@ -537,6 +537,11 @@ export function parseStatusFilter(input: string | readonly string[] | undefined)
 
 export interface IssueFilters {
   attention?: "blocked";
+  /**
+   * Archive area (MUL-109). Default lists exclude archived cards; pass
+   * `"only"` to list the archive itself.
+   */
+  archived?: "only";
   status?: string | readonly string[];
   /**
    * Filter by assignee agent ID.
@@ -1755,16 +1760,20 @@ async function inboxArchiveRowsForIssues(
     ));
 }
 
+// The projected keys carry the `inbox` prefix because the plain `archivedAt`
+// on an issue now means the card itself is archived (MUL-109). These four are
+// per-user inbox state: "I archived this out of my inbox", nothing about the
+// card's place on the board.
 function activeInboxArchiveFields(
   archive: InboxArchiveAttributionRow | undefined,
   lastActivityAt: Date,
 ) {
   if (!archive || archive.archivedAt.getTime() < lastActivityAt.getTime()) return {};
   return {
-    archivedAt: archive.archivedAt,
-    archivedByActorType: archive.archivedByActorType,
-    archivedByAgentId: archive.archivedByAgentId,
-    archivedByRunId: archive.archivedByRunId,
+    inboxArchivedAt: archive.archivedAt,
+    inboxArchivedByActorType: archive.archivedByActorType,
+    inboxArchivedByAgentId: archive.archivedByAgentId,
+    inboxArchivedByRunId: archive.archivedByRunId,
   };
 }
 
@@ -3249,6 +3258,11 @@ const issueListSelect = {
   completedAt: issues.completedAt,
   cancelledAt: issues.cancelledAt,
   hiddenAt: issues.hiddenAt,
+  archivedAt: issues.archivedAt,
+  archivedReason: issues.archivedReason,
+  archivedByType: issues.archivedByType,
+  archivedByAgentId: issues.archivedByAgentId,
+  archivedByUserId: issues.archivedByUserId,
   createdAt: issues.createdAt,
   updatedAt: issues.updatedAt,
 };
@@ -5567,7 +5581,10 @@ export function issueService(db: Db) {
         });
       }
 
-      const conditions = [eq(issues.companyId, companyId), visibleIssueCondition()];
+      const conditions = [
+        eq(issues.companyId, companyId),
+        filters?.archived === "only" ? archivedIssueCondition() : visibleIssueCondition(),
+      ];
       const assigneeAgentFilter = parseIssueAssigneeAgentFilter(filters?.assigneeAgentId);
       assertValidAssigneeAgentFilter(assigneeAgentFilter);
       const limit = typeof filters?.limit === "number" && Number.isFinite(filters.limit)
@@ -8101,51 +8118,118 @@ export function issueService(db: Db) {
       return cleared;
     },
 
-    remove: (id: string) =>
-      db.transaction(async (tx) => {
-        const attachmentAssetIds = await tx
-          .select({ assetId: issueAttachments.assetId })
-          .from(issueAttachments)
-          .where(eq(issueAttachments.issueId, id));
-        const issueDocumentIds = await tx
-          .select({ documentId: issueDocuments.documentId })
-          .from(issueDocuments)
-          .where(eq(issueDocuments.issueId, id));
+    /**
+     * Issues are archive-only (MUL-109). Deletion is refused by the
+     * `issues_forbid_delete` database trigger for every identity and every
+     * path, so this method exists only to answer callers that still ask for a
+     * delete with a clear reason instead of a database error.
+     */
+    remove: (_id: string): Promise<never> => {
+      throw forbidden(
+        "Issues cannot be deleted, only archived.",
+        { archiveEndpoint: "POST /api/issues/:id/archive" },
+      );
+    },
 
-        let removedIssue;
-        try {
-          removedIssue = await tx
-            .delete(issues)
-            .where(eq(issues.id, id))
-            .returning()
-            .then((rows) => rows[0] ?? null);
-        } catch (err) {
-          // A foreign key to issues.id without a delete policy blocks the delete
-          // and raises SQLSTATE 23503. Map it to a clear 409 instead of a bare
-          // 500. This also covers the decisions table, whose NOT NULL references
-          // to issues.id stay restricted on purpose.
-          if (isForeignKeyViolation(err)) {
-            throw conflict("Issue cannot be deleted because another record still references it.");
-          }
-          throw err;
-        }
+    archive: async (
+      id: string,
+      actor: { agentId?: string | null; userId?: string | null },
+      reason?: string | null,
+    ) => {
+      const existing = await db
+        .select()
+        .from(issues)
+        .where(eq(issues.id, id))
+        .then((rows) => rows[0] ?? null);
+      if (!existing) return null;
+      // Archiving twice is a no-op rather than an error: the caller's intent
+      // ("this should not be on the board") is already satisfied, and the first
+      // archive's attribution is the one worth keeping.
+      if (existing.archivedAt) {
+        const [already] = await withIssueLabels(db, [existing]);
+        return already;
+      }
 
-        if (removedIssue && attachmentAssetIds.length > 0) {
-          await tx
-            .delete(assets)
-            .where(inArray(assets.id, attachmentAssetIds.map((row) => row.assetId)));
-        }
+      const now = new Date();
+      const archivedByType = actor.agentId ? "agent" : actor.userId ? "user" : "system";
+      const [updated] = await db
+        .update(issues)
+        .set({
+          archivedAt: now,
+          archivedReason: reason?.trim() ? reason.trim() : null,
+          archivedByType,
+          archivedByAgentId: archivedByType === "agent" ? actor.agentId ?? null : null,
+          archivedByUserId: archivedByType === "user" ? actor.userId ?? null : null,
+          updatedAt: now,
+        })
+        .where(eq(issues.id, id))
+        .returning();
+      if (!updated) return null;
 
-        if (removedIssue && issueDocumentIds.length > 0) {
-          await tx
-            .delete(documents)
-            .where(inArray(documents.id, issueDocumentIds.map((row) => row.documentId)));
-        }
+      await logActivity(db, {
+        companyId: updated.companyId,
+        actorType: archivedByType,
+        actorId: actor.agentId ?? actor.userId ?? "issue_service",
+        agentId: actor.agentId ?? null,
+        action: "issue.archived",
+        entityType: "issue",
+        entityId: updated.id,
+        details: {
+          identifier: updated.identifier,
+          reason: updated.archivedReason,
+          previousStatus: existing.status,
+        },
+      });
 
-        if (!removedIssue) return null;
-        const [enriched] = await withIssueLabels(tx, [removedIssue]);
-        return enriched;
-      }),
+      const [enriched] = await withIssueLabels(db, [updated]);
+      return enriched;
+    },
+
+    unarchive: async (id: string, actor: { agentId?: string | null; userId?: string | null }) => {
+      const existing = await db
+        .select()
+        .from(issues)
+        .where(eq(issues.id, id))
+        .then((rows) => rows[0] ?? null);
+      if (!existing) return null;
+      if (!existing.archivedAt) {
+        const [already] = await withIssueLabels(db, [existing]);
+        return already;
+      }
+
+      const now = new Date();
+      const [updated] = await db
+        .update(issues)
+        .set({
+          archivedAt: null,
+          archivedReason: null,
+          archivedByType: null,
+          archivedByAgentId: null,
+          archivedByUserId: null,
+          updatedAt: now,
+        })
+        .where(eq(issues.id, id))
+        .returning();
+      if (!updated) return null;
+
+      await logActivity(db, {
+        companyId: updated.companyId,
+        actorType: actor.agentId ? "agent" : actor.userId ? "user" : "system",
+        actorId: actor.agentId ?? actor.userId ?? "issue_service",
+        agentId: actor.agentId ?? null,
+        action: "issue.unarchived",
+        entityType: "issue",
+        entityId: updated.id,
+        details: {
+          identifier: updated.identifier,
+          archivedAt: existing.archivedAt,
+          archivedReason: existing.archivedReason,
+        },
+      });
+
+      const [enriched] = await withIssueLabels(db, [updated]);
+      return enriched;
+    },
 
     checkout: async (id: string, agentId: string, expectedStatuses: string[], checkoutRunId: string | null) => {
       const issueCompany = await db

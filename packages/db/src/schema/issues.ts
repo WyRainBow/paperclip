@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   type AnyPgColumn,
+  check,
   pgTable,
   uuid,
   text,
@@ -79,6 +80,15 @@ export const issues = pgTable(
     completedAt: timestamp("completed_at", { withTimezone: true }),
     cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
     hiddenAt: timestamp("hidden_at", { withTimezone: true }),
+    // Archive is the only way an issue leaves the board: deletion is refused by
+    // the `issues_forbid_delete` trigger for every identity and every path. The
+    // attribution triple mirrors decision retention (decision_queues.ts) so
+    // "who archived this and why" survives without reading an activity feed.
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+    archivedReason: text("archived_reason"),
+    archivedByType: text("archived_by_type").$type<"user" | "agent" | "system">(),
+    archivedByAgentId: uuid("archived_by_agent_id").references(() => agents.id, { onDelete: "set null" }),
+    archivedByUserId: text("archived_by_user_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -112,6 +122,16 @@ export const issues = pgTable(
         table.createdAt,
       )
       .where(sql`${table.hiddenAt} is null and ${table.status} not in ('done', 'cancelled')`),
+    companyArchivedIdx: index("issues_company_archived_idx").on(table.companyId, table.archivedAt),
+    archiveActorCheck: check(
+      "issues_archive_actor_check",
+      sql`
+        (${table.archivedAt} IS NULL AND ${table.archivedByType} IS NULL AND ${table.archivedByAgentId} IS NULL AND ${table.archivedByUserId} IS NULL)
+        OR (${table.archivedAt} IS NOT NULL AND ${table.archivedByType} = 'system' AND ${table.archivedByAgentId} IS NULL AND ${table.archivedByUserId} IS NULL)
+        OR (${table.archivedAt} IS NOT NULL AND ${table.archivedByType} = 'agent' AND ${table.archivedByAgentId} IS NOT NULL AND ${table.archivedByUserId} IS NULL)
+        OR (${table.archivedAt} IS NOT NULL AND ${table.archivedByType} = 'user' AND ${table.archivedByAgentId} IS NULL AND ${table.archivedByUserId} IS NOT NULL)
+      `,
+    ),
     companyPriorityIdx: index("issues_company_priority_idx").on(table.companyId, table.priority),
     identifierIdx: uniqueIndex("issues_identifier_idx").on(table.identifier),
     titleSearchIdx: index("issues_title_search_idx").using("gin", table.title.op("gin_trgm_ops")),

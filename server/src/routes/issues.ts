@@ -6066,6 +6066,9 @@ export function issueRoutes(
     const offset = parsedOffset ?? 0;
 
     const listFilters: IssueFilters = {
+      // `?archived=only` is the archive area (MUL-109); every other value keeps
+      // the default board view, which excludes archived cards.
+      archived: req.query.archived === "only" ? "only" : undefined,
       attention: attention === "blocked" ? "blocked" : undefined,
       status: req.query.status as string | string[] | undefined,
       assigneeAgentId,
@@ -10983,28 +10986,38 @@ export function issueRoutes(
     res.json({ ...issueResponse, changes, comment });
   });
 
+  // Issues are archive-only (MUL-109). The endpoint stays mounted so old
+  // clients get a reason and a replacement instead of a 404 that reads like the
+  // card is already gone; the database trigger is what actually holds the line.
   router.delete("/issues/:id", async (req, res) => {
     const id = req.params.id as string;
     const existing = await getAccessibleResource(req, res, svc.getById(id), "Issue not found");
     if (!existing) return;
-    if (!(await assertAgentIssueMutationAllowed(req, res, existing))) return;
-    const attachments = await svc.listAttachments(id);
+    res.status(403).json({
+      error: "Issues cannot be deleted, only archived.",
+      archiveEndpoint: `POST /api/issues/${id}/archive`,
+    });
+  });
 
-    const issue = await svc.remove(id);
+  router.post("/issues/:id/archive", async (req, res) => {
+    const id = req.params.id as string;
+    const existing = await getAccessibleResource(req, res, svc.getById(id), "Issue not found");
+    if (!existing) return;
+    if (!(await assertAgentIssueMutationAllowed(req, res, existing))) return;
+
+    const actor = getActorInfo(req);
+    const rawReason = (req.body as { reason?: unknown } | undefined)?.reason;
+    const reason = typeof rawReason === "string" ? rawReason : null;
+    const issue = await svc.archive(
+      id,
+      { agentId: actor.agentId, userId: actor.actorType === "user" ? actor.actorId : null },
+      reason,
+    );
     if (!issue) {
       res.status(404).json({ error: "Issue not found" });
       return;
     }
 
-    for (const attachment of attachments) {
-      try {
-        await storage.deleteObject(attachment.companyId, attachment.objectKey);
-      } catch (err) {
-        logger.warn({ err, issueId: id, attachmentId: attachment.id }, "failed to delete attachment object during issue delete");
-      }
-    }
-
-    const actor = getActorInfo(req);
     await logActivity(db, {
       companyId: issue.companyId,
       actorType: actor.actorType,
@@ -11012,7 +11025,40 @@ export function issueRoutes(
       agentId: actor.agentId,
       runId: actor.runId,
       agentApiKeyId: actor.agentApiKeyId,
-      action: "issue.deleted",
+      action: "issue.archived",
+      entityType: "issue",
+      entityId: issue.id,
+      details: { reason: issue.archivedReason ?? null },
+    });
+
+    await queueTaskWatchdogEvaluation(existing, actor.runId);
+    res.json(issue);
+  });
+
+  router.delete("/issues/:id/archive", async (req, res) => {
+    const id = req.params.id as string;
+    const existing = await getAccessibleResource(req, res, svc.getById(id), "Issue not found");
+    if (!existing) return;
+    if (!(await assertAgentIssueMutationAllowed(req, res, existing))) return;
+
+    const actor = getActorInfo(req);
+    const issue = await svc.unarchive(id, {
+      agentId: actor.agentId,
+      userId: actor.actorType === "user" ? actor.actorId : null,
+    });
+    if (!issue) {
+      res.status(404).json({ error: "Issue not found" });
+      return;
+    }
+
+    await logActivity(db, {
+      companyId: issue.companyId,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      agentId: actor.agentId,
+      runId: actor.runId,
+      agentApiKeyId: actor.agentApiKeyId,
+      action: "issue.unarchived",
       entityType: "issue",
       entityId: issue.id,
     });

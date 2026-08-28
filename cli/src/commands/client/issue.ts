@@ -148,8 +148,9 @@ interface IssueFeedbackOptions extends BaseClientOptions {
   format?: string;
 }
 
-interface IssueDeleteOptions extends BaseClientOptions {
+interface IssueArchiveOptions extends BaseClientOptions {
   yes?: boolean;
+  reason?: string;
 }
 
 interface JsonPayloadOptions extends BaseClientOptions {
@@ -335,18 +336,40 @@ export function registerIssueCommands(program: Command): void {
       }),
   );
 
+  // Issues are archive-only (MUL-109): there is no delete command, because
+  // there is no delete. The database refuses it whoever asks.
   addCommonClientOptions(
     issue
-      .command("delete")
-      .description("Delete an issue")
+      .command("archive")
+      .description("Archive an issue (issues cannot be deleted)")
       .argument("<issueId>", "Issue ID")
-      .option("--yes", "Confirm deletion")
-      .action(async (issueId: string, opts: IssueDeleteOptions) => {
+      .option("--yes", "Confirm archiving")
+      .option("--reason <text>", "Why this card is leaving the board")
+      .action(async (issueId: string, opts: IssueArchiveOptions) => {
         try {
-          if (!opts.yes) throw new Error("Refusing to delete without --yes");
+          if (!opts.yes) throw new Error("Refusing to archive without --yes");
           const ctx = resolveCommandContext(opts);
-          const deleted = await ctx.api.delete<Issue>(apiPath`/api/issues/${issueId}`);
-          printOutput(deleted, { json: ctx.json });
+          const archived = await ctx.api.post<Issue>(
+            apiPath`/api/issues/${issueId}/archive`,
+            { reason: opts.reason ?? null },
+          );
+          printOutput(archived, { json: ctx.json });
+        } catch (err) {
+          handleCommandError(err);
+        }
+      }),
+  );
+
+  addCommonClientOptions(
+    issue
+      .command("unarchive")
+      .description("Restore an archived issue to the board")
+      .argument("<issueId>", "Issue ID")
+      .action(async (issueId: string, opts: BaseClientOptions) => {
+        try {
+          const ctx = resolveCommandContext(opts);
+          const restored = await ctx.api.delete<Issue>(apiPath`/api/issues/${issueId}/archive`);
+          printOutput(restored, { json: ctx.json });
         } catch (err) {
           handleCommandError(err);
         }
@@ -1002,8 +1025,10 @@ export function registerIssueCommands(program: Command): void {
 
   addIssuePostDeleteMarkerCommand(issue, "read", "Mark an issue as read", "post", "/read");
   addIssuePostDeleteMarkerCommand(issue, "unread", "Mark an issue as unread", "delete", "/read");
-  addIssuePostDeleteMarkerCommand(issue, "archive", "Archive an issue from the inbox", "post", "/inbox-archive");
-  addIssuePostDeleteMarkerCommand(issue, "unarchive", "Unarchive an issue from the inbox", "delete", "/inbox-archive");
+  // `archive` / `unarchive` now mean the card itself (MUL-109). The per-user
+  // inbox versions keep working under names that match their endpoint.
+  addIssuePostDeleteMarkerCommand(issue, "inbox-archive", "Archive an issue from your inbox", "post", "/inbox-archive");
+  addIssuePostDeleteMarkerCommand(issue, "inbox-unarchive", "Unarchive an issue from your inbox", "delete", "/inbox-archive");
 
   addCommonClientOptions(
     issue

@@ -44,6 +44,8 @@ export type ResolveRecoveryActionResponse = {
 
 export type IssueListFilters = {
   attention?: "blocked";
+  /** `"only"` lists the archive area instead of the board (MUL-109). */
+  archived?: "only";
   status?: string;
   projectId?: string;
   parentId?: string;
@@ -74,6 +76,7 @@ export type IssueListFilters = {
 
 function issueListSearchParams(filters?: IssueListFilters) {
   const params = new URLSearchParams();
+  if (filters?.archived) params.set("archived", filters.archived);
   if (filters?.attention) params.set("attention", filters.attention);
   if (filters?.status) params.set("status", filters.status);
   if (filters?.projectId) params.set("projectId", filters.projectId);
@@ -215,7 +218,11 @@ export const issuesApi = {
   checkMonitorNow: (id: string) => api.post<{ ok: true }>(`/issues/${id}/monitor/check-now`, {}),
   retryScheduledRetryNow: (id: string) =>
     api.post<IssueRetryNowResponse>(`/issues/${id}/scheduled-retry/retry-now`, {}),
-  remove: (id: string) => api.delete<Issue>(`/issues/${id}`),
+  // Issues are archive-only (MUL-109): there is no delete call, because the
+  // server and the database both refuse one.
+  archive: (id: string, reason?: string | null) =>
+    api.post<Issue>(`/issues/${id}/archive`, { reason: reason ?? null }),
+  unarchive: (id: string) => api.delete<Issue>(`/issues/${id}/archive`),
   checkout: (id: string, agentId: string) =>
     api.post<Issue>(`/issues/${id}/checkout`, {
       agentId,

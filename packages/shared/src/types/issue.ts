@@ -836,6 +836,12 @@ export interface Issue {
   completedAt: Date | null;
   cancelledAt: Date | null;
   hiddenAt: Date | null;
+  /** Archive is the only way a card leaves the board; deletion is refused (MUL-109). */
+  archivedAt?: Date | null;
+  archivedReason?: string | null;
+  archivedByType?: "user" | "agent" | "system" | null;
+  archivedByAgentId?: string | null;
+  archivedByUserId?: string | null;
   sourceTrust?: SourceTrustMetadata | null;
   labelIds?: string[];
   labels?: IssueLabel[];
@@ -867,10 +873,10 @@ export interface Issue {
   lastExternalCommentAt?: Date | null;
   lastActivityAt?: Date | null;
   isUnreadForMe?: boolean;
-  archivedAt?: Date | null;
-  archivedByActorType?: "user" | "agent" | null;
-  archivedByAgentId?: string | null;
-  archivedByRunId?: string | null;
+  inboxArchivedAt?: Date | null;
+  inboxArchivedByActorType?: "user" | "agent" | null;
+  inboxArchivedByAgentId?: string | null;
+  inboxArchivedByRunId?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -924,10 +930,10 @@ export type CompactIssue = Pick<
   lastExternalCommentAt?: Date | null;
   lastActivityAt?: Date | null;
   isUnreadForMe?: boolean;
-  archivedAt?: Date | null;
-  archivedByActorType?: "user" | "agent" | null;
-  archivedByAgentId?: string | null;
-  archivedByRunId?: string | null;
+  inboxArchivedAt?: Date | null;
+  inboxArchivedByActorType?: "user" | "agent" | null;
+  inboxArchivedByAgentId?: string | null;
+  inboxArchivedByRunId?: string | null;
   activeRecoveryAction: IssueRecoveryAction | null;
   successfulRunHandoff: SuccessfulRunHandoffState | null;
 };

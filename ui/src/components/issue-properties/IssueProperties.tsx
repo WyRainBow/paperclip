@@ -422,7 +422,7 @@ export function IssueProperties({
     onSuccess: () => {
       setUnarchiveErrorMessage(null);
       queryClient.setQueryData<Issue>(queryKeys.issues.detail(issue.id), (current) =>
-        current ? { ...current, archivedAt: null, archivedByActorType: null, archivedByAgentId: null, archivedByRunId: null } : current,
+        current ? { ...current, inboxArchivedAt: null, inboxArchivedByActorType: null, inboxArchivedByAgentId: null, inboxArchivedByRunId: null } : current,
       );
       void queryClient.invalidateQueries({ queryKey: queryKeys.issues.detail(issue.id) });
       if (companyId) invalidateInboxIssueQueries(queryClient, companyId);
@@ -2612,10 +2612,10 @@ export function IssueProperties({
         <PropertyRow label="更新时间">
           <span className="text-sm">{chineseTimestamp(issue.updatedAt)}</span>
         </PropertyRow>
-        {issue.archivedAt && issue.archivedByActorType === "agent" && issue.archivedByAgentId ? (
+        {issue.inboxArchivedAt && issue.inboxArchivedByActorType === "agent" && issue.inboxArchivedByAgentId ? (
           (() => {
-            const archivedByAgent = (agents ?? []).find((candidate) => candidate.id === issue.archivedByAgentId);
-            const archivedByName = agentName(issue.archivedByAgentId);
+            const archivedByAgent = (agents ?? []).find((candidate) => candidate.id === issue.inboxArchivedByAgentId);
+            const archivedByName = agentName(issue.inboxArchivedByAgentId);
             return (
               <PropertyRow label="Archived">
                 <div className="flex min-w-0 max-w-full flex-col items-start gap-1">
@@ -2627,7 +2627,7 @@ export function IssueProperties({
                       truncation on genuinely long names is recoverable. */}
                   <span
                     className="flex min-w-0 max-w-full items-center gap-1.5 text-sm"
-                    title={`Archived by ${archivedByName} · ${formatDateTime(issue.archivedAt)}`}
+                    title={`Archived by ${archivedByName} · ${formatDateTime(issue.inboxArchivedAt)}`}
                   >
                     {archivedByAgent
                       ? <AgentIcon icon={archivedByAgent.icon} className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
@@ -2637,7 +2637,7 @@ export function IssueProperties({
                     </span>
                   </span>
                   <div className="flex min-w-0 max-w-full items-center gap-2">
-                    <span className="shrink-0 text-xs text-muted-foreground">{timeAgo(issue.archivedAt)}</span>
+                    <span className="shrink-0 text-xs text-muted-foreground">{timeAgo(issue.inboxArchivedAt)}</span>
                     <button
                       type="button"
                       className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground disabled:opacity-50"
