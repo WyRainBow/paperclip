@@ -1,4 +1,4 @@
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import {
   activityLog,
@@ -369,4 +369,99 @@ export async function recordRetroGate(db: Db, input: RetroGateInput): Promise<Fr
     logger.warn({ err, issueId: input.issueId }, "retro gate scoring failed (transition unaffected)");
     return null;
   }
+}
+
+export interface ExperienceBoardRow {
+  issueId: string;
+  identifier: string | null;
+  title: string;
+  status: string;
+  frictionTotal: number;
+  frictionSignals: Array<{ key: string; count: number; points: number }>;
+  retroOwed: boolean;
+  sediment: { path: string; at: string } | null;
+  lastScoredAt: string | null;
+  updatedAt: string;
+}
+
+/**
+ * The experience board (MUL-133 需求三): one row per card that has ever been
+ * friction-scored or sedimented — the boss's "which tasks deserve a second
+ * look" surface. OV's tasks board answered the same question for its async
+ * queues with status chips + per-row badges; this is that shape over our
+ * card facts.
+ */
+export async function experienceBoardRows(db: Db, companyId: string): Promise<ExperienceBoardRow[]> {
+  const [frictionRows, sedimentRows, retroOwedRows] = await Promise.all([
+    db
+      .select({
+        entityId: activityLog.entityId,
+        total: sql<number>`(${activityLog.details}->>'total')::int`,
+        signals: activityLog.details,
+        createdAt: activityLog.createdAt,
+      })
+      .from(activityLog)
+      .where(and(
+        eq(activityLog.companyId, companyId),
+        eq(activityLog.action, "issue.friction_scored"),
+      ))
+      .orderBy(desc(activityLog.createdAt))
+      .limit(500),
+    db
+      .select({
+        issueId: sql<string|null>`${activityLog.details}->>'issueId'`,
+        path: sql<string|null>`${activityLog.details}->>'path'`,
+        createdAt: activityLog.createdAt,
+      })
+      .from(activityLog)
+      .where(and(
+        eq(activityLog.companyId, companyId),
+        eq(activityLog.action, "workspace.experience_remembered"),
+      ))
+      .orderBy(desc(activityLog.createdAt))
+      .limit(500),
+    db
+      .select({ issueId: issueLabels.issueId })
+      .from(issueLabels)
+      .innerJoin(labels, eq(issueLabels.labelId, labels.id))
+      .where(and(eq(issueLabels.companyId, companyId), eq(labels.name, RETRO_OWED_LABEL))),
+  ]);
+
+  // Latest-per-issue (rows are desc by createdAt; first write wins).
+  const frictionByIssue = new Map<string, { total: number; signals: Array<{ key: string; count: number; points: number }>; at: string }>();
+  for (const row of frictionRows) {
+    if (frictionByIssue.has(row.entityId)) continue;
+    const rawSignals = Array.isArray((row.signals as Record<string, unknown> | null)?.signals)
+      ? ((row.signals as Record<string, unknown>).signals as Array<{ key: string; count: number; points: number }>)
+      : [];
+    frictionByIssue.set(row.entityId, { total: Number(row.total ?? 0), signals: rawSignals, at: row.createdAt.toISOString() });
+  }
+  const sedimentByIssue = new Map<string, { path: string; at: string }>();
+  for (const row of sedimentRows) {
+    if (!row.issueId || sedimentByIssue.has(row.issueId) || !row.path) continue;
+    sedimentByIssue.set(row.issueId, { path: row.path, at: row.createdAt.toISOString() });
+  }
+  const retroOwed = new Set(retroOwedRows.map((row) => row.issueId));
+
+  const issueIds = [...new Set([...frictionByIssue.keys(), ...sedimentByIssue.keys(), ...retroOwed])];
+  if (issueIds.length === 0) return [];
+  const issueRows = await db
+    .select({ id: issues.id, identifier: issues.identifier, title: issues.title, status: issues.status, updatedAt: issues.updatedAt })
+    .from(issues)
+    .where(and(eq(issues.companyId, companyId), inArray(issues.id, issueIds)));
+
+  const rows: ExperienceBoardRow[] = issueRows.map((issue) => ({
+    issueId: issue.id,
+    identifier: issue.identifier,
+    title: issue.title,
+    status: issue.status,
+    frictionTotal: frictionByIssue.get(issue.id)?.total ?? 0,
+    frictionSignals: frictionByIssue.get(issue.id)?.signals ?? [],
+    retroOwed: retroOwed.has(issue.id),
+    sediment: sedimentByIssue.get(issue.id) ?? null,
+    lastScoredAt: frictionByIssue.get(issue.id)?.at ?? null,
+    updatedAt: issue.updatedAt.toISOString(),
+  }));
+  rows.sort((a, b) => b.frictionTotal - a.frictionTotal || (a.sediment ? 0 : 1) - (b.sediment ? 0 : 1));
+  return rows;
 }

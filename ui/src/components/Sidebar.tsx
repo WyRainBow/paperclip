@@ -1,4 +1,5 @@
 import {
+  Gauge,
   Archive,
   Inbox,
   ListChecks,
@@ -301,6 +302,7 @@ export function Sidebar() {
           <SidebarNavItem to="/org" label={t("Org")} icon={Network} />
           {showApps ? <SidebarNavItem to="/apps" label={t("Apps")} icon={AppWindow} /> : null}
           <SidebarNavItem to="/timeline" label={t("Timeline")} icon={GanttChartSquare} />
+          <SidebarNavItem to="/experience-board" label={t("经验看板")} icon={Gauge} />
           <SidebarNavItem to="/costs" label={t("Costs")} icon={DollarSign} />
           {/* One entry — /audit merged into the rich Activity feed (PAP-16302). */}
           <SidebarNavItem to="/activity" label={t("Activity")} icon={History} />

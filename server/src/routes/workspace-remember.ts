@@ -198,7 +198,7 @@ export function workspaceRememberRoutes(db: Db): Router {
         entityType: "team_wiki_page",
         entityId: created.id,
         issueId,
-        details: { space: "agent", path, title, revisionNumber: version.revisionNumber, created: true },
+        details: { space: "agent", path, title, revisionNumber: version.revisionNumber, created: true, ...(issueId ? { issueId } : {}) },
       });
       res.status(201).json({
         pageId: created.id,
@@ -246,7 +246,7 @@ export function workspaceRememberRoutes(db: Db): Router {
       entityType: "team_wiki_page",
       entityId: existing.id,
       issueId,
-      details: { space: "agent", path, title, revisionNumber: version.revisionNumber, created: false },
+      details: { space: "agent", path, title, revisionNumber: version.revisionNumber, created: false, ...(issueId ? { issueId } : {}) },
     });
     res.json({
       pageId: updated.id,

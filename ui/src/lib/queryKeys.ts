@@ -427,6 +427,7 @@ export const queryKeys = {
       ["decision-triage", companyId, sourceKind, sourceId] as const,
   },
   workTimeline: (companyId: string, lens?: string) => ["work-timeline", companyId, lens ?? "all"] as const,
+  experienceBoard: (companyId: string) => ["experience-board", companyId] as const,
   userProfile: (companyId: string, userSlug: string) =>
     ["user-profile", companyId, userSlug] as const,
   sidebarBadges: (companyId: string) => ["sidebar-badges", companyId] as const,
