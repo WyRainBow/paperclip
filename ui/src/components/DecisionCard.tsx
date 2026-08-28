@@ -429,7 +429,7 @@ export function DecisionCard({
         )}
         {targetRefs.length > 0 && (
           <>
-            {" · applies to "}
+            {" · 适用于 "}
             {targetRefs.map(({ id, ref }, index) => (
               <span key={id}>
                 {index > 0 && ", "}
@@ -472,7 +472,10 @@ export function DecisionCard({
                 )
               )}
               {decision.decidedAt && (
-                <span className="ml-2 tabular-nums text-muted-foreground">· {absoluteTimestamp(decision.decidedAt)}</span>
+                <>
+                  <span className="mx-2 text-muted-foreground">·</span>
+                  <span className="tabular-nums text-muted-foreground">{absoluteTimestamp(decision.decidedAt)}</span>
+                </>
               )}
             </p>
           )}

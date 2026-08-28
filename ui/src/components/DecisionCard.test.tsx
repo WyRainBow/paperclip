@@ -141,7 +141,7 @@ describe("DecisionCard", () => {
 
   it("links the target issue the decision applies to, not just the origin", () => {
     const el = render({});
-    expect(el.textContent).toContain("applies to");
+    expect(el.textContent).toContain("适用于");
     const provenance = el.querySelector("p");
     expect(provenance?.textContent).toContain("PAP-456");
     expect(
@@ -157,7 +157,7 @@ describe("DecisionCard", () => {
         ],
       }),
     });
-    expect(el.textContent).not.toContain("applies to");
+    expect(el.textContent).not.toContain("适用于");
   });
 
   it("links secondary target issues referenced by an effect", () => {
