@@ -247,6 +247,49 @@ describe("installSkillsForTarget link maintenance", () => {
     expect((await fs.lstat(path.join(targetDir, "stuck"))).isDirectory()).toBe(true);
   });
 
+  it("previews team skills that the first materialize has not written yet", async () => {
+    await fs.rm(teamDir, { recursive: true, force: true });
+    await writeSkill(upstreamDir, "paperclip", "# upstream");
+    const projected = [
+      { dir: upstreamDir, label: "skills" },
+      { dir: teamDir, label: "skills-team", projectedNames: ["agent-reach", "human-writing", "paperclip"] },
+    ];
+
+    const summary = await installSkillsForTarget(projected, targetDir, "custom", {
+      repoint: true,
+      dryRun: true,
+    });
+
+    expect(summary.linked.sort()).toEqual(["agent-reach", "human-writing", "paperclip"]);
+    expect(summary.shadowed.map((row) => row.name)).toEqual(["paperclip"]);
+    expect(await fs.readdir(targetDir)).toEqual([]);
+  });
+
+  it("refuses to promise an adoption it cannot verify before the first materialize", async () => {
+    await fs.rm(teamDir, { recursive: true, force: true });
+    await writeSkill(targetDir, "agent-reach", "# a real local directory");
+    const projected = [
+      { dir: upstreamDir, label: "skills" },
+      { dir: teamDir, label: "skills-team", projectedNames: ["agent-reach"] },
+    ];
+
+    const summary = await installSkillsForTarget(projected, targetDir, "custom", {
+      repoint: true,
+      adopt: true,
+      dryRun: true,
+    });
+
+    expect(summary.adopted).toEqual([]);
+    expect(summary.linked).toEqual([]);
+    expect(summary.conflicts).toEqual([
+      {
+        name: "agent-reach",
+        reason: "cannot preview adoption before the first materialize; rerun after a real pull",
+      },
+    ]);
+    expect((await fs.lstat(path.join(targetDir, "agent-reach"))).isDirectory()).toBe(true);
+  });
+
   it("writes nothing under --dry-run", async () => {
     await writeSkill(teamDir, "planned", "# planned");
 

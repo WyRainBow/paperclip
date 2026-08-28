@@ -13,6 +13,10 @@ export const TEAM_SKILLS_DIRNAME = "skills-team";
 export interface SkillLinkSource {
   dir: string;
   label: string;
+  // Slugs this source is about to hold, unioned with whatever it holds now. A
+  // dry-run before the first materialize has nothing to list yet, and a preview
+  // that silently omits every team skill is worse than no preview.
+  projectedNames?: string[];
 }
 
 export interface ResolvedSkillLink {
@@ -117,20 +121,22 @@ export async function resolveSkillLinkSources(
     // A source that has not been materialized yet contributes no slugs rather
     // than failing the whole run.
     const entries = await fs.readdir(source.dir, { withFileTypes: true }).catch(() => []);
-    for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
-      const claimed = links.get(entry.name);
+    const names = new Set(entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name));
+    for (const projected of source.projectedNames ?? []) names.add(projected);
+
+    for (const name of [...names].sort()) {
+      const claimed = links.get(name);
       if (claimed) {
         shadowed.push({
-          name: entry.name,
+          name,
           winner: claimed.source,
-          loser: path.join(source.dir, entry.name),
+          loser: path.join(source.dir, name),
         });
         continue;
       }
-      links.set(entry.name, {
-        name: entry.name,
-        source: path.join(source.dir, entry.name),
+      links.set(name, {
+        name,
+        source: path.join(source.dir, name),
         label: source.label,
       });
     }
@@ -293,6 +299,16 @@ async function tryAdoptSkillDirectory(
   if (!(await isDirectory(target))) {
     summary.skipped.push(name);
     summary.conflicts.push({ name, reason: "slug is occupied by a file, not a skill directory" });
+    return false;
+  }
+  // Without bytes on both sides there is nothing to compare, and guessing here
+  // would promise a deletion this run cannot actually justify.
+  if (!(await isDirectory(source))) {
+    summary.skipped.push(name);
+    summary.conflicts.push({
+      name,
+      reason: "cannot preview adoption before the first materialize; rerun after a real pull",
+    });
     return false;
   }
   const [targetHash, sourceHash] = await Promise.all([hashSkillDir(target), hashSkillDir(source)]);

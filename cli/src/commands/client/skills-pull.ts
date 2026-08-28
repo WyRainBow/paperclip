@@ -58,6 +58,17 @@ export interface SkillsPullResult {
   terminalPrune: TerminalPruneRow[];
 }
 
+// Every status but skipped-no-files ends with a directory under skills-team —
+// including the skipped ones, which are skipped precisely because a directory is
+// already sitting there.
+export function projectedTeamSkillNames(rows: SkillMaterializeRow[]): string[] {
+  return [
+    ...new Set(
+      rows.filter((row) => row.status !== "skipped-no-files").map((row) => row.skill.slug),
+    ),
+  ];
+}
+
 export function skillsPullLockPath(): string {
   return path.join(resolvePaperclipHomeDir(), SKILLS_PULL_LOCK_BASENAME);
 }
@@ -172,7 +183,13 @@ export async function runSkillsPull(
 
     const sources = [
       { dir: upstreamDir, label: "skills" },
-      { dir: teamDir, label: TEAM_SKILLS_DIRNAME },
+      {
+        dir: teamDir,
+        label: TEAM_SKILLS_DIRNAME,
+        // A real run has already written these directories by now; a dry run has
+        // not, so the plan has to come from the materialize rows instead.
+        projectedNames: opts.dryRun ? projectedTeamSkillNames(materialize) : undefined,
+      },
     ];
     const targets = resolvePullTargets(opts.dir);
     const links: SkillsInstallSummary[] = [];

@@ -13,6 +13,7 @@ import {
 } from "../commands/client/skill-materialize.js";
 import {
   acquireSkillsPullLock,
+  projectedTeamSkillNames,
   pruneTeamSkillDirs,
   runSkillsPull,
   skillsPullLockPath,
@@ -325,6 +326,29 @@ describe("pruneTeamSkillDirs", () => {
     await expect(fs.stat(path.join(teamDir, "dropped"))).rejects.toThrow();
     expect(await fs.stat(path.join(teamDir, "edited"))).toBeTruthy();
     expect(await fs.stat(path.join(teamDir, "foreign"))).toBeTruthy();
+  });
+});
+
+describe("projectedTeamSkillNames", () => {
+  it("counts every status that leaves a directory behind", () => {
+    const rows = [
+      { skill: { slug: "created" }, status: "created" },
+      { skill: { slug: "updated" }, status: "updated" },
+      { skill: { slug: "current" }, status: "up-to-date" },
+      { skill: { slug: "planned" }, status: "dry-run" },
+      { skill: { slug: "foreign" }, status: "skipped-foreign" },
+      { skill: { slug: "edited" }, status: "skipped-local-modified" },
+      { skill: { slug: "no-files" }, status: "skipped-no-files" },
+    ] as unknown as SkillMaterializeRow[];
+
+    expect(projectedTeamSkillNames(rows).sort()).toEqual([
+      "created",
+      "current",
+      "edited",
+      "foreign",
+      "planned",
+      "updated",
+    ]);
   });
 });
 
