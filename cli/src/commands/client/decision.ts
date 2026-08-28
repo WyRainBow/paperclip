@@ -11,7 +11,7 @@ interface DecisionRow {
 }
 
 interface DecisionListOptions extends BaseClientOptions { status?: string; originIssue?: string; limit?: string }
-interface DecisionDecideOptions extends BaseClientOptions { option: string; rationale: string; constraints?: string }
+interface DecisionDecideOptions extends BaseClientOptions { option: string; rationale: string; constraints?: string; actingAgentId?: string }
 interface DecisionCreateOptions extends BaseClientOptions {
   originIssue: string;
   title: string;
@@ -234,6 +234,10 @@ export function registerDecisionCommands(program: Command): void {
       .requiredOption("--option <optionId>", "Chosen option id")
       .requiredOption("--rationale <text>", "最后裁决理由（写进决策历史）")
       .option("--constraints <text>", "附加约束")
+      .option(
+        "--acting-agent-id <id>",
+        "Terminal that performed a board-authenticated verdict, so the card records which agent decided instead of only local-board (ignored on agent-authenticated calls, which already sign themselves)",
+      )
       .action(async (decisionId: string, opts: DecisionDecideOptions) => {
         try {
           const ctx = resolveCommandContext(opts, { requireCompany: true });
@@ -247,7 +251,11 @@ export function registerDecisionCommands(program: Command): void {
           }
           const inputValues: Record<string, string> = { rationale: opts.rationale };
           if (opts.constraints) inputValues.constraints = opts.constraints;
-          const row = (await ctx.api.post<DecisionRow>(apiPath`/api/decisions/${id}/decide`, { optionId: opts.option, inputValues }))!;
+          const row = (await ctx.api.post<DecisionRow>(apiPath`/api/decisions/${id}/decide`, {
+            optionId: opts.option,
+            inputValues,
+            ...(opts.actingAgentId ? { actingAgentId: opts.actingAgentId } : {}),
+          }))!;
           printOutput(ctx.json ? row : { id: row.id, status: row.status, chosen: row.chosenOptionId, decidedByAgentId: row.decidedByAgentId, decidedByUserId: row.decidedByUserId }, { json: ctx.json });
         } catch (err) {
           handleCommandError(err);
