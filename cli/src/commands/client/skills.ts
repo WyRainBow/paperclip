@@ -9,18 +9,14 @@ import {
   type CompanySkillAuditResult,
   type CompanySkillDetail,
   type CompanySkillFileDetail,
-  type CompanySkillFileInventoryEntry,
-  type CompanySkillVersionFileInventoryEntry,
   type CompanySkillImportResult,
   type CompanySkillInstallCatalogResult,
   type CompanySkillListItem,
   type CompanySkillProjectScanResult,
   type CompanySkillUpdateStatus,
 } from "@paperclipai/shared";
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
-import { createHash } from "node:crypto";
-import { join, resolve as resolvePath } from "node:path";
-import { homedir } from "node:os";
+import { readFile } from "node:fs/promises";
+import { resolve as resolvePath } from "node:path";
 import { stdin as input, stdout as output } from "node:process";
 import { createInterface } from "node:readline/promises";
 import {
@@ -32,6 +28,33 @@ import {
   type BaseClientOptions,
   type ResolvedClientContext,
 } from "./common.js";
+import {
+  containsPullManagedLinks,
+  terminalSkillTargets,
+} from "./skill-links.js";
+import {
+  expandHome,
+  listCompanySkills,
+  materializeCompanySkills,
+  resolveCompanySkillReference,
+  toSkillReferenceTarget,
+  type CompanySkillReferenceTarget,
+  type SkillMaterializeOptions,
+  type SkillMaterializeRow,
+} from "./skill-materialize.js";
+import {
+  SKILLS_PULL_HINT,
+  printSkillsPullResult,
+  runSkillsPull,
+  type SkillsPullOptions,
+} from "./skills-pull.js";
+
+export {
+  materializeCompanySkills,
+  resolveCompanySkillReference,
+  type CompanySkillReferenceTarget,
+  type SkillMaterializeRow,
+} from "./skill-materialize.js";
 
 interface SkillsOptions extends BaseClientOptions {
   companyId?: string;
@@ -48,12 +71,9 @@ interface SkillCreateOptions extends SkillsOptions {
   bodyFile?: string;
 }
 
-interface SkillMaterializeOptions extends SkillsOptions {
-  target: string[];
-  skill: string[];
-  dryRun: boolean;
-  force: boolean;
-}
+interface SkillMaterializeCommandOptions extends SkillsOptions, SkillMaterializeOptions {}
+
+interface SkillsPullCommandOptions extends SkillsOptions, SkillsPullOptions {}
 
 interface SkillScanProjectsOptions extends SkillsOptions {
   projectId?: string[];
@@ -85,8 +105,6 @@ interface AgentSkillSyncOptions extends SkillsOptions {
   skill?: string[];
   mode: AgentSkillAssignmentMode;
 }
-
-type CompanySkillReferenceTarget = Pick<CompanySkillListItem, "id" | "key" | "slug" | "name">;
 
 export interface CompanySkillCheckRow {
   skill: CompanySkillReferenceTarget;
@@ -323,6 +341,7 @@ export function registerSkillsCommands(program: Command): void {
             return;
           }
           console.log(`Created skill ${created?.name ?? opts.name} (${created?.key ?? created?.id ?? "unknown"})`);
+          console.log(SKILLS_PULL_HINT);
         } catch (err) {
           handleCommandError(err);
         }
@@ -362,6 +381,37 @@ export function registerSkillsCommands(program: Command): void {
 
   addCommonClientOptions(
     skills
+      .command("pull")
+      .description(
+        "Materialize company skills into the repo checkout and link them into the local terminal skill directories",
+      )
+      .option("--dir <path>", "Limit to a terminal skill directory; may be repeated", collectOptionValue, [] as string[])
+      .option("--adopt", "Replace byte-identical local skill directories with managed symlinks", false)
+      .option("--prune-apply", "Delete what the prune report lists instead of only reporting it", false)
+      .option("--dry-run", "Report the plan without writing anything", false)
+      .option("--force", "Overwrite locally-modified or foreign skill directories in the repo checkout", false)
+      .action(async (opts: SkillsPullCommandOptions) => {
+        try {
+          const ctx = resolveCommandContext(opts, { requireCompany: true });
+          const result = await runSkillsPull(ctx, opts);
+          if (!result) {
+            if (!ctx.json) console.log("Another skills pull holds the lock; skipping this run.");
+            return;
+          }
+          if (ctx.json) {
+            printOutput(result, { json: true });
+            return;
+          }
+          printSkillsPullResult(result, opts);
+        } catch (err) {
+          handleCommandError(err);
+        }
+      }),
+    { includeCompany: true },
+  );
+
+  addCommonClientOptions(
+    skills
       .command("materialize")
       .description(
         "Materialize company skills into local terminal skill directories (e.g. ~/.codex/skills) with fingerprint protection",
@@ -370,10 +420,13 @@ export function registerSkillsCommands(program: Command): void {
       .option("-s, --skill <ref>", "Limit to specific company skills; may be repeated", collectOptionValue, [] as string[])
       .option("--dry-run", "Report planned writes without writing anything", false)
       .option("--force", "Overwrite locally-modified or foreign skill directories", false)
-      .action(async (opts: SkillMaterializeOptions) => {
+      .action(async (opts: SkillMaterializeCommandOptions) => {
         try {
           if (opts.target.length === 0) {
             throw new Error("At least one --target directory is required (e.g. --target ~/.codex/skills).");
+          }
+          for (const target of opts.target) {
+            await assertMaterializeTargetAllowed(target);
           }
           const ctx = resolveCommandContext(opts, { requireCompany: true });
           const rows = await materializeCompanySkills(ctx, opts);
@@ -431,6 +484,9 @@ export function registerSkillsCommands(program: Command): void {
             return;
           }
           printCompanySkillUpdateRows(rows);
+          if (rows.some((row) => row.action === "updated")) {
+            console.log(SKILLS_PULL_HINT);
+          }
         } catch (err) {
           handleCommandError(err);
         }
@@ -615,192 +671,22 @@ function registerAgentSkillCommands(skills: Command): void {
   );
 }
 
-async function listCompanySkills(ctx: ResolvedClientContext): Promise<CompanySkillListItem[]> {
-  return (await ctx.api.get<CompanySkillListItem[]>(`/api/companies/${ctx.companyId}/skills`)) ?? [];
-}
-
-export interface SkillMaterializeRow {
-  skill: CompanySkillReferenceTarget;
-  target: string;
-  status: "created" | "updated" | "up-to-date" | "skipped-foreign" | "skipped-local-modified" | "skipped-no-files" | "dry-run";
-  files: number;
-  note?: string;
-}
-
-const SKILL_SIDECAR = ".paperclip-skill.json";
-
-interface SkillSidecar {
-  skillId: string;
-  key: string;
-  remoteHash: string;
-  localHash: string;
-  syncedAt: string;
-}
-
-function hashFileMap(files: Map<string, string>): string {
-  const hash = createHash("sha256");
-  for (const path of [...files.keys()].sort()) {
-    hash.update(path);
-    hash.update("\0");
-    hash.update(files.get(path) ?? "");
-    hash.update("\0");
-  }
-  return hash.digest("hex");
-}
-
-function parentDirOf(path: string): string {
-  const idx = path.lastIndexOf("/");
-  return idx === -1 ? "" : path.slice(0, idx);
-}
-
-function expandHome(value: string): string {
-  if (value === "~") return homedir();
-  if (value.startsWith("~/")) return join(homedir(), value.slice(2));
-  return resolvePath(value);
-}
-
-interface SkillVersionSummary {
-  id: string;
-  revisionNumber: number | null;
-  fileInventory?: CompanySkillVersionFileInventoryEntry[];
-}
-
-async function fetchSkillFiles(
-  ctx: ResolvedClientContext,
-  skillId: string,
-): Promise<Map<string, string>> {
-  // The latest version's fileInventory carries each file's content; fall back
-  // to per-file reads only for entries that somehow ship without one.
-  const versions = await ctx.api.get<SkillVersionSummary[]>(
-    `/api/companies/${ctx.companyId}/skills/${encodeURIComponent(skillId)}/versions`,
-  );
-  const latest = [...(versions ?? [])].sort(
-    (a, b) => (b.revisionNumber ?? 0) - (a.revisionNumber ?? 0),
-  )[0];
-  const files = new Map<string, string>();
-  for (const entry of latest?.fileInventory ?? []) {
-    if (typeof entry.content === "string") {
-      files.set(entry.path, entry.content);
-      continue;
-    }
-    const detail = await ctx.api.get<CompanySkillFileDetail>(
-      `/api/companies/${ctx.companyId}/skills/${encodeURIComponent(skillId)}/files?path=${encodeURIComponent(entry.path)}`,
+// Terminal skill directories belong to `skills pull` now: writing real skill
+// directories into them behind pull's back leaves entries it can neither track
+// nor safely prune.
+async function assertMaterializeTargetAllowed(rawTarget: string): Promise<void> {
+  const target = expandHome(rawTarget);
+  const terminal = terminalSkillTargets().find((entry) => resolvePath(entry.dir) === resolvePath(target));
+  if (terminal) {
+    throw new Error(
+      `Refusing to materialize into ${target}: the ${terminal.tool} skill directory is managed by \`paperclipai skills pull\`. Run that instead.`,
     );
-    if (detail?.content !== undefined) files.set(detail.path, detail.content);
   }
-  return files;
-}
-
-async function readSidecar(skillDir: string): Promise<SkillSidecar | null> {
-  try {
-    const raw = await readFile(join(skillDir, SKILL_SIDECAR), "utf8");
-    const parsed = JSON.parse(raw) as SkillSidecar;
-    if (parsed && typeof parsed.skillId === "string" && typeof parsed.remoteHash === "string") return parsed;
-    return null;
-  } catch {
-    return null;
+  if (await containsPullManagedLinks(target)) {
+    throw new Error(
+      `Refusing to materialize into ${target}: it already holds symlinks managed by \`paperclipai skills pull\`. Run that instead.`,
+    );
   }
-}
-
-async function localFileMap(skillDir: string, paths: string[]): Promise<Map<string, string>> {
-  const files = new Map<string, string>();
-  for (const path of paths) {
-    try {
-      files.set(path, await readFile(join(skillDir, path), "utf8"));
-    } catch {
-      // Missing file counts as absent rather than erroring the whole sync.
-    }
-  }
-  return files;
-}
-
-export async function materializeCompanySkills(
-  ctx: ResolvedClientContext,
-  opts: SkillMaterializeOptions,
-): Promise<SkillMaterializeRow[]> {
-  const all = await listCompanySkills(ctx);
-  const selected = opts.skill.length > 0
-    ? opts.skill.map((ref) => resolveCompanySkillReference(all, ref))
-    : all;
-
-  const rows: SkillMaterializeRow[] = [];
-  for (const skill of selected) {
-    const remoteFiles = await fetchSkillFiles(ctx, skill.id);
-    const remoteHash = hashFileMap(remoteFiles);
-    if (remoteFiles.size === 0) {
-      for (const rawTarget of opts.target) {
-        rows.push({
-          skill,
-          target: expandHome(rawTarget),
-          status: "skipped-no-files",
-          files: 0,
-          note: "skill has no retrievable files (plugin-managed or empty); nothing to materialize",
-        });
-      }
-      continue;
-    }
-    for (const rawTarget of opts.target) {
-      const target = expandHome(rawTarget);
-      const skillDir = join(target, skill.slug);
-      const sidecar = await readSidecar(skillDir);
-      let dirExists = true;
-      try {
-        await readdir(skillDir);
-      } catch {
-        dirExists = false;
-      }
-
-      if (!dirExists) {
-        if (opts.dryRun) {
-          rows.push({ skill, target, status: "dry-run", files: remoteFiles.size, note: "would create" });
-          continue;
-        }
-        await mkdir(skillDir, { recursive: true });
-        for (const [path, content] of remoteFiles) {
-          await mkdir(join(skillDir, parentDirOf(path)), { recursive: true });
-          await writeFile(join(skillDir, path), content, "utf8");
-        }
-        const nextSidecar: SkillSidecar = {
-          skillId: skill.id, key: skill.key, remoteHash, localHash: remoteHash, syncedAt: new Date().toISOString(),
-        };
-        await writeFile(join(skillDir, SKILL_SIDECAR), JSON.stringify(nextSidecar, null, 2) + "\n", "utf8");
-        rows.push({ skill, target, status: "created", files: remoteFiles.size });
-        continue;
-      }
-
-      if (!sidecar) {
-        if (!opts.force) {
-          rows.push({ skill, target, status: "skipped-foreign", files: 0, note: "directory exists without a paperclip sidecar; use --force" });
-          continue;
-        }
-      } else {
-        if (sidecar.remoteHash === remoteHash) {
-          rows.push({ skill, target, status: "up-to-date", files: remoteFiles.size });
-          continue;
-        }
-        const currentLocal = await localFileMap(skillDir, [...remoteFiles.keys()]);
-        if (hashFileMap(currentLocal) !== sidecar.localHash && !opts.force) {
-          rows.push({ skill, target, status: "skipped-local-modified", files: 0, note: "local edits since last sync; use --force to overwrite" });
-          continue;
-        }
-      }
-
-      if (opts.dryRun) {
-        rows.push({ skill, target, status: "dry-run", files: remoteFiles.size, note: sidecar ? "would update" : "would force-create" });
-        continue;
-      }
-      for (const [path, content] of remoteFiles) {
-        await mkdir(join(skillDir, parentDirOf(path)), { recursive: true });
-        await writeFile(join(skillDir, path), content, "utf8");
-      }
-      const nextSidecar: SkillSidecar = {
-        skillId: skill.id, key: skill.key, remoteHash, localHash: remoteHash, syncedAt: new Date().toISOString(),
-      };
-      await writeFile(join(skillDir, SKILL_SIDECAR), JSON.stringify(nextSidecar, null, 2) + "\n", "utf8");
-      rows.push({ skill, target, status: "updated", files: remoteFiles.size });
-    }
-  }
-  return rows;
 }
 
 function printSkillMaterializeRows(rows: SkillMaterializeRow[]): void {
@@ -831,31 +717,6 @@ async function getCatalogSkill(ctx: ResolvedClientContext, catalogRef: string): 
     throw new Error(`Catalog skill not found: ${catalogRef}`);
   }
   return detail;
-}
-
-export function resolveCompanySkillReference(
-  skills: CompanySkillReferenceTarget[],
-  reference: string,
-): CompanySkillReferenceTarget {
-  const trimmed = reference.trim();
-  if (!trimmed) {
-    throw new Error("Skill reference is required.");
-  }
-
-  const byId = skills.find((skill) => skill.id === trimmed);
-  if (byId) return byId;
-
-  const byKey = skills.find((skill) => skill.key === trimmed);
-  if (byKey) return byKey;
-
-  const normalizedSlug = normalizeSkillSlug(trimmed);
-  const bySlug = skills.filter((skill) => skill.slug === normalizedSlug);
-  if (bySlug.length === 1 && bySlug[0]) return bySlug[0];
-  if (bySlug.length > 1) {
-    throw new Error(`Ambiguous skill slug "${trimmed}". Use a skill ID or key instead.`);
-  }
-
-  throw new Error(`Skill not found: ${reference}`);
 }
 
 async function resolveCompanySkill(
@@ -1156,19 +1017,6 @@ function printAgentSkillSnapshot(snapshot: AgentSkillSnapshot | null, agent: Age
       }),
     );
   }
-}
-
-function toSkillReferenceTarget(skill: CompanySkillReferenceTarget): CompanySkillReferenceTarget {
-  return {
-    id: skill.id,
-    key: skill.key,
-    slug: skill.slug,
-    name: skill.name,
-  };
-}
-
-function normalizeSkillSlug(value: string): string {
-  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 }
 
 function requireSkillRef(skillRef: string | undefined): string {

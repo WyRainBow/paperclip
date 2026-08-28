@@ -12,8 +12,11 @@ SESSION_CMD="PAPERCLIP_COMPANY_ID=${CID} PAPERCLIP_API_BASE=${API} ${HOOKS_DIR}/
 BRANCH_CMD="${HOOKS_DIR}/branch-register.sh"
 COMMIT_CMD="${HOOKS_DIR}/commit-progress.sh"
 SYNC_CMD="${HOOKS_DIR}/personal-file-sync.sh"
+SKILLS_PULL_CMD="${HOOKS_DIR}/skills-pull.sh"
+SKILLS_INJECT_CMD="node ${HOOKS_DIR}/skills-inject.mjs"
 
 export HOOKS_DIR MARKER ACTION SESSION_CMD BRANCH_CMD COMMIT_CMD SYNC_CMD
+export SKILLS_PULL_CMD SKILLS_INJECT_CMD
 
 python3 <<'PYEOF'
 import json, os, sys
@@ -24,11 +27,13 @@ SESSION_CMD = os.environ["SESSION_CMD"]
 BRANCH_CMD = os.environ["BRANCH_CMD"]
 COMMIT_CMD = os.environ["COMMIT_CMD"]
 SYNC_CMD = os.environ["SYNC_CMD"]
+SKILLS_PULL_CMD = os.environ["SKILLS_PULL_CMD"]
+SKILLS_INJECT_CMD = os.environ["SKILLS_INJECT_CMD"]
 
 def clean(arr):
     return [g for g in arr if not any(MARKER in str(x.get("command","")) for x in (g.get("hooks",[]) if isinstance(g, dict) else []))]
 
-def install(path, fmt):
+def install(path, fmt, label):
     try:
         d = json.load(open(path))
     except:
@@ -59,9 +64,17 @@ def install(path, fmt):
     h["SessionStart"] = clean(h.get("SessionStart", []))
     h["SessionStart"].append(mk(SESSION_CMD))
 
-    # PreToolUse (Bash only for claude/zcode)
+    # UserPromptSubmit — keeps the team skill projection on disk fresh
+    h["UserPromptSubmit"] = clean(h.get("UserPromptSubmit", []))
+    h["UserPromptSubmit"].append(mk(SKILLS_PULL_CMD))
+
+    # PreToolUse — clean ONCE then append every hook this event carries.
+    # The skill injection is Claude Code only: it is the runtime whose stale
+    # symlinked-skill behaviour and additionalContext handling we measured.
     h["PreToolUse"] = clean(h.get("PreToolUse", []))
     h["PreToolUse"].append(mk(BRANCH_CMD, matcher="Bash" if fmt == "claude" else None))
+    if label == "claude":
+        h["PreToolUse"].append(mk(SKILLS_INJECT_CMD, matcher="Skill"))
 
     # PostToolUse — two hooks, clean ONCE then append both
     h["PostToolUse"] = clean(h.get("PostToolUse", []))
@@ -79,7 +92,7 @@ for path, fmt, label in [
     os.makedirs(os.path.dirname(path), exist_ok=True)
     if not os.path.exists(path):
         open(path, "w").write("{}")
-    install(path, fmt)
+    install(path, fmt, label)
     print(f"{label}: {ACTION} done")
 PYEOF
 echo "Paperclip hooks ${ACTION} complete (claude/codex/zcode)."
