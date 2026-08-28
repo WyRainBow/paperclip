@@ -168,24 +168,26 @@ function authorLabel(agentId: string | null, agentNames: Map<string, string>) {
 }
 
 /**
- * The page body is a snapshot, not a live mirror of the file — nothing watches
- * the filesystem, so an edit to the local CLAUDE.md shows up here only after a
- * `personal-file sync`. Readers who don't know that assume the page is stale or
- * broken, so the flow is spelled out where the pages are listed.
+ * The page body is a snapshot, not a live mirror. A PostToolUse hook
+ * (scripts/hooks/personal-file-sync.sh) covers only edits made through a coding
+ * agent's Write/Edit tool; a hand edit in an editor reaches no hook, so the
+ * page silently lags until someone runs `personal-file sync`. Which half you
+ * are in is exactly what a reader can't tell from the page, so it's spelled out
+ * here rather than left to be discovered.
  */
 function PersonalSyncHelp({ companyId }: { companyId: string | null }) {
   const [open, setOpen] = useState(false);
   const company = companyId ?? "<company-id>";
   const steps: Array<{ label: string; command: string; note?: string }> = [
     {
-      label: "查页面 id",
+      label: "查页面 id 和登记的文件路径",
       command: `paperclipai personal-file list -C ${company}`,
       note: "输出里的 title 就是这台机器上的文件绝对路径，sync 按它去读文件。",
     },
     {
-      label: "同步（改完文件跑这条）",
+      label: "手动同步（自己在编辑器里改完，跑这条）",
       command: `paperclipai personal-file sync -C ${company} <pageId> --label "改了什么"`,
-      note: "内容和最新版本一致时打印 unchanged，不产生新版本。",
+      note: "内容和最新版本一致时打印 unchanged，不产生新版本，重复跑没有副作用。",
     },
     {
       label: "首次登记一个新文件",
@@ -196,6 +198,11 @@ function PersonalSyncHelp({ companyId }: { companyId: string | null }) {
       label: "回滚",
       command: `paperclipai personal-file show -C ${company} <pageId> --revision <n> > /Users/你/.claude/CLAUDE.md`,
       note: "这里只导出，不会替你写文件——覆盖是手动的那一步。",
+    },
+    {
+      label: "确认自动同步这条路通着",
+      command: `grep personal-file-sync ~/.claude/settings.json`,
+      note: "没有输出就是 hook 没装，Agent 改文件也不会存版本；hook 脚本在 scripts/hooks/personal-file-sync.sh，挂在 PostToolUse 的 Write|Edit 上。",
     },
   ];
 
@@ -212,7 +219,8 @@ function PersonalSyncHelp({ companyId }: { companyId: string | null }) {
         <span className="shrink-0 text-xs text-muted-foreground">{open ? "收起" : "展开"}</span>
       </button>
       <p className="mt-1 text-sm text-muted-foreground">
-        这里的页面是快照，不会自动跟着文件走。文件改完要在终端跑一次 sync，才会存下新版本。
+        这里的页面是快照。让编码 Agent（Claude Code 等）改这些文件时会自动存一版，靠的是
+        Paperclip 装的 PostToolUse hook；自己在编辑器里手改不会触发，得回终端跑一次 sync。
       </p>
       {open ? (
         <ol className="mt-3 space-y-3">
