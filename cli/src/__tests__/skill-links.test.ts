@@ -184,6 +184,69 @@ describe("installSkillsForTarget link maintenance", () => {
     expect(await fs.readdir(targetDir)).toEqual(["present"]);
   });
 
+  it("keeps a user's own ~/.agents/skills link that this run does not manage", async () => {
+    const agentsHome = path.join(root, "fake-home", ".agents", "skills");
+    const crossTerminal = await writeSkill(agentsHome, "lark-doc", "# lark-doc");
+    await fs.symlink(crossTerminal, path.join(targetDir, "lark-doc"));
+    await writeSkill(teamDir, "review-prs", "# review-prs");
+
+    const summary = await installSkillsForTarget(sources(), targetDir, "custom", { repoint: true });
+
+    expect(summary.removed).toEqual([]);
+    expect(await fs.realpath(path.join(targetDir, "lark-doc"))).toBe(await fs.realpath(crossTerminal));
+  });
+
+  it("still sweeps unmanaged ~/.agents/skills links when the caller opts in", async () => {
+    const agentsHome = path.join(root, "fake-home", ".agents", "skills");
+    const crossTerminal = await writeSkill(agentsHome, "lark-doc", "# lark-doc");
+    await fs.symlink(crossTerminal, path.join(targetDir, "lark-doc"));
+    await writeSkill(teamDir, "review-prs", "# review-prs");
+
+    const summary = await installSkillsForTarget(sources(), targetDir, "custom", {
+      sweepMaintainerOnly: true,
+    });
+
+    expect(summary.removed).toEqual(["lark-doc"]);
+    expect(await fs.readdir(targetDir)).toEqual(["review-prs"]);
+  });
+
+  it("does not claim a repoint that failed to land", async () => {
+    const foreignSkill = await writeSkill(path.join(root, "elsewhere"), "gatekeeper", "# elsewhere");
+    await writeSkill(teamDir, "gatekeeper", "# library");
+    await fs.symlink(foreignSkill, path.join(targetDir, "gatekeeper"));
+
+    await fs.chmod(targetDir, 0o500);
+    try {
+      const summary = await installSkillsForTarget(sources(), targetDir, "custom", { repoint: true });
+
+      expect(summary.repointed).toEqual([]);
+      expect(summary.linked).toEqual([]);
+      expect(summary.failed.map((row) => row.name)).toEqual(["gatekeeper"]);
+    } finally {
+      await fs.chmod(targetDir, 0o700);
+    }
+    expect(await fs.realpath(path.join(targetDir, "gatekeeper"))).toBe(await fs.realpath(foreignSkill));
+  });
+
+  it("keeps going and reports the slug when an adoption cannot be removed", async () => {
+    await writeSkill(teamDir, "stuck", "# canonical");
+    await writeSkill(targetDir, "stuck", "# canonical");
+
+    await fs.chmod(targetDir, 0o500);
+    try {
+      const summary = await installSkillsForTarget(sources(), targetDir, "custom", {
+        repoint: true,
+        adopt: true,
+      });
+
+      expect(summary.adopted).toEqual([]);
+      expect(summary.failed.map((row) => row.name)).toEqual(["stuck"]);
+    } finally {
+      await fs.chmod(targetDir, 0o700);
+    }
+    expect((await fs.lstat(path.join(targetDir, "stuck"))).isDirectory()).toBe(true);
+  });
+
   it("writes nothing under --dry-run", async () => {
     await writeSkill(teamDir, "planned", "# planned");
 

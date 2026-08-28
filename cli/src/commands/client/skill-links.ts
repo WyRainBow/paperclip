@@ -45,6 +45,11 @@ export interface InstallSkillsOptions {
   adopt?: boolean;
   repoint?: boolean;
   dryRun?: boolean;
+  // Unlinks every ~/.agents/skills link whose name is absent from this run's
+  // sources. That predicate catches a user's own cross-terminal links, not just
+  // ours, so only the rarely-run `agent local-cli` opts in — a hook-driven pull
+  // would clear them on every session.
+  sweepMaintainerOnly?: boolean;
 }
 
 export function codexSkillsHome(): string {
@@ -202,7 +207,7 @@ export async function installSkillsForTarget(
   const { links, shadowed } = await resolveSkillLinkSources(sources);
   summary.shadowed = shadowed;
 
-  if (!opts.dryRun) {
+  if (!opts.dryRun && opts.sweepMaintainerOnly) {
     summary.removed = await removeMaintainerOnlySkillSymlinks(
       targetSkillsDir,
       links.map((link) => link.name),
@@ -217,6 +222,8 @@ export async function installSkillsForTarget(
       summary.skipped.push(link.name);
       continue;
     }
+
+    let repointedFrom: string | null = null;
     if (inspection.state === "elsewhere") {
       if (!opts.repoint) {
         summary.skipped.push(link.name);
@@ -226,28 +233,37 @@ export async function installSkillsForTarget(
         });
         continue;
       }
-      summary.repointed.push({
-        name: link.name,
-        from: inspection.linkedTo ?? "",
-        to: link.source,
-      });
-    }
-    if (inspection.state === "occupied") {
-      const adopted = await tryAdoptSkillDirectory(target, link.source, summary, opts);
-      if (!adopted) continue;
+      repointedFrom = inspection.linkedTo ?? "";
     }
 
-    if (opts.dryRun) {
+    let adopted = false;
+    if (inspection.state === "occupied") {
+      if (!(await tryAdoptSkillDirectory(target, link.source, summary, opts))) continue;
+      adopted = true;
+    }
+
+    const record = () => {
       summary.linked.push(link.name);
+      if (adopted) summary.adopted.push(link.name);
+      if (repointedFrom !== null) {
+        summary.repointed.push({ name: link.name, from: repointedFrom, to: link.source });
+      }
+    };
+
+    if (opts.dryRun) {
+      record();
       continue;
     }
     try {
       await relinkAtomically(link.source, target);
-      summary.linked.push(link.name);
+      record();
     } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
       summary.failed.push({
         name: link.name,
-        error: err instanceof Error ? err.message : String(err),
+        // An adopted directory is already gone by this point, so say so rather
+        // than leaving the slug looking merely unlinked.
+        error: adopted ? `${reason} (the adopted directory was already removed)` : reason,
       });
     }
   }
@@ -288,8 +304,13 @@ async function tryAdoptSkillDirectory(
     });
     return false;
   }
-  summary.adopted.push(name);
-  if (!opts.dryRun) await fs.rm(target, { recursive: true, force: true });
+  if (opts.dryRun) return true;
+  try {
+    await fs.rm(target, { recursive: true, force: true });
+  } catch (err) {
+    summary.failed.push({ name, error: err instanceof Error ? err.message : String(err) });
+    return false;
+  }
   return true;
 }
 

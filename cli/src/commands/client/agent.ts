@@ -701,11 +701,12 @@ export function registerAgentCommands(program: Command): void {
             }
 
             const sources = [{ dir: skillsDir, label: "skills" }];
+            const linkOpts = { sweepMaintainerOnly: true };
             installSummaries.push(
-              await installSkillsForTarget(sources, codexSkillsHome(), "codex"),
-              await installSkillsForTarget(sources, claudeSkillsHome(), "claude"),
-              await installSkillsForTarget(sources, kimiSkillsHome(), "kimi"),
-              await installSkillsForTarget(sources, zcodeSkillsHome(), "zcode"),
+              await installSkillsForTarget(sources, codexSkillsHome(), "codex", linkOpts),
+              await installSkillsForTarget(sources, claudeSkillsHome(), "claude", linkOpts),
+              await installSkillsForTarget(sources, kimiSkillsHome(), "kimi", linkOpts),
+              await installSkillsForTarget(sources, zcodeSkillsHome(), "zcode", linkOpts),
             );
           }
 
