@@ -1080,6 +1080,10 @@ describe("IssueDetail", () => {
       enableIssuePlanDecompositions: false,
       enableExperimentalFileViewer: false,
       enableExternalObjects: false,
+      // Most cases here exercise the chat-first shell. Classic became the
+      // product default in MUL-122, so that shell is now an explicit opt-out;
+      // cases that want classic override this to true.
+      enableClassicTaskInterface: false,
     });
     mockIssuesApi.listAcceptedPlanDecompositions.mockResolvedValue([]);
     mockIssuesApi.getDocument.mockResolvedValue(null);
@@ -2127,6 +2131,7 @@ describe("IssueDetail", () => {
     mockInstanceSettingsApi.getExperimental.mockResolvedValue({
       enableIssuePlanDecompositions: false,
       enableExperimentalFileViewer: true,
+      enableClassicTaskInterface: false,
     });
 
     await act(async () => {
@@ -2148,6 +2153,7 @@ describe("IssueDetail", () => {
       enableIssuePlanDecompositions: false,
       enableExperimentalFileViewer: false,
       enableExternalObjects: false,
+      enableClassicTaskInterface: false,
     });
     mockIssuesApi.get.mockResolvedValue(
       createIssue({ originKind: ONBOARDING_FIRST_TASK_ORIGIN_KIND }),
@@ -2177,6 +2183,7 @@ describe("IssueDetail", () => {
       enableIssuePlanDecompositions: false,
       enableExperimentalFileViewer: false,
       enableExternalObjects: false,
+      enableClassicTaskInterface: false,
     });
     mockIssuesApi.get.mockResolvedValue(
       createIssue({ originKind: ONBOARDING_FIRST_TASK_ORIGIN_KIND }),
@@ -2220,6 +2227,7 @@ describe("IssueDetail", () => {
       enableIssuePlanDecompositions: false,
       enableExperimentalFileViewer: false,
       enableExternalObjects: false,
+      enableClassicTaskInterface: false,
     });
     mockIssuesApi.get.mockResolvedValue(
       createIssue({ originKind: ONBOARDING_FIRST_TASK_ORIGIN_KIND }),
@@ -2244,6 +2252,7 @@ describe("IssueDetail", () => {
       enableIssuePlanDecompositions: false,
       enableExperimentalFileViewer: false,
       enableExternalObjects: false,
+      enableClassicTaskInterface: false,
     });
     mockIssuesApi.get.mockResolvedValue(createIssue({ originKind: "manual" }));
 
@@ -2752,7 +2761,7 @@ describe("IssueDetail", () => {
     }
   });
 
-  it("renders the task chat thread as the default thread", async () => {
+  it("renders the task chat thread when the chat-first shell is selected", async () => {
     mockIssuesApi.get.mockResolvedValue(createIssue());
 
     await act(async () => {

@@ -3504,6 +3504,12 @@ export function IssueDetail() {
   }, [issue?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
+    // Wait for the interface setting before touching the panel. The onboarding
+    // first task suppresses the panel only in the chat shell, so acting on an
+    // unknown shell would open the panel and then close it a tick later
+    // (MUL-122, when classic became the default and "unknown" stopped meaning
+    // chat-first).
+    if (!classicTaskInterfaceLoaded) return;
     if (!panelIssue || suppressPanelForFirstTask) {
       closePanel();
       return;
@@ -3526,6 +3532,7 @@ export function IssueDetail() {
     );
     return () => closePanel();
   }, [
+    classicTaskInterfaceLoaded,
     closePanel,
     handleIssuePropertiesUpdate,
     issuePanelKey,

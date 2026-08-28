@@ -932,15 +932,23 @@ describe("IssueProperties", () => {
   });
 
   it("does not duplicate sub-tasks in the properties pane in the chat shell", async () => {
+    // Classic is the default since MUL-122, so the chat shell is now an
+    // explicit opt-out rather than what an empty settings payload gives you.
+    mockInstanceSettingsApi.getExperimental.mockResolvedValue({
+      enableTaskWatchdogs: false,
+      enableClassicTaskInterface: false,
+    });
     const root = renderProperties(container, {
       issue: createIssue(),
       childIssues: [],
       onUpdate: vi.fn(),
     });
-    await flush();
-
-    expect(container.textContent).not.toContain("Add sub-task");
-    expect(container.textContent).not.toContain("Sub-tasks");
+    // The shell now depends on settings having landed (classic renders until
+    // they say otherwise), so poll instead of flushing a single tick.
+    await waitForAssertion(() => {
+      expect(container.textContent).not.toContain("Add sub-task");
+      expect(container.textContent).not.toContain("Sub-tasks");
+    });
 
     act(() => root.unmount());
   });
