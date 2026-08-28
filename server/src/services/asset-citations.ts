@@ -198,7 +198,7 @@ async function downVotesByAsset(
         issueId: feedbackVotes.issueId,
       })
       .from(feedbackVotes)
-      .innerJoin(teamRuleNoteVersions, eq(feedbackVotes.targetId, teamRuleNoteVersions.id))
+      .innerJoin(teamRuleNoteVersions, eq(feedbackVotes.targetId, sql`${teamRuleNoteVersions.id}::text`))
       .where(and(
         eq(feedbackVotes.companyId, companyId),
         eq(feedbackVotes.targetType, "team_rule_note_version"),
@@ -210,7 +210,7 @@ async function downVotesByAsset(
         issueId: feedbackVotes.issueId,
       })
       .from(feedbackVotes)
-      .innerJoin(companySkillVersions, eq(feedbackVotes.targetId, companySkillVersions.id))
+      .innerJoin(companySkillVersions, eq(feedbackVotes.targetId, sql`${companySkillVersions.id}::text`))
       .where(and(
         eq(feedbackVotes.companyId, companyId),
         eq(feedbackVotes.targetType, "company_skill_version"),
@@ -222,7 +222,7 @@ async function downVotesByAsset(
         issueId: feedbackVotes.issueId,
       })
       .from(feedbackVotes)
-      .innerJoin(teamWikiPageVersions, eq(feedbackVotes.targetId, teamWikiPageVersions.id))
+      .innerJoin(teamWikiPageVersions, eq(feedbackVotes.targetId, sql`${teamWikiPageVersions.id}::text`))
       .where(and(
         eq(feedbackVotes.companyId, companyId),
         eq(feedbackVotes.targetType, "team_wiki_page_version"),

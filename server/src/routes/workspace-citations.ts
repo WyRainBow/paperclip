@@ -50,6 +50,12 @@ export function workspaceCitationsRoutes(db: Db): Router {
     const rawAssets = Array.isArray(body.assets) ? body.assets : [];
     if (rawAssets.length === 0) throw badRequest("assets is required and must be a non-empty array");
 
+    // Normalize empties to null before the `if` guards: an empty string is
+    // falsy-trimmed but truthy-tested, and letting "" through to the insert
+    // turns a caller's blank field into a driver 500.
+    const issueIdRaw = typeof body.issueId === "string" && body.issueId.trim() ? body.issueId.trim() : null;
+    const sessionIdRaw = typeof body.sessionId === "string" && body.sessionId.trim() ? body.sessionId.trim() : null;
+
     const assets: AssetRef[] = [];
     for (const entry of rawAssets) {
       const parsed = typeof entry === "string"
@@ -66,23 +72,23 @@ export function workspaceCitationsRoutes(db: Db): Router {
     // company, or one that no longer exists, reaches the ledger's foreign key
     // and comes back as a 500 — an unreadable answer to what is really a
     // caller mistake, and one that would leak whether an id exists elsewhere.
-    if (body.issueId && !UUID_RE.test(body.issueId)) throw badRequest(`issueId "${body.issueId}" is not a uuid`);
-    if (body.issueId) {
+    if (issueIdRaw && !UUID_RE.test(issueIdRaw)) throw badRequest(`issueId "${issueIdRaw}" is not a uuid`);
+    if (issueIdRaw) {
       const [issue] = await db
         .select({ id: issues.id })
         .from(issues)
-        .where(and(eq(issues.id, body.issueId), eq(issues.companyId, companyId)))
+        .where(and(eq(issues.id, issueIdRaw), eq(issues.companyId, companyId)))
         .limit(1);
-      if (!issue) throw notFound(`Issue ${body.issueId} not found in this company`);
+      if (!issue) throw notFound(`Issue ${issueIdRaw} not found in this company`);
     }
 
     const recorded = await recordCited(
       db,
       {
         companyId,
-        issueId: body.issueId ?? null,
+        issueId: issueIdRaw,
         agentId: actor.agentId,
-        sessionId: body.sessionId ?? null,
+        sessionId: sessionIdRaw,
       },
       assets,
     );
