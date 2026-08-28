@@ -367,19 +367,44 @@ function resolveApiKey(
   const optionValue = options.apiKey?.trim();
   if (optionValue) return { value: optionValue, source: "explicit" };
 
+  // The host terminal outranks an ambient PAPERCLIP_API_KEY (decision
+  // 910b4a18). Both answer "who am I", but only one of them can lie: the
+  // process tree cannot be forged or inherited, while an exported key is
+  // inherited by every descendant and outlives whatever set it. A stale export
+  // left a Claude session reporting itself as Zcode（Terminal） for hours —
+  // silently, which is the one failure this resolver must never produce.
+  //
+  // `--api-key` still wins, because it is a deliberate, one-shot, visible
+  // statement of intent. Exporting a variable is none of those things.
+  const terminalValue = readKeyFromTerminalDiscovery();
+  if (terminalValue) {
+    warnOnOverriddenAmbientKey(terminalValue);
+    return { value: terminalValue, source: "terminal" };
+  }
+
   const envValue = process.env.PAPERCLIP_API_KEY?.trim();
   if (envValue) return { value: envValue, source: "env" };
 
   const envFileValue = readKeyFromEnvFile();
   if (envFileValue) return { value: envFileValue, source: "env_file" };
 
-  const terminalValue = readKeyFromTerminalDiscovery();
-  if (terminalValue) return { value: terminalValue, source: "terminal" };
-
   const profileEnvValue = readKeyFromProfileEnv(profile);
   if (profileEnvValue) return { value: profileEnvValue, source: "profile_env" };
 
   return { value: undefined, source: "none" };
+}
+
+/** Says so when an exported key was ignored, so the stale export gets cleaned
+ *  up instead of quietly disagreeing with the terminal forever. */
+function warnOnOverriddenAmbientKey(usedKey: string): void {
+  const ambient = process.env.PAPERCLIP_API_KEY?.trim();
+  if (!ambient || ambient === usedKey) return;
+  console.error(
+    pc.yellow(
+      "warning: ignoring PAPERCLIP_API_KEY — it disagrees with this terminal's own key. " +
+        "Using the terminal's key from ~/.paperclip/keys/. Pass --api-key to override deliberately.",
+    ),
+  );
 }
 
 function shouldRecoverBoardAuth(error: ApiRequestError): boolean {
