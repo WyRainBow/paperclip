@@ -1,3 +1,5 @@
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { Command } from "commander";
 import {
   agentSkillAssignmentModeSchema,
@@ -562,6 +564,74 @@ export function registerSkillsCommands(program: Command): void {
             return;
           }
           console.log(`Removed skill ${removed?.name ?? skill.name} (${removed?.key ?? skill.key})`);
+        } catch (err) {
+          handleCommandError(err);
+        }
+      }),
+    { includeCompany: true },
+  );
+
+  // Editing a skill means editing its managed-root directory, then telling the
+  // library to look again. Without this command that second step was a
+  // hand-rolled curl, which is how skills ended up registered with only their
+  // SKILL.md while their references sat on disk unnoticed.
+  addCommonClientOptions(
+    skills
+      .command("rescan")
+      .description("Re-read a managed skill's directory and publish a new version (run after editing files under the managed root)")
+      .argument("<skillRef>", "Company skill ID, key, or unique slug")
+      .action(async (skillRef: string, opts: SkillsOptions) => {
+        try {
+          const ctx = resolveCommandContext(opts, { requireCompany: true });
+          const skill = await resolveCompanySkill(ctx, skillRef);
+          const result = await ctx.api.post<{
+            skill: CompanySkill;
+            version?: { revisionNumber?: number; fileInventory?: unknown[] };
+            added: string[];
+            removed: string[];
+          }>(`/api/companies/${ctx.companyId}/skills/${encodeURIComponent(skill.id)}/rescan`, {});
+          if (ctx.json) {
+            printOutput(result, { json: true });
+            return;
+          }
+          const fileCount = result?.version?.fileInventory?.length ?? 0;
+          console.log(`Rescanned ${result?.skill?.name ?? skill.name}: revision ${result?.version?.revisionNumber ?? "?"}, ${fileCount} file(s)`);
+          if (result?.added?.length) console.log(`  added: ${result.added.join(", ")}`);
+          if (result?.removed?.length) console.log(`  removed: ${result.removed.join(", ")}`);
+          console.log("Run `paperclip skills pull` to distribute it to the terminals.");
+        } catch (err) {
+          handleCommandError(err);
+        }
+      }),
+    { includeCompany: true },
+  );
+
+  // The managed root is where a skill is actually edited, and its path is not
+  // guessable — it sits under the Paperclip instance directory, keyed by
+  // company. Printing it beats documenting it.
+  addCommonClientOptions(
+    skills
+      .command("where")
+      .description("Print the managed-root directory a skill is edited in")
+      .argument("[skillRef]", "Company skill ID, key, or unique slug; omit for the company's skills root")
+      .action(async (skillRef: string | undefined, opts: SkillsOptions) => {
+        try {
+          const ctx = resolveCommandContext(opts, { requireCompany: true });
+          if (!skillRef) {
+            console.log(join(homedir(), ".paperclip", "instances", "default", "skills", ctx.companyId!));
+            return;
+          }
+          const skill = await resolveCompanySkill(ctx, skillRef);
+          const detail = await ctx.api.get<CompanySkill & { sourceLocator?: string | null }>(
+            `/api/companies/${ctx.companyId}/skills/${encodeURIComponent(skill.id)}`,
+          );
+          const locator = detail?.sourceLocator?.trim();
+          if (!locator) {
+            console.error(`${skill.name} has no local directory (source type ${detail?.sourceType ?? "unknown"}); it is not edited locally.`);
+            process.exitCode = 1;
+            return;
+          }
+          console.log(locator);
         } catch (err) {
           handleCommandError(err);
         }
