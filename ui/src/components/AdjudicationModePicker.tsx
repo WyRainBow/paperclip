@@ -78,7 +78,10 @@ export function AdjudicationModePicker() {
             closed trigger shows the label only (same trap as PAP-17293). */}
         <SelectValue>{current.label}</SelectValue>
       </SelectTrigger>
-      <SelectContent align="end">
+      {/* popper drops the menu below the trigger; the default item-aligned
+          mode overlays it (user 2026-08-28 screenshot). Same choice as
+          SummarySlotCard. */}
+      <SelectContent align="end" position="popper">
         {ADJUDICATION_MODES.map((option) => (
           <SelectItem key={option.value} value={option.value} textValue={option.label}>
             <div className="flex flex-col gap-0.5">
