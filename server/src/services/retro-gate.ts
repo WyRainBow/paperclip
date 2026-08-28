@@ -329,8 +329,8 @@ export async function recordRetroGate(db: Db, input: RetroGateInput): Promise<Fr
       .then((rows) => rows[0] ?? null)
       .catch(() => null);
     const standbyLine = worked
-      ? `@${worked.name} 待命：老板回「记」，你就按三段式起草（素材用卡上的事实和差评理由），跑 \`workspace remember\` 落 cases/，落完把页面链接贴回这张卡。`
-      : "回「记」后由这张卡的执行 Agent 起草三段式并落 cases/。";
+      ? `@${worked.name} 待命：老板回「记」≠直接落库——先把三段草稿写成卡上文档（键 experience-draft，素材用卡上的事实和差评理由），@老板过目；老板回「批」才跑 \`workspace remember\` 落 cases/ 并贴回链接，回的是修改意见就改完再等批。`
+      : "回「记」后由执行 Agent 先出 experience-draft 草稿贴卡等批，老板批了才落 cases/。";
 
     await db.insert(issueComments).values({
       companyId: input.companyId,
@@ -340,8 +340,9 @@ export async function recordRetroGate(db: Db, input: RetroGateInput): Promise<Fr
         `这张卡走得磕绊（摩擦分 ${score.total}，阈 ${RETRO_OWED_SCORE_THRESHOLD}），这次遇到的问题是：`,
         ...problems.map((line) => `- ${line}`),
         "",
-        "**要不要把这次的教训记成一条经验 wiki？**",
-        "- 回「**记**」：按「什么情况适用 / 该怎么做 / 别踩什么」三段起草一条，写进团队 Wiki 的 cases/，下次干活就能被搜到",
+        "**要不要把这次的教训记成一条经验 wiki？**（草稿制：先出草稿你过目，批了才入库）",
+        "- 回「**记**」：Agent 起草三段（什么情况适用 / 该怎么做 / 别踩什么）贴到卡上等你过目",
+        "- 你回「**批**」：才正式写进团队 Wiki 的 cases/，下次干活就能被搜到；要改就直接说改哪句",
         "- 回「**跳过**」：不记，直接收卡",
         "",
         standbyLine,
