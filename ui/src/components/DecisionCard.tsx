@@ -466,13 +466,13 @@ export function DecisionCard({
               <span className="font-medium text-foreground">「{chosenOption.label}」</span>
               {recommendedOption && (
                 chosenOption.id === recommendedOption.id ? (
-                  <span className="text-emerald-700 dark:text-emerald-300"> 与推荐一致</span>
+                  <span className="ml-2 text-emerald-700 dark:text-emerald-300">与推荐一致</span>
                 ) : (
-                  <span className="text-amber-700 dark:text-amber-300"> 未采纳推荐（{recommendedBy?.name ?? "提案 agent"} 推荐 {recommendedOption.label}）</span>
+                  <span className="ml-2 text-amber-700 dark:text-amber-300">未采纳推荐（{recommendedBy?.name ?? "提案 agent"} 推荐 {recommendedOption.label}）</span>
                 )
               )}
               {decision.decidedAt && (
-                <span className="tabular-nums text-muted-foreground">·{absoluteTimestamp(decision.decidedAt)}</span>
+                <span className="ml-2 tabular-nums text-muted-foreground">· {absoluteTimestamp(decision.decidedAt)}</span>
               )}
             </p>
           )}
