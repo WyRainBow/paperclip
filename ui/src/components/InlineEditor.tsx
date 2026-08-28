@@ -305,7 +305,9 @@ export function InlineEditor({
           tabIndex={0}
         >
           {foldable ? (
-            <FoldCurtain>
+            // An issue's own description is the point of the screen, so it
+            // opens read; the curtain stays available to collapse it.
+            <FoldCurtain defaultExpanded>
               <MarkdownBody
                 className={cn("paperclip-edit-in-place-content", className)}
                 externalReferences={externalReferences}

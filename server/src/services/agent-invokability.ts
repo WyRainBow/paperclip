@@ -10,6 +10,29 @@ export type AgentOrgRow = Pick<
   "id" | "companyId" | "name" | "reportsTo" | "status"
 >;
 
+/** Adapter fields needed to tell whether Paperclip can start this agent at all. */
+export type AgentLaunchability = Pick<typeof agents.$inferSelect, "adapterType" | "adapterConfig">;
+
+/**
+ * Why this exists: an agent whose adapter cannot be started is not merely
+ * likely to fail — it cannot run at any point in the future without a config
+ * change, so every wake-up spends a run record to rediscover that. The http
+ * adapter with no url is the case seen in practice: terminal agents live in
+ * the operator's own shell, so Paperclip has nothing to call, and each
+ * assignment or promotion queued another guaranteed failure.
+ *
+ * Treat it as non-invokable up front rather than letting the adapter throw:
+ * the wake-up is then recorded as skipped with a reason, instead of a failed
+ * run that reads like something broke.
+ */
+export function adapterLaunchBlock(agent: AgentLaunchability | null | undefined): string | null {
+  if (!agent) return null;
+  if (agent.adapterType !== "http") return null;
+  const config = (agent.adapterConfig ?? {}) as Record<string, unknown>;
+  const url = typeof config.url === "string" ? config.url.trim() : "";
+  return url ? null : "HTTP adapter has no url, so Paperclip cannot start this agent";
+}
+
 export type AgentInvokabilityBlockReason =
   | "missing"
   | "paused"
@@ -20,7 +43,8 @@ export type AgentInvokabilityBlockReason =
   | "manager_company_mismatch"
   | "manager_terminated"
   | "reporting_cycle"
-  | "reporting_chain_too_deep";
+  | "reporting_chain_too_deep"
+  | "adapter_not_launchable";
 
 export type AgentInvokability =
   | { invokable: true }
@@ -71,11 +95,23 @@ function invalidChainReason(health: AgentOrgChainHealth): AgentInvokabilityBlock
 }
 
 export function evaluateAgentInvokability(
-  agent: AgentOrgRow | null | undefined,
+  agent: (AgentOrgRow & Partial<AgentLaunchability>) | null | undefined,
   companyAgents: AgentOrgRow[],
 ): AgentInvokability {
   if (!agent) {
     return blocked("missing", "Agent no longer exists", {}, false);
+  }
+
+  // Checked before status and org chain: a launch that cannot succeed is worth
+  // reporting as such even when the agent is otherwise in good standing.
+  const launchBlock = "adapterType" in agent ? adapterLaunchBlock(agent as AgentLaunchability) : null;
+  if (launchBlock) {
+    return blocked(
+      "adapter_not_launchable",
+      launchBlock,
+      { agentId: agent.id, adapterType: (agent as AgentLaunchability).adapterType },
+      false,
+    );
   }
 
   const eligibility = getAgentWorkEligibility({
@@ -117,7 +153,7 @@ export function evaluateAgentInvokability(
 
 export async function evaluateAgentInvokabilityFromDb(
   db: Db,
-  agent: AgentOrgRow | null | undefined,
+  agent: (AgentOrgRow & Partial<AgentLaunchability>) | null | undefined,
 ): Promise<AgentInvokability> {
   if (!agent) return evaluateAgentInvokability(agent, []);
   const companyAgents = await db

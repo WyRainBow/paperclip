@@ -71,13 +71,13 @@ describe("IssueAssignedBacklogNotice", () => {
     });
     const notice = container.querySelector('[data-testid="issue-assigned-backlog-notice"]');
     expect(notice).not.toBeNull();
-    expect(notice?.textContent).toContain("Parked");
+    expect(notice?.textContent).toContain("已搁置");
     expect(notice?.textContent).toContain("ClaudeCoder");
     expect(notice?.textContent).toContain(
-      "will not be asked to work on this until status changes to To do or In progress.",
+      "状态改回待办或进行中之前，不会叫",
     );
     expect(notice?.textContent).toContain(
-      "Comments still notify the assignee for questions or triage.",
+      "评论仍会通知责任人，可以用来提问或分诊。",
     );
   });
 
@@ -94,7 +94,7 @@ describe("IssueAssignedBacklogNotice", () => {
     const notice = container.querySelector('[data-testid="issue-assigned-backlog-notice"]');
     expect(notice).not.toBeNull();
     expect(notice?.textContent).toContain(
-      "the assignee will not be asked to work on this until status changes to To do or In progress.",
+      "责任人",
     );
   });
 
@@ -112,7 +112,7 @@ describe("IssueAssignedBacklogNotice", () => {
     });
     const button = container.querySelector('[data-testid="issue-assigned-backlog-resume"]') as HTMLButtonElement | null;
     expect(button).not.toBeNull();
-    expect(button?.textContent).toBe("Resume now");
+    expect(button?.textContent).toBe("立即恢复");
     act(() => {
       button?.click();
     });
@@ -134,6 +134,6 @@ describe("IssueAssignedBacklogNotice", () => {
     const button = container.querySelector('[data-testid="issue-assigned-backlog-resume"]') as HTMLButtonElement | null;
     expect(button).not.toBeNull();
     expect(button?.disabled).toBe(true);
-    expect(button?.textContent).toBe("Resuming…");
+    expect(button?.textContent).toBe("恢复中…");
   });
 });

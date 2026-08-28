@@ -20,6 +20,8 @@ export type DocumentFrameHeaderRevisionActor = {
   kind: "agent" | "user" | "system";
   name: string;
   agentIcon?: string | null;
+  /** Provider logo (metadata.customIcon); the lucide icon is the fallback. */
+  agentIconUrl?: string | null;
   imageUrl?: string | null;
 };
 
@@ -50,6 +52,10 @@ export interface DocumentFrameHeaderProps {
   revisionMenu?: DocumentFrameHeaderRevisionMenu;
   updatedAt?: string | Date | null;
   updatedHref?: string;
+  /** Short document id — the handle the CLI addresses this document by. */
+  documentId?: string | null;
+  /** Who filed it. Shown here so the Artifacts panel need not repeat it. */
+  createdBy?: DocumentFrameHeaderRevisionActor | null;
   sourceTrustSlot?: ReactNode;
   annotationSlot?: ReactNode;
   titleSlot?: ReactNode;
@@ -61,7 +67,7 @@ function RevisionActorAvatar({ actor }: { actor: DocumentFrameHeaderRevisionActo
     <Avatar size="xs" shape={actor.kind === "agent" ? "square" : "circle"} className="shrink-0">
       {actor.kind === "agent" ? (
         <AvatarFallback>
-          <AgentIcon icon={actor.agentIcon} className="h-3 w-3" />
+          <AgentIcon icon={actor.agentIcon} customIconUrl={actor.agentIconUrl} className="h-3 w-3" />
         </AvatarFallback>
       ) : (
         <>
@@ -81,6 +87,8 @@ export function DocumentFrameHeader({
   revisionMenu,
   updatedAt,
   updatedHref,
+  documentId,
+  createdBy,
   sourceTrustSlot,
   annotationSlot,
   titleSlot,
@@ -89,7 +97,10 @@ export function DocumentFrameHeader({
   return (
     <div className="flex items-start justify-between gap-3">
       <div className="min-w-0">
-        <div className="flex items-center gap-2 min-w-0">
+        {/* gap-4, not gap-2: the row runs key, revision, docID, author, and
+            timestamp together, and at the tighter gap they read as one string
+            of text rather than five separate fields. */}
+        <div className="flex items-center gap-4 min-w-0">
           <button
             type="button"
             className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
@@ -123,7 +134,7 @@ export function DocumentFrameHeader({
                     revisionMenu.historicalPreview && "text-amber-700 hover:text-amber-800 dark:text-amber-300 dark:hover:text-amber-200",
                   )}
                 >
-                  rev {revisionMenu.displayedRevisionNumber}
+                  revision {revisionMenu.displayedRevisionNumber}
                   <ChevronDown className="h-3 w-3" />
                 </Button>
               </DropdownMenuTrigger>
@@ -144,7 +155,7 @@ export function DocumentFrameHeader({
                         >
                           <div className="flex min-w-0 flex-col">
                             <div className="flex items-center gap-2">
-                              <span className="font-medium">rev {revision.revisionNumber}</span>
+                              <span className="font-medium">revision {revision.revisionNumber}</span>
                               {isCurrentRevision ? (
                                 <Badge variant="outline" className="border-border px-1.5 text-(length:--text-nano) uppercase tracking-(--tracking-eyebrow) text-muted-foreground">
                                   Current
@@ -168,12 +179,27 @@ export function DocumentFrameHeader({
               </DropdownMenuContent>
             </DropdownMenu>
           ) : null}
+          {documentId ? (
+            <span
+              className="shrink-0 font-mono text-(length:--text-micro) text-muted-foreground"
+              title={documentId}
+            >
+              docID: {documentId.slice(0, 8)}
+            </span>
+          ) : null}
+          {createdBy ? (
+            <span className="flex shrink-0 items-center gap-1 text-(length:--text-micro) text-muted-foreground">
+              创建人：
+              <RevisionActorAvatar actor={createdBy} />
+              <span className="truncate">{createdBy.name}</span>
+            </span>
+          ) : null}
           {updatedAt ? (
             <a
               href={updatedHref ?? `#document-${encodeURIComponent(documentKey)}`}
               className="truncate text-(length:--text-micro) text-muted-foreground transition-colors hover:text-foreground hover:underline"
             >
-              updated {relativeTime(updatedAt)}
+              更新时间：{relativeTime(updatedAt)}
             </a>
           ) : null}
           {annotationSlot}

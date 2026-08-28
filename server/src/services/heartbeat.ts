@@ -5645,6 +5645,9 @@ export async function buildPaperclipWakePayload(input: {
   // Experimental: agents write user-interaction content in ASD-STE100
   // Simplified Technical English (rendered as a prompt directive downstream).
   simplifiedEnglishInteractions?: boolean;
+  // Preferred language for agent-authored user-facing content (rendered as a
+  // prompt directive downstream). Absent/"en" leaves agents' natural language.
+  agentOutputLanguage?: string | null;
 }) {
   const executionStage = parseObject(input.contextSnapshot.executionStage);
   const commentIds = extractWakeCommentIds(input.contextSnapshot);
@@ -5930,6 +5933,7 @@ export async function buildPaperclipWakePayload(input: {
     checkboxSelection: Object.keys(checkboxSelection).length > 0 ? checkboxSelection : null,
     checkedOutByHarness: input.contextSnapshot[PAPERCLIP_HARNESS_CHECKOUT_KEY] === true,
     simplifiedEnglishInteractions: input.simplifiedEnglishInteractions === true,
+    agentOutputLanguage: readNonEmptyString(input.agentOutputLanguage) ?? "en",
     dependencyBlockedInteraction: input.contextSnapshot.dependencyBlockedInteraction === true,
     treeHoldInteraction: input.contextSnapshot.treeHoldInteraction === true,
     activeTreeHold: parseObject(input.contextSnapshot.activeTreeHold),
@@ -9080,6 +9084,9 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
   ): Promise<typeof heartbeatRuns.$inferSelect> {
     if (isHeartbeatRunTerminalStatus(run.status)) return run;
     if (run.status !== "running" && run.status !== "queued") return run;
+    // Terminal contributor sessions outlive the request that touched them
+    // (2h reuse window); releasing a lease must not terminalize them.
+    if (run.invocationSource === "terminal_contributor") return run;
 
     // Choose the terminal status that reflects the true outcome. When the issue
     // already reached a terminal status, the run reached its goal, so use the
@@ -13640,7 +13647,9 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
     const staleThresholdMs = opts?.staleThresholdMs ?? 0;
     const now = new Date();
 
-    // Find all runs stuck in "running" state (queued runs are legitimately waiting; resumeQueuedRuns handles them)
+    // Find all runs stuck in "running" state (queued runs are legitimately waiting; resumeQueuedRuns handles them).
+    // Terminal contributor sessions are synthetic runs with no child process by
+    // design — they must not be reaped as orphans.
     const activeRuns = await db
       .select({
         run: heartbeatRuns,
@@ -13649,7 +13658,10 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
       })
       .from(heartbeatRuns)
       .innerJoin(agents, eq(heartbeatRuns.agentId, agents.id))
-      .where(eq(heartbeatRuns.status, "running"));
+      .where(and(
+        eq(heartbeatRuns.status, "running"),
+        ne(heartbeatRuns.invocationSource, "terminal_contributor"),
+      ));
 
     const monitorIssueIds = [...new Set(activeRuns.flatMap(({ run }) => {
       const runContext = parseObject(run.contextSnapshot);
@@ -14234,6 +14246,7 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
           )
         : null;
     const experimentalInstanceSettings = await instanceSettings.getExperimental();
+    const generalInstanceSettings = (await instanceSettings.get()).general;
     const isolatedWorkspacesEnabled = experimentalInstanceSettings.enableIsolatedWorkspaces;
     const parsedIssueExecutionWorkspaceSettings = parseIssueExecutionWorkspaceSettings(
       issueContext?.executionWorkspaceSettings,
@@ -14437,6 +14450,7 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
         : null,
       exposeLowTrustRaw,
       simplifiedEnglishInteractions: experimentalInstanceSettings.enableSimplifiedEnglishInteractions === true,
+      agentOutputLanguage: generalInstanceSettings?.agentOutputLanguage ?? null,
     });
     if (paperclipWakePayload) {
       context[PAPERCLIP_WAKE_PAYLOAD_KEY] = paperclipWakePayload;
@@ -17424,6 +17438,27 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
           .limit(1)
           .then((rows) => rows[0] ?? null);
 
+      // Terminal contributor sessions carry {kind, keyId} snapshots without an
+      // issueId, so the execution-path lookup above cannot see them. A live
+      // terminal session for the recovery agent IS the execution path — the
+      // operator's terminal holds the work — so treat it as one instead of
+      // blocking the issue as stranded.
+      const findLiveTerminalSession = (agentId?: string | null) =>
+        tx
+          .select({ id: heartbeatRuns.id })
+          .from(heartbeatRuns)
+          .where(
+            and(
+              eq(heartbeatRuns.companyId, issue.companyId),
+              eq(heartbeatRuns.invocationSource, "terminal_contributor"),
+              eq(heartbeatRuns.status, "running"),
+              gte(heartbeatRuns.updatedAt, new Date(Date.now() - 2 * 60 * 60 * 1000)),
+              agentId ? eq(heartbeatRuns.agentId, agentId) : sql`true`,
+            ),
+          )
+          .limit(1)
+          .then((rows) => rows[0] ?? null);
+
       const issueHasPersistedMonitor = Boolean(issue.monitorNextCheckAt);
       const findExplicitBlockerPath = () =>
         tx
@@ -17585,7 +17620,8 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
         return { kind: "released" as const };
       }
 
-      const existingExecutionPath = await findExistingExecutionPath();
+      const existingExecutionPath = (await findExistingExecutionPath())
+        ?? await findLiveTerminalSession(recoveryAgent?.id ?? issue.assigneeAgentId);
       if (existingExecutionPath || issueHasPersistedMonitor || await findExplicitBlockerPath()) {
         return { kind: "released" as const };
       }

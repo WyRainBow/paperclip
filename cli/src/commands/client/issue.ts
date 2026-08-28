@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { Command } from "commander";
 import { readFile, writeFile } from "node:fs/promises";
 import {
@@ -24,6 +25,7 @@ import {
   updateIssueWorkProductSchema,
   type Issue,
   type IssueComment,
+  type Project,
   upsertIssueDocumentSchema,
   upsertIssueFeedbackVoteSchema,
 } from "@paperclipai/shared";
@@ -36,6 +38,8 @@ import {
   printOutput,
   resolveCommandContext,
   type BaseClientOptions,
+  type ResolvedClientContext,
+  assertDecisionBodyTemplate,
 } from "./common.js";
 import {
   buildFeedbackTraceQuery,
@@ -56,11 +60,15 @@ interface IssueCreateOptions extends BaseClientOptions {
   status?: string;
   priority?: string;
   assigneeAgentId?: string;
+  project?: string;
   projectId?: string;
   goalId?: string;
   parentId?: string;
   requestDepth?: string;
   billingCode?: string;
+  session?: string;
+  allowDuplicate?: boolean;
+  asBoard?: boolean;
 }
 
 interface IssueUpdateOptions extends BaseClientOptions {
@@ -76,6 +84,39 @@ interface IssueUpdateOptions extends BaseClientOptions {
   billingCode?: string;
   comment?: string;
   hiddenAt?: string;
+}
+
+interface IssueClaimOptions extends BaseClientOptions {
+  note?: string;
+  status?: string;
+}
+
+interface IssueStartOptions extends BaseClientOptions {
+  branch: string;
+  worktree?: string;
+  base?: string;
+  dependsOn?: string;
+  note?: string;
+  session?: string;
+}
+
+interface IssueQaOptions extends BaseClientOptions {
+  question: string;
+  answer: string;
+  answerFile?: string;
+  label?: string;
+  answerAgent?: string;
+  questionAgent?: string;
+  answerDocKey?: string;
+  answerDocTitle?: string;
+  answerModel?: string;
+  answerEffort?: string;
+}
+
+interface IssueQaListOptions extends BaseClientOptions {}
+
+interface IssueProgressOptions extends BaseClientOptions {
+  tone?: string;
 }
 
 interface IssueCommentOptions extends BaseClientOptions {
@@ -165,6 +206,62 @@ interface TreeHoldListOptions extends BaseClientOptions {
   status?: string;
   mode?: string;
   includeMembers?: boolean;
+}
+
+/**
+ * A name is not an identity: agents get renamed and the same seat is Codex
+ * today and something else tomorrow, so a `--*-agent` flag is resolved to a
+ * real agent id before it is stored. The directory is fetched once per command.
+ */
+function agentIdResolver(ctx: ResolvedClientContext, companyId: string | undefined) {
+  let directory: Array<{ id: string; name: string; urlKey?: string }> | null = null;
+  return async (ref: string | null, flag: string): Promise<string | null> => {
+    if (!ref) return null;
+    if (!directory) {
+      if (!companyId) throw new Error(`cannot resolve ${flag} without a company; pass -C`);
+      directory = (await ctx.api.get<Array<{ id: string; name: string; urlKey?: string }>>(
+        apiPath`/api/companies/${companyId}/agents`,
+      )) ?? [];
+    }
+    const needle = ref.trim();
+    const match = directory.find((a) => a.id === needle)
+      ?? directory.find((a) => a.name === needle)
+      ?? directory.find((a) => a.urlKey === needle)
+      ?? directory.find((a) => a.name.toLowerCase() === needle.toLowerCase());
+    if (!match) {
+      process.stderr.write(`warning: no agent matched "${needle}" for ${flag} — that identity will be missing\n`);
+    }
+    return match?.id ?? null;
+  };
+}
+
+/** `--option "id|Label"` — the pipe keeps the flag typable without shell-quoting JSON. */
+
+/**
+ * 认领防漏（MUL-72）: an agent writing progress or advancing status on an
+ * unclaimed card (no assignee AND no Driving) auto-claims it first — the
+ * server now 409s such writes, and this keeps the CLI path frictionless.
+ * Board callers (no /api/agents/me) are untouched.
+ */
+async function autoClaimIfUnclaimed(ctx: ResolvedClientContext, issue: Issue): Promise<void> {
+  if (issue.assigneeAgentId || issue.drivingAgentId) return;
+  const me = await ctx.api.get<{ id: string } | null>(apiPath`/api/agents/me`).catch(() => null);
+  if (!me?.id) return;
+  const drivingSession =
+    process.env.CLAUDE_CODE_SESSION_ID?.trim() || process.env.CODEX_SESSION_ID?.trim() || process.env.ZCODE_SESSION_ID?.trim() || null;
+  // Driving alone is the claim marker (same as the claim command's normal
+  // path); assigneeAgentId is left untouched because cards default to
+  // assigneeUserId=local-board and setting both trips the one-assignee rule.
+  try {
+    await ctx.api.patch<Issue>(apiPath`/api/issues/${issue.id}`, {
+      drivingAgentId: me.id,
+      ...(drivingSession ? { drivingSession } : {}),
+    });
+    console.error(`auto-claimed ${issue.identifier ?? issue.id}（Driving 记为本 agent）`);
+    issue.drivingAgentId = me.id;
+  } catch (err) {
+    console.error(`auto-claim failed for ${issue.identifier ?? issue.id}: ${err instanceof Error ? err.message : String(err)}`);
+  }
 }
 
 export function registerIssueCommands(program: Command): void {
@@ -282,28 +379,128 @@ export function registerIssueCommands(program: Command): void {
       .option("--status <status>", "Issue status")
       .option("--priority <priority>", "Issue priority")
       .option("--assignee-agent-id <id>", "Assignee agent ID")
-      .option("--project-id <id>", "Project ID")
+      .option(
+        "--project <name|id>",
+        "Project name, shortname (urlKey), or ID. Required for a top-level issue; a sub-issue inherits its parent's project",
+      )
+      .option("--project-id <id>", "Project ID (raw UUID; prefer --project)")
       .option("--goal-id <id>", "Goal ID")
       .option("--parent-id <id>", "Parent issue ID")
       .option("--request-depth <n>", "Request depth integer")
       .option("--billing-code <code>", "Billing code")
+      .option(
+        "--session <id>",
+        "Session id to record on the card — which CLI/agent session filed it (navigation aid, not identity). Defaults to $CLAUDE_CODE_SESSION_ID / $CODEX_SESSION_ID / $ZCODE_SESSION_ID",
+      )
+      .option("--allow-duplicate", "Create even when an active issue with the same title exists")
+      .option("--as-board", "File as the board instead of an agent — the card gets no agent author and that cannot be corrected later")
+      .option("--branch <name>", "Working branch name (optional at creation; use issue start to register it)")
       .action(async (opts: IssueCreateOptions) => {
         try {
           const ctx = resolveCommandContext(opts, { requireCompany: true });
+          if (opts.project && opts.projectId) {
+            throw new Error("pass either --project or --project-id, not both");
+          }
+          let projectId = opts.projectId;
+          const listProjects = async () =>
+            (await ctx.api.get<Project[]>(apiPath`/api/companies/${ctx.companyId}/projects`)) ?? [];
+          const describeProjects = (projects: Project[]) =>
+            projects.length > 0
+              ? projects.map((p) => `${p.name} (${p.urlKey})`).join(", ")
+              : "no projects yet — create one with `project create`";
+          if (opts.project) {
+            const ref = opts.project.trim();
+            const projects = await listProjects();
+            const hit = projects.find(
+              (p) =>
+                p.id === ref ||
+                p.name.toLowerCase() === ref.toLowerCase() ||
+                p.urlKey.toLowerCase() === ref.toLowerCase(),
+            );
+            if (!hit) {
+              throw new Error(`project not found: ${ref}. This company has: ${describeProjects(projects)}`);
+            }
+            projectId = hit.id;
+          } else if (!projectId && opts.parentId) {
+            const parent = await ctx.api.get<Issue>(apiPath`/api/issues/${opts.parentId}`);
+            projectId = parent?.projectId ?? undefined;
+          }
+          if (!projectId) {
+            const projects = await listProjects();
+            throw new Error(
+              `project is required: every issue belongs to a project — pass --project <name>. This company has: ${describeProjects(projects)}`,
+            );
+          }
+          // Cards are filed from terminal agents, and authorship is stamped
+          // from the authenticated caller at create time — a card opened
+          // without an agent key reads as "local-board" and cannot be
+          // corrected by the agent afterwards. Fail before writing rather
+          // than leave an unattributable card behind. A human filing from
+          // their own shell passes --as-board to say so deliberately.
+          if (!opts.asBoard) {
+            const me = await ctx.api
+              .get<{ id: string; name?: string } | null>("/api/agents/me")
+              .catch(() => null);
+            if (!me?.id) {
+              throw new Error(
+                "no agent identity — this card would be filed as local-board and the author could not be fixed afterwards.\n"
+                + "  set PAPERCLIP_API_KEY (see `paperclipai agent local-cli <agent>`), or pass --as-board if you really are filing it yourself",
+              );
+            }
+          }
+          if (opts.description) {
+            const firstContentLine = opts.description.split("\n").find((line) => line.trim().length > 0);
+            if (firstContentLine !== undefined && !firstContentLine.startsWith(">")) {
+              throw new Error(
+                "description must open with a one-line `> quote` summary — only the title shows in lists, so the takeaway goes first",
+              );
+            }
+          }
+          if (!opts.allowDuplicate) {
+            const rows =
+              (await ctx.api.get<Issue[]>(apiPath`/api/companies/${ctx.companyId}/issues`)) ?? [];
+            const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
+            const strip = (s: string) => norm(s).replace(/[^\p{L}\p{N}]/gu, "");
+            const newNorm = norm(opts.title);
+            const newStrip = strip(opts.title);
+            const hits = rows.filter((row) => {
+              if (row.status === "done" || row.status === "cancelled" || row.hiddenAt) return false;
+              const title = row.title ?? "";
+              return norm(title) === newNorm || (newStrip.length >= 4 && strip(title) === newStrip);
+            });
+            if (hits.length > 0) {
+              const list = hits.map((h) => `${h.identifier} [${h.status}] ${h.title}`).join("\n  ");
+              throw new Error(
+                `an active issue with this title already exists:\n  ${list}\npass --allow-duplicate to create it anyway`,
+              );
+            }
+          }
+          const session =
+            opts.session?.trim() ||
+            process.env.CLAUDE_CODE_SESSION_ID?.trim() ||
+            process.env.CODEX_SESSION_ID?.trim() ||
+            process.env.ZCODE_SESSION_ID?.trim() ||
+            undefined;
           const payload = createIssueSchema.parse({
             title: opts.title,
             description: opts.description,
             status: opts.status,
             priority: opts.priority,
             assigneeAgentId: opts.assigneeAgentId,
-            projectId: opts.projectId,
+            projectId,
             goalId: opts.goalId,
             parentId: opts.parentId,
             requestDepth: parseOptionalInt(opts.requestDepth),
             billingCode: opts.billingCode,
+            createdBySession: session,
+            ...(opts.allowDuplicate ? { allowDuplicate: true } : {}),
           });
 
           const created = await ctx.api.post<Issue>(apiPath`/api/companies/${ctx.companyId}/issues`, payload);
+          // Attribution is stamped server-side from the authenticated caller at
+          // create time (agent key => createdByAgentId, board => createdByUserId).
+          // No client-side backfill: a card is attributed correctly on the first
+          // write or not at all — the pre-write identity gate above enforces it.
           printOutput(created, { json: ctx.json });
         } catch (err) {
           handleCommandError(err);
@@ -347,8 +544,321 @@ export function registerIssueCommands(program: Command): void {
             hiddenAt: parseHiddenAt(opts.hiddenAt),
           });
 
+          if (opts.status && !opts.assigneeAgentId) {
+            const existing = await ctx.api.get<Issue>(apiPath`/api/issues/${issueId}`).catch(() => null);
+            if (existing) await autoClaimIfUnclaimed(ctx, existing);
+          }
           const updated = await ctx.api.patch<Issue & { comment?: IssueComment | null }>(apiPath`/api/issues/${issueId}`, payload);
           printOutput(updated, { json: ctx.json });
+        } catch (err) {
+          handleCommandError(err);
+        }
+      }),
+  );
+
+  addCommonClientOptions(
+    issue
+      .command("claim")
+      .description("Claim an issue: take ownership (in_progress + assignee) and file an opening note. No branch — that is `issue start`")
+      .argument("<issueId>", "Issue ID or identifier")
+      .option("--note <text>", "Extra opening note text")
+      .option("--status <status>", "Target status (default in_progress)", "in_progress")
+      .action(async (issueId: string, opts: IssueClaimOptions) => {
+        try {
+          const ctx = resolveCommandContext(opts);
+          const issue = await ctx.api.get<Issue>(apiPath`/api/issues/${issueId}`);
+          if (!issue) throw new Error(`Issue not found: ${issueId}`);
+          let updated: Issue | null = issue;
+          // 接卡即开工（user 2026-08-27）: Driving records the claiming agent.
+          // Sub-agents it dispatches are its implementation detail and are not
+          // recorded anywhere; a new claimant overwrites Driving, which is the
+          // intended handover semantics. Auto-filled here because 15 of 18
+          // started cards simply had nobody remember to run `issue start`.
+          // Driving is patched BEFORE status: the server 409s an agent
+          // advancing an unclaimed card (MUL-72), and Driving is the claim
+          // marker that opens that gate. Self-assigning instead trips the
+          // one-assignee rule (cards default to assigneeUserId=local-board).
+          const drivingSession =
+            process.env.CLAUDE_CODE_SESSION_ID?.trim() ||
+            process.env.CODEX_SESSION_ID?.trim() ||
+            process.env.ZCODE_SESSION_ID?.trim() ||
+            null;
+          const me = await ctx.api.get<{ id: string } | null>(apiPath`/api/agents/me`).catch(() => null);
+          const drivingAgentId = me?.id ?? process.env.PAPERCLIP_AGENT_ID?.trim() ?? null;
+          if (drivingSession || drivingAgentId) {
+            const drivingPatch: Record<string, unknown> = {};
+            if (drivingSession) drivingPatch.drivingSession = drivingSession;
+            if (drivingAgentId) drivingPatch.drivingAgentId = drivingAgentId;
+            updated = await ctx.api.patch<Issue>(apiPath`/api/issues/${issue.id}`, drivingPatch).catch(() => updated);
+          }
+          if (issue.status !== opts.status) {
+            updated = await ctx.api.patch<Issue>(apiPath`/api/issues/${issue.id}`, { status: opts.status });
+          }
+          const lines = [`接卡：${issue.identifier} → ${opts.status}（by claim command）`];
+          if (drivingAgentId || drivingSession) lines.push(`Driving：${drivingAgentId ?? "?"}${drivingSession ? ` · 会话 ${drivingSession}` : ""}`);
+          if (opts.note) lines.push(opts.note);
+          await ctx.api.post(apiPath`/api/issues/${issue.id}/comments`, {
+            body: lines.join("\n"),
+            presentation: { kind: "progress_note", tone: "info" },
+          });
+          printOutput({ identifier: issue.identifier, status: updated?.status ?? opts.status, drivingAgentId, drivingSession }, { json: ctx.json });
+        } catch (err) {
+          handleCommandError(err);
+        }
+      }),
+  );
+
+  addCommonClientOptions(
+    issue
+      .command("start")
+      .description("Start work on a claimed issue: record the working branch (and flip to in_progress if needed)")
+      .argument("<issueId>", "Issue ID or identifier")
+      .requiredOption("--branch <name>", "Working branch name")
+      .option("--worktree <path>", "Absolute path to the git worktree")
+      .option("--base <ref>", "Base commit/branch this branch was cut from")
+      .option("--depends-on <ids>", "Comma-separated issue ids this branch depends on")
+      .option("--note <text>", "Extra start note text")
+      .option(
+        "--session <id>",
+        "Driving session to record on the card — who is working it now (one slot, overwritten per start). Defaults to $CLAUDE_CODE_SESSION_ID / $CODEX_SESSION_ID",
+      )
+      .action(async (issueId: string, opts: IssueStartOptions) => {
+        try {
+          const ctx = resolveCommandContext(opts);
+          const issue = await ctx.api.get<Issue>(apiPath`/api/issues/${issueId}`);
+          if (!issue) throw new Error(`Issue not found: ${issueId}`);
+          let updated: Issue | null = issue;
+          if (issue.status !== "in_progress") {
+            try {
+              updated = await ctx.api.patch<Issue>(apiPath`/api/issues/${issue.id}`, { status: "in_progress" });
+            } catch (err) {
+              const message = err instanceof Error ? err.message : String(err);
+              if (!message.includes("require an assignee")) throw err;
+              const me = await ctx.api.get<Issue & { id: string }>(apiPath`/api/agents/me`).catch(() => null);
+              if (!me?.id) {
+                throw new Error("in_progress requires an assignee; claim first or run with --api-key as the working agent");
+              }
+              updated = await ctx.api.patch<Issue>(apiPath`/api/issues/${issue.id}`, {
+                status: "in_progress",
+                assigneeAgentId: me.id,
+              });
+            }
+          }
+          const drivingSession =
+            opts.session?.trim() ||
+            process.env.CLAUDE_CODE_SESSION_ID?.trim() ||
+            process.env.CODEX_SESSION_ID?.trim() ||
+            process.env.ZCODE_SESSION_ID?.trim() ||
+            null;
+          const drivingPatch: Record<string, unknown> = {};
+          // Structured branch column (MUL-59): the branch used to live only in
+          // the opening comment's prose.
+          drivingPatch.workingBranch = opts.branch;
+          if (drivingSession) {
+            drivingPatch.drivingSession = drivingSession;
+            // /agents/me only answers for an agent key, and an agent key cannot
+            // PATCH an in-progress issue without a run — so a board-authenticated
+            // terminal falls back to the agent id it was configured with. Without
+            // this, Driving stays "Unclaimed" on every card a terminal starts.
+            const me = await ctx.api.get<{ id: string } | null>(apiPath`/api/agents/me`).catch(() => null);
+            const drivingAgentId = me?.id ?? process.env.PAPERCLIP_AGENT_ID?.trim() ?? null;
+            if (drivingAgentId) drivingPatch.drivingAgentId = drivingAgentId;
+            updated = await ctx.api.patch<Issue>(apiPath`/api/issues/${issue.id}`, drivingPatch);
+          }
+          if (!drivingPatch.drivingAgentId) {
+            process.stderr.write("warning: no agent identity for Driving — set PAPERCLIP_AGENT_ID or run with an agent key\n");
+          }
+          const lines = [`开工：${issue.identifier}，工作分支：${opts.branch}`];
+          if (drivingSession) lines.push(`主审会话：${drivingSession}`);
+          if (opts.worktree) lines.push(`工作树：${opts.worktree}`);
+          if (opts.base) lines.push(`基线：${opts.base}`);
+          if (opts.dependsOn) lines.push(`依赖：${opts.dependsOn}`);
+          if (opts.note) lines.push(opts.note);
+          await ctx.api.post(apiPath`/api/issues/${issue.id}/comments`, {
+            body: lines.join("\n"),
+            presentation: { kind: "progress_note", tone: "info" },
+          });
+          printOutput({ identifier: issue.identifier, status: updated?.status ?? "in_progress", branch: opts.branch, drivingSession }, { json: ctx.json });
+        } catch (err) {
+          handleCommandError(err);
+        }
+      }),
+  );
+
+  addCommonClientOptions(
+    issue
+      .command("qa")
+      .description("File a Q&A pair as a discussion thread (two linked comments, bubble-rendered)")
+      .argument("<issueId>", "Issue ID or identifier")
+      .requiredOption("--question <text>", "The question (left bubble)")
+      .requiredOption("--answer <text>", "The answer (right bubble)")
+      .option("--label <text>", "Optional label for the thread")
+      .option("--answer-agent <name>", "Agent name/id that gave the answer (attribution when filing on behalf)")
+      .option("--question-agent <name>", "Agent name/id that asked — who commissioned this review. Defaults to $PAPERCLIP_AGENT_ID")
+      .option("--answer-file <path>", "Read the full answer from a file — pair with --answer-doc-key so the bubble keeps only --answer")
+      .option("--answer-doc-key <key>", "File the full answer as an issue document under this key (e.g. review-r1); the bubble then holds only the verdict line plus a link")
+      .option("--answer-doc-title <title>", "Title for the answer document")
+      .option("--answer-model <model>", "Model that produced the answer (e.g. gpt-5.6-sol) — structured, not label text")
+      .option("--answer-effort <effort>", "Reasoning effort of the answer (e.g. high)")
+      .action(async (issueId: string, opts: IssueQaOptions) => {
+        try {
+          const ctx = resolveCommandContext(opts);
+          const issue = await ctx.api.get<Issue>(apiPath`/api/issues/${issueId}`);
+          if (!issue) throw new Error(`Issue not found: ${issueId}`);
+          const threadId = crypto.randomUUID();
+
+          // A name is not an identity: agents get renamed and the answering
+          // side may be Codex today and Grok tomorrow, so resolve the label to
+          // a real agent id and store that. Both bubbles need this — filing a
+          // review on behalf makes board the writer on the question too.
+          const questionAgentRef = opts.questionAgent?.trim() || process.env.PAPERCLIP_AGENT_ID?.trim() || null;
+          // The issue knows its company, so `qa` does not need -C just to
+          // resolve an agent name.
+          const resolveAgentId = agentIdResolver(ctx, (issue as { companyId?: string }).companyId ?? ctx.companyId);
+          const answerAgentId = await resolveAgentId(opts.answerAgent ?? null, "--answer-agent");
+          const questionAgentId = await resolveAgentId(questionAgentRef, "--question-agent");
+          // Identity is the point of the discussion tab (MUL-61): an unsigned
+          // bubble reads as local-board forever and cannot be fixed later, so
+          // both sides must resolve to a real agent before anything is written.
+          if (!answerAgentId) {
+            throw new Error("--answer-agent is required and must match a registered agent — the answer bubble is signed by it");
+          }
+          if (!questionAgentId) {
+            throw new Error("no asking identity — set PAPERCLIP_AGENT_ID (see `paperclipai agent local-cli`) or pass --question-agent");
+          }
+
+          // A cold review runs to thousands of words. The whole thing inside a
+          // bubble turns the tab into a wall, so the full text goes to an issue
+          // document (one key per round) and the bubble keeps the verdict line.
+          let docKey: string | null = null;
+          if (opts.answerDocKey) {
+            const fullBody = opts.answerFile ? await readFile(opts.answerFile, "utf8") : opts.answer;
+            // Re-filing the same round overwrites its document, and the server
+            // demands the caller name the revision it is replacing — so read
+            // the current one instead of failing with a 409.
+            const existingDoc = await ctx.api
+              .get<{ latestRevisionId?: string | null; currentRevisionId?: string | null }>(
+                apiPath`/api/issues/${issue.id}/documents/${opts.answerDocKey}`,
+              )
+              .catch(() => null);
+            const baseRevisionId = existingDoc?.latestRevisionId ?? existingDoc?.currentRevisionId ?? null;
+            await ctx.api.put(apiPath`/api/issues/${issue.id}/documents/${opts.answerDocKey}`, {
+              title: opts.answerDocTitle ?? `评审 ${opts.answerDocKey}`,
+              format: "markdown",
+              body: fullBody,
+              ...(baseRevisionId ? { baseRevisionId } : {}),
+            });
+            docKey = opts.answerDocKey;
+          } else if (opts.answerFile) {
+            throw new Error("--answer-file needs --answer-doc-key: without a document to hold it, the full text would land in the bubble");
+          }
+          const qComment = await ctx.api.post<{ id: string } & IssueComment>(
+            apiPath`/api/issues/${issue.id}/comments`,
+            {
+              body: opts.question,
+              presentation: {
+                kind: "discussion_qa",
+                threadId,
+                role: "question",
+                label: opts.label ?? null,
+                ...(questionAgentId ? { questionAgentId } : {}),
+              },
+            },
+          );
+          const aComment = await ctx.api.post<{ id: string } & IssueComment>(
+            apiPath`/api/issues/${issue.id}/comments`,
+            {
+              body: opts.answer,
+              presentation: {
+                kind: "discussion_qa",
+                threadId,
+                role: "answer",
+                label: opts.label ?? null,
+                ...(opts.answerAgent ? { answerAgent: opts.answerAgent } : {}),
+                ...(answerAgentId ? { answerAgentId } : {}),
+                ...(docKey ? { docKey, docTitle: opts.answerDocTitle ?? null } : {}),
+                ...(opts.answerModel ? { answerModel: opts.answerModel } : {}),
+                ...(opts.answerEffort ? { answerEffort: opts.answerEffort } : {}),
+              },
+            },
+          );
+          printOutput({
+            threadId,
+            questionCommentId: qComment?.id,
+            answerCommentId: aComment?.id,
+            answerAgentId,
+            questionAgentId,
+            answerDocKey: docKey,
+            issue: issue.identifier,
+          }, { json: ctx.json });
+        } catch (err) {
+          handleCommandError(err);
+        }
+      }),
+  );
+
+  addCommonClientOptions(
+    issue
+      .command("qa:list")
+      .description("List discussion threads on an issue")
+      .argument("<issueId>", "Issue ID or identifier")
+      .action(async (issueId: string, opts: IssueQaListOptions) => {
+        try {
+          const ctx = resolveCommandContext(opts);
+          const issue = await ctx.api.get<Issue>(apiPath`/api/issues/${issueId}`);
+          if (!issue) throw new Error(`Issue not found: ${issueId}`);
+          const comments = (await ctx.api.get<Array<{ id: string; body: string; presentation?: Record<string, unknown>; authorAgentId?: string | null; authorUserId?: string | null; createdAt: string }>>(
+            apiPath`/api/issues/${issue.id}/comments`,
+          )) ?? [];
+          const threads = new Map<string, Array<{ role: string; body: string; author: string; createdAt: string; commentId: string }>>();
+          for (const c of comments) {
+            const p = c.presentation as { kind?: string; threadId?: string; role?: string } | null | undefined;
+            if (p?.kind === "discussion_qa" && p.threadId) {
+              const list = threads.get(p.threadId) ?? [];
+              list.push({
+                role: p.role ?? "unknown",
+                body: c.body,
+                author: c.authorAgentId ? `agent:${c.authorAgentId.slice(0, 8)}` : c.authorUserId ?? "board",
+                createdAt: c.createdAt,
+                commentId: c.id,
+              });
+              threads.set(p.threadId, list);
+            }
+          }
+          if (ctx.json) {
+            printOutput([...threads.entries()].map(([tid, msgs]) => ({ threadId: tid, messages: msgs })), { json: true });
+            return;
+          }
+          for (const [tid, msgs] of threads) {
+            console.log(`\n=== thread ${tid.slice(0, 8)} ===`);
+            for (const m of msgs) {
+              console.log(`  [${m.role}] ${m.author}: ${m.body.slice(0, 100)}`);
+            }
+          }
+        } catch (err) {
+          handleCommandError(err);
+        }
+      }),
+  );
+
+  addCommonClientOptions(
+    issue
+      .command("progress")
+      .description("File a progress note on an issue (compact ledger entry)")
+      .argument("<issueId>", "Issue ID or identifier")
+      .argument("<text>", "Progress note text")
+      .option("--tone <tone>", "info | success | warning | danger", "info")
+      .action(async (issueId: string, text: string, opts: IssueProgressOptions) => {
+        try {
+          const ctx = resolveCommandContext(opts);
+          const issue = await ctx.api.get<Issue>(apiPath`/api/issues/${issueId}`);
+          if (!issue) throw new Error(`Issue not found: ${issueId}`);
+          await autoClaimIfUnclaimed(ctx, issue);
+          const comment = await ctx.api.post<IssueComment>(apiPath`/api/issues/${issue.id}/comments`, {
+            body: text,
+            presentation: { kind: "progress_note", tone: opts.tone },
+          });
+          printOutput(comment, { json: ctx.json });
         } catch (err) {
           handleCommandError(err);
         }

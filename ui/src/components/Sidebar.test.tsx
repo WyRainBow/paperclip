@@ -336,7 +336,7 @@ describe("Sidebar", () => {
     });
   });
 
-  it("shows Skills directly below Artifacts in Work", async () => {
+  it("groups team asset nav under TeamWorkSpace", async () => {
     mockInstanceSettingsApi.getExperimental.mockResolvedValue({ enableIsolatedWorkspaces: false });
     const root = await renderSidebar();
 
@@ -353,7 +353,14 @@ describe("Sidebar", () => {
     const sections = [...container.querySelectorAll("nav > div")];
     const workSection = sections.find((section) => section.textContent?.startsWith("Work"));
     const companySection = sections.find((section) => section.textContent?.startsWith("Company"));
+    const teamSection = sections.find((section) => section.textContent?.startsWith("TeamWorkSpace"));
+    // Skills/Team Rules/Team Wiki/Hooks live in the TeamWorkSpace group, not Work (MUL-39).
+    expect(teamSection?.textContent).toContain("Team Skills");
+    expect(teamSection?.textContent).toContain("Team Rules");
+    expect(teamSection?.textContent).toContain("Team Wiki");
+    expect(teamSection?.textContent).toContain("Hooks");
     expect(workSection?.textContent).toContain("Skills");
+    expect(teamSection?.textContent).not.toContain("Skills");
     expect(companySection?.textContent).not.toContain("Skills");
 
     flushSync(() => {

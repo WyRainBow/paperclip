@@ -84,6 +84,12 @@ export interface DecisionOption {
   label: string;
   description?: string | null;
   style?: DecisionOptionStyle;
+  /** Agent recommending this option; always the proposing agent, enforced server-side. */
+  recommendedByAgentId?: string | null;
+  /** Proposer's pitch for recommending this option — written at proposal time,
+   *  deliberately separate from the decider's final rationale (user 2026-08-26:
+   *  the pitch says why it was recommended; the verdict input says why it won). */
+  recommendationReason?: string | null;
   effects: DecisionEffect[];
 }
 

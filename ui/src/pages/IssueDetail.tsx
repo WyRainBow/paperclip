@@ -24,6 +24,7 @@ import { usePanel } from "../context/PanelContext";
 import { useSidebar } from "../context/SidebarContext";
 import { useToastActions } from "../context/ToastContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
+import { useTranslation } from "@/i18n";
 import { assigneeValueFromSelection, formatAssigneeUserLabel, formatUserLabel, suggestedCommentAssigneeValue } from "../lib/assignees";
 import { buildCompanyUserInlineOptions, buildCompanyUserLabelMap, buildCompanyUserProfileMap, buildMarkdownMentionOptions, isAgentTaskTarget } from "../lib/company-members";
 import { extractIssueTimelineEvents, extractIssueWorkModeChanges } from "../lib/issue-timeline-events";
@@ -94,6 +95,8 @@ import { liveBlueBadge } from "../lib/status-colors";
 import { ApprovalCard } from "../components/ApprovalCard";
 import { ProjectTile } from "../components/ProjectTile";
 import { InlineEditor } from "../components/InlineEditor";
+import { IssueDecisionsPanel } from "../components/IssueDecisionsPanel";
+import { IssueDiscussionPanel } from "../components/IssueDiscussionPanel";
 import {
   IssueChatThread,
   type IssueChatComposerHandle,
@@ -194,6 +197,7 @@ import {
   ScanEye,
   Flag,
   FileCode2,
+  ListChecks,
   ListTree,
   MessageSquare,
   MoreHorizontal,
@@ -205,6 +209,7 @@ import {
   Repeat,
   SlidersHorizontal,
   XCircle,
+  MessagesSquare,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -1692,6 +1697,7 @@ function IssueDetailActivityTab({
 }
 
 export function IssueDetail() {
+  const { t } = useTranslation();
   const { issueId } = useParams<{ issueId: string }>();
   const { selectedCompanyId } = useCompany();
   // Classic Task Interface (flag: enableClassicTaskInterface): with the flag
@@ -2822,7 +2828,7 @@ export function IssueDetail() {
         queryClient.setQueryData(queryKeys.issues.detail(issueId!), context.previousIssue);
       }
       pushToast({
-        title: "Comment failed",
+        title: t("Comment failed"),
         body: err instanceof Error ? err.message : "Unable to post comment",
         tone: "error",
       });
@@ -3087,7 +3093,7 @@ export function IssueDetail() {
         queryClient.setQueryData(queryKeys.issues.detail(issueId!), context.previousIssue);
       }
       pushToast({
-        title: "Comment failed",
+        title: t("Comment failed"),
         body: err instanceof Error ? err.message : "Unable to post comment",
         tone: "error",
       });
@@ -3230,7 +3236,7 @@ export function IssueDetail() {
       invalidateIssueCollections();
       invalidateIssueDocumentAnnotationState();
       pushToast({
-        title: "Comment deleted",
+        title: t("Comment deleted"),
         body: "The thread now shows a deleted-comment marker.",
         tone: "success",
       });
@@ -4415,12 +4421,14 @@ export function IssueDetail() {
   const pausedComposerHint = activePauseHold
     ? (
       issue.assigneeAgentId
-        ? `Sending this comment will wake ${agentMap.get(issue.assigneeAgentId)?.name ?? "the assignee"} for triage while the subtree remains paused.`
-        : "Assign an agent to wake them for triage while the subtree remains paused."
+        ? t("Sending this comment will wake {{name}} for triage while the subtree remains paused.", {
+          name: agentMap.get(issue.assigneeAgentId)?.name ?? t("the assignee"),
+        })
+        : t("Assign an agent to wake them for triage while the subtree remains paused.")
     )
     : null;
   const reopenComposerHint = closedIsolatedWorkspaceReopenPending
-    ? "This issue's isolated workspace was archived. Your next comment or resume reopens it and rebuilds the worktree."
+    ? t("This issue's isolated workspace was archived. Your next comment or resume reopens it and rebuilds the worktree.")
     : null;
   const composerHint = pausedComposerHint ?? reopenComposerHint;
   const queuedCommentReason: "hold" | "active_run" | "other" = activePauseHold ? "hold" : "active_run";
@@ -4852,7 +4860,7 @@ export function IssueDetail() {
             onSave={(description) => updateIssue.mutateAsync({ description })}
             as="p"
             className="text-sm leading-7 text-foreground"
-            placeholder="Add a description..."
+            placeholder={t("Add a description...")}
             multiline
             foldable
             mentions={mentionOptions}
@@ -5009,7 +5017,7 @@ export function IssueDetail() {
             </div>
           ) : (
             <div className="text-xs">
-              This task is paused by ancestor{" "}
+              {t("This task is paused by ancestor ")}
               {activePauseHoldRoot?.identifier ? (
                 <Link to={createIssueDetailPath(activePauseHoldRoot.identifier)} className="underline">
                   {activePauseHoldRoot.identifier}
@@ -5017,7 +5025,7 @@ export function IssueDetail() {
               ) : (
                 activePauseHold.rootIssueId.slice(0, 8)
               )}
-              . Resume from the root task to deliver deferred work.
+              {t(". Resume from the root task to deliver deferred work.")}
             </div>
           )}
         </div>
@@ -5073,6 +5081,11 @@ export function IssueDetail() {
       {/* Flag ON: attachments/work products/workspace live in the properties
           pane (Artifacts tab) — the center column belongs to the thread. */}
       {taskChatShellEnabled ? null : (
+      // Documents overflow the page's 3xl column to the right, where `main`
+      // already has unused width. Stepped by breakpoint rather than a flat
+      // width so the overflow can never outrun the viewport and introduce a
+      // horizontal page scroll on smaller screens.
+      <div className="w-full xl:w-[56rem] 2xl:w-(--tc-documents-max-w)">
       <IssueDocumentsSection
         issue={issue}
         canDeleteDocuments={Boolean(session?.user?.id)}
@@ -5100,6 +5113,7 @@ export function IssueDetail() {
         agentMap={agentMap}
         userProfileMap={userProfileMap}
       />
+      </div>
       )}
 
       {taskChatShellEnabled ? null : (
@@ -5214,6 +5228,14 @@ export function IssueDetail() {
           <TabsTrigger value="related-work" className="gap-1.5">
             <ListTree className="h-3.5 w-3.5" />
             Related work
+          </TabsTrigger>
+          <TabsTrigger value="decisions" className="gap-1.5">
+            <ListChecks className="h-3.5 w-3.5" />
+            Decision
+          </TabsTrigger>
+          <TabsTrigger value="discussion" className="gap-1.5">
+            <MessagesSquare className="h-3.5 w-3.5" aria-hidden />
+            Discussion
           </TabsTrigger>
           {issuePluginTabItems.map((item) => (
             <TabsTrigger key={item.value} value={item.value}>
@@ -5404,6 +5426,16 @@ export function IssueDetail() {
           />
         </TabsContent>
 
+        {/* Decisions raised while working this issue. The company-wide page
+            lists everything by time; here the question is narrower. */}
+        <TabsContent value="decisions" className={shellSectionClass}>
+          <IssueDecisionsPanel companyId={issue.companyId} issueId={issue.id} agentMap={agentMap} />
+        </TabsContent>
+
+        <TabsContent value="discussion" className={shellSectionClass}>
+          <IssueDiscussionPanel issueId={issue.id} issueIdentifier={issue.identifier} />
+        </TabsContent>
+
         {activePluginTab && (
           <TabsContent value={activePluginTab.value} className={shellSectionClass}>
             <PluginSlotMount
@@ -5442,7 +5474,7 @@ export function IssueDetail() {
               <Textarea
                 value={treeControlReason}
                 onChange={(event) => setTreeControlReason(event.target.value)}
-                placeholder="Explain why this subtree control is being applied..."
+                placeholder={t("Explain why this subtree control is being applied...")}
                 className="min-h-(--sz-88px)"
               />
             </div>

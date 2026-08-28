@@ -64,6 +64,7 @@ import {
   isPluginManagedIssueLifecycle,
   noticeMetadataReferencesRecoveryAction,
   type SuccessfulRunHandoffNotice,
+  RECOVERY_ACTION_ROW_LABEL,
 } from "./successful-run-handoff.js";
 import {
   buildExecutionReviewParticipantRecoveryNoticeSeed,
@@ -159,6 +160,7 @@ type ResolvedDependencyWakeBackstopOptions = {
 type LatestIssueRun = Pick<
   typeof heartbeatRuns.$inferSelect,
   | "id"
+  | "invocationSource"
   | "agentId"
   | "status"
   | "error"
@@ -234,22 +236,22 @@ function recoveryNoticeMetadata(input: {
 }): IssueCommentMetadata {
   const rows: IssueCommentMetadata["sections"][number]["rows"] = [
     ...(input.recoveryActionId
-      ? [{ type: "key_value" as const, label: "Recovery action", value: input.recoveryActionId }]
+      ? [{ type: "key_value" as const, label: RECOVERY_ACTION_ROW_LABEL, value: input.recoveryActionId }]
       : []),
-    { type: "key_value", label: "Cause", value: input.cause },
-    { type: "key_value", label: "Previous status", value: input.previousStatus },
+    { type: "key_value", label: "原因", value: input.cause },
+    { type: "key_value", label: "之前的状态", value: input.previousStatus },
     ...(input.recoveryOwner
       ? [{
           type: "agent_link" as const,
-          label: "Recovery owner",
+          label: "恢复负责人",
           agentId: input.recoveryOwner.id,
           name: input.recoveryOwner.name.slice(0, 160),
         }]
-      : [{ type: "key_value" as const, label: "Recovery owner", value: "board" }]),
+      : [{ type: "key_value" as const, label: "恢复负责人", value: "board" }]),
     ...(input.latestRun
       ? [{
           type: "run_link" as const,
-          label: "Latest run",
+          label: "最近一次运行",
           runId: input.latestRun.id,
           title: input.latestRun.status,
         }]
@@ -259,7 +261,7 @@ function recoveryNoticeMetadata(input: {
   return {
     version: 1,
     sourceRunId: input.latestRun?.id ?? null,
-    sections: [{ title: "Recovery", rows }],
+    sections: [{ title: "恢复", rows }],
   };
 }
 
@@ -817,6 +819,7 @@ export function recoveryService(db: Db, deps: { enqueueWakeup: RecoveryWakeup })
         status: heartbeatRuns.status,
         error: heartbeatRuns.error,
         errorCode: heartbeatRuns.errorCode,
+        invocationSource: heartbeatRuns.invocationSource,
         contextSnapshot: heartbeatRuns.contextSnapshot,
         livenessState: heartbeatRuns.livenessState,
         resultJson: heartbeatRuns.resultJson,
@@ -847,6 +850,7 @@ export function recoveryService(db: Db, deps: { enqueueWakeup: RecoveryWakeup })
         status: heartbeatRuns.status,
         error: heartbeatRuns.error,
         errorCode: heartbeatRuns.errorCode,
+        invocationSource: heartbeatRuns.invocationSource,
         contextSnapshot: heartbeatRuns.contextSnapshot,
         livenessState: heartbeatRuns.livenessState,
         resultJson: heartbeatRuns.resultJson,
@@ -878,6 +882,7 @@ export function recoveryService(db: Db, deps: { enqueueWakeup: RecoveryWakeup })
         id: heartbeatRuns.id,
         status: heartbeatRuns.status,
         errorCode: heartbeatRuns.errorCode,
+        invocationSource: heartbeatRuns.invocationSource,
         contextSnapshot: heartbeatRuns.contextSnapshot,
         finishedAt: heartbeatRuns.finishedAt,
       })
@@ -1086,6 +1091,7 @@ export function recoveryService(db: Db, deps: { enqueueWakeup: RecoveryWakeup })
         status: heartbeatRuns.status,
         error: heartbeatRuns.error,
         errorCode: heartbeatRuns.errorCode,
+        invocationSource: heartbeatRuns.invocationSource,
         contextSnapshot: heartbeatRuns.contextSnapshot,
         livenessState: heartbeatRuns.livenessState,
         resultJson: heartbeatRuns.resultJson,
@@ -2334,6 +2340,13 @@ export function recoveryService(db: Db, deps: { enqueueWakeup: RecoveryWakeup })
       });
     }
 
+    // Operators running terminal-contributor sessions see these fire constantly:
+    // an external terminal produces no run output Paperclip can observe, so
+    // every such session eventually looks "silent". Let them turn it off.
+    if ((await instanceSettings.getExperimental()).enableStaleActiveRunEvaluations === false) {
+      candidates = [];
+    }
+
     const result = {
       scanned: candidates.length,
       created: 0,
@@ -2865,14 +2878,14 @@ export function recoveryService(db: Db, deps: { enqueueWakeup: RecoveryWakeup })
           version: 1,
           sourceRunId: input.latestRun?.id ?? null,
           sections: [{
-            title: "Recovery",
+            title: "恢复",
             rows: [
-              { type: "key_value", label: "Cause", value: "recovery_issue_failed" },
-              { type: "key_value", label: "Previous status", value: input.previousStatus },
+              { type: "key_value", label: "原因", value: "recovery_issue_failed" },
+              { type: "key_value", label: "之前的状态", value: input.previousStatus },
               ...(input.latestRun
                 ? [{
                     type: "run_link" as const,
-                    label: "Latest run",
+                    label: "最近一次运行",
                     runId: input.latestRun.id,
                     title: input.latestRun.status,
                   }]
@@ -3008,13 +3021,13 @@ export function recoveryService(db: Db, deps: { enqueueWakeup: RecoveryWakeup })
         metadata: {
           version: 1,
           sections: [{
-            title: "Recovery",
+            title: "恢复",
             rows: [
-              { type: "key_value", label: "Cause", value: "continuation_waiting_on_review" },
-              { type: "key_value", label: "Previous status", value: issue.status },
+              { type: "key_value", label: "原因", value: "continuation_waiting_on_review" },
+              { type: "key_value", label: "之前的状态", value: issue.status },
               {
                 type: "key_value",
-                label: "Blocking issues",
+                label: "阻塞的卡",
                 value: blockedByIssueIds.join(", ").slice(0, 2000),
               },
             ],
@@ -4099,6 +4112,38 @@ export function recoveryService(db: Db, deps: { enqueueWakeup: RecoveryWakeup })
 
       let latestRun = await getLatestIssueRun(issue.companyId, issue.id);
 
+      // Terminal contributor sessions are the live execution path by
+      // definition (the operator's terminal holds the work). The stranded
+      // sweep must not escalate, retry, or repair issues whose latest run is
+      // a terminal session.
+      if (latestRun?.invocationSource === "terminal_contributor") {
+        result.skipped += 1;
+        continue;
+      }
+      // getLatestIssueRun filters by contextSnapshot.issueId, which terminal
+      // sessions don't carry — so also skip outright when the assignee has a
+      // live terminal session (running, touched within the 2h reuse window).
+      if (agentId) {
+        const liveTerminal = await db
+          .select({ id: heartbeatRuns.id })
+          .from(heartbeatRuns)
+          .where(
+            and(
+              eq(heartbeatRuns.companyId, issue.companyId),
+              eq(heartbeatRuns.agentId, agentId),
+              eq(heartbeatRuns.invocationSource, "terminal_contributor"),
+              eq(heartbeatRuns.status, "running"),
+              gte(heartbeatRuns.updatedAt, new Date(Date.now() - 2 * 60 * 60 * 1000)),
+            ),
+          )
+          .limit(1)
+          .then((rows) => rows[0] ?? null);
+        if (liveTerminal) {
+          result.skipped += 1;
+          continue;
+        }
+      }
+
       const agent = await getAgent(agentId);
       const agentInvokable = agent && agent.companyId === issue.companyId
         ? await isAgentInvokable(agent)
@@ -4122,8 +4167,8 @@ export function recoveryService(db: Db, deps: { enqueueWakeup: RecoveryWakeup })
             previousStatus: issue.status as StrandedPreviousStatus,
             latestRun,
             comment:
-              "Paperclip cannot safely continue automatic recovery because the original assignee is not invokable. " +
-              "The source assignment is unchanged and the board must choose the next action.",
+              "原责任人不可调用，Paperclip 无法安全地继续自动恢复。" +
+              "来源指派没有改动，下一步要由 board 决定。",
           });
           if (updated) {
             result.escalated += 1;
@@ -4180,8 +4225,8 @@ export function recoveryService(db: Db, deps: { enqueueWakeup: RecoveryWakeup })
               ? EXECUTION_REVIEW_PARTICIPANT_RECOVERY_REASON
               : undefined,
             comment:
-              "Paperclip cannot safely continue automatic recovery because the original recovery target is over budget. " +
-              "The source assignment is unchanged and the board must choose the next action.",
+              "原恢复目标已超预算，Paperclip 无法安全地继续自动恢复。" +
+              "来源指派没有改动，下一步要由 board 决定。",
           });
           if (updated) {
             result.escalated += 1;
@@ -4564,10 +4609,10 @@ export function recoveryService(db: Db, deps: { enqueueWakeup: RecoveryWakeup })
             latestRun,
             notice: {
               body:
-                "Paperclip automatically retried dispatch for this assigned `todo` issue after a lost wake/run, " +
-                "but it still has no live execution path. " +
-                "Moving it to `blocked` so it is visible for intervention.",
-              title: "No live execution path",
+                "唤醒或运行丢失后，Paperclip 自动重派了这张指派中的 `todo` 卡，" +
+                "但仍没有活的执行路径。" +
+                "已移至 `blocked`，等人来处理。",
+              title: "没有活的执行路径",
               tone: "danger",
             },
           });
@@ -4672,8 +4717,8 @@ export function recoveryService(db: Db, deps: { enqueueWakeup: RecoveryWakeup })
               previousStatus: "in_progress",
               latestRun: successfulRun,
               comment:
-                "Paperclip automatically retried continuation for this assigned `in_progress` issue and the retry " +
-                "made progress, but it still has no live execution path. Moving it to `blocked` so it is visible for intervention.",
+                "Paperclip 自动重试了这张指派中的 `in_progress` 卡的续跑，" +
+                "重试有进展但仍没有活的执行路径。已移至 `blocked`，等人来处理。",
             });
             if (updated) {
               result.escalated += 1;
@@ -4742,7 +4787,7 @@ export function recoveryService(db: Db, deps: { enqueueWakeup: RecoveryWakeup })
                 "Paperclip detected a non-retryable failure on this issue's continuation run " +
                 `(\`${classification.errorCode}\`). Skipping automatic retries and moving it to \`blocked\` ` +
                 "so it is visible for intervention.",
-              title: "Continuation failed",
+              title: "续跑失败",
               tone: "danger",
             },
           });
@@ -4770,10 +4815,10 @@ export function recoveryService(db: Db, deps: { enqueueWakeup: RecoveryWakeup })
               latestRun,
               notice: {
                 body:
-                  "Paperclip automatically retried continuation for this assigned `in_progress` issue after its live " +
-                  `execution disappeared, but it still has no live execution path${attemptCopy}. ` +
-                  "Moving it to `blocked` so it is visible for intervention.",
-                title: "No live execution path",
+                  "活的执行路径消失后，Paperclip 自动重试了这张指派中的 `in_progress` 卡的续跑，" +
+                  `但仍没有活的执行路径${attemptCopy}。` +
+                  "已移至 `blocked`，等人来处理。",
+                title: "没有活的执行路径",
                 tone: "danger",
               },
             });

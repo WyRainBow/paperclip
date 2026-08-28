@@ -121,7 +121,7 @@ describeEmbeddedPostgres("issue comment attribution and patch audit routes", () 
       {
         companyId: company.id,
         identifier: `${company.issuePrefix}-1`,
-        title: "Source issue",
+        title: "来源卡",
         status: "in_progress" as const,
         priority: "medium" as const,
         assigneeAgentId: actorAgent.id,

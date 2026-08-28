@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
-import type { Db } from "@paperclipai/db";
+import { agents, type Db } from "@paperclipai/db";
+import { and, eq } from "drizzle-orm";
 import {
   createDecisionArchiveProposalSchema,
   decisionInputsSchema,
@@ -31,9 +32,21 @@ const createSchema = z.object({
   resolverPolicy: z.enum(["board", "agents"]).optional(),
   originIssueId: z.string().guid().nullable().optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
+  // createdByAgentId: the mirror of actingAgentId on /decide. A terminal
+  // operating the board has no agent identity on the request, so the create
+  // path used to 403 it outright and back-filling an already-settled decision
+  // had to borrow another session's run. The board names the agent the record
+  // is attributed to instead; an agent actor still cannot claim to be another.
+  createdByAgentId: z.string().guid().nullable().optional(),
 }).strict();
-const bundleSchema = z.object({ title: z.string().trim().min(1).max(500), summary: z.string().max(100_000), decisions: z.array(createSchema).min(1).max(50) }).strict();
-const decideSchema = z.object({ optionId: z.string().trim().min(1).max(120), inputValues: z.record(z.string(), z.string().max(20_000)).optional(), idempotencyKey: z.string().trim().min(1).max(500).nullable().optional() }).strict();
+// A bundle is always proposed by an agent actor, so its items never carry the
+// board's explicit attribution field.
+const bundleSchema = z.object({ title: z.string().trim().min(1).max(500), summary: z.string().max(100_000), decisions: z.array(createSchema.omit({ createdByAgentId: true })).min(1).max(50) }).strict();
+// actingAgentId: a board-policy decision is the board's to make, but it is
+// still performed from somewhere — a terminal agent operating the board. The
+// two were collapsed into one field, so every such verdict read as an
+// anonymous "local-board". Board-only: an agent must not claim to be another.
+const decideSchema = z.object({ optionId: z.string().trim().min(1).max(120), inputValues: z.record(z.string(), z.string().max(20_000)).optional(), idempotencyKey: z.string().trim().min(1).max(500).nullable().optional(), actingAgentId: z.string().guid().nullable().optional() }).strict();
 const dismissSchema = z.object({ reason: z.string().max(20_000).nullable().optional() }).strict();
 const statsQuerySchema = z.object({
   groupBy: z.literal("ruleKey"),
@@ -42,13 +55,27 @@ const statsQuerySchema = z.object({
 }).strict();
 
 function agentContext(req: Parameters<typeof getActorInfo>[0]) {
-  if (req.actor.type !== "agent" || !req.actor.agentId || !req.actor.runId) return null;
-  return { agentId: req.actor.agentId, runId: req.actor.runId };
+  // runId is optional on purpose: a terminal agent holding a standard key has
+  // no run, and requiring one meant it could never propose a decision. The
+  // service derives provenance from originIssueId instead (user 2026-08-27).
+  if (req.actor.type !== "agent" || !req.actor.agentId) return null;
+  return { agentId: req.actor.agentId, runId: req.actor.runId ?? null };
 }
 
 function boardUserId(req: Parameters<typeof getActorInfo>[0]) {
   assertBoard(req);
   return req.actor.userId ?? "local-implicit-board";
+}
+
+// A board actor may name the agent a decision is attributed to, but only one of
+// its own company's — otherwise the board could pin a record on any agent in
+// the instance. Shared by the create and decide paths, which check the same thing.
+function companyAgentId(db: Db, companyId: string, agentId: string) {
+  return db
+    .select({ id: agents.id })
+    .from(agents)
+    .where(and(eq(agents.id, agentId), eq(agents.companyId, companyId)))
+    .then((rows) => rows[0]?.id ?? null);
 }
 
 export function decisionRoutes(db: Db, options: DecisionServiceOptions) {
@@ -62,7 +89,7 @@ export function decisionRoutes(db: Db, options: DecisionServiceOptions) {
       assertCompanyAccess(req, companyId);
       const agent = agentContext(req);
       if (!agent) {
-        res.status(403).json({ error: "Agent run context required" });
+        res.status(403).json({ error: "Agent identity required" });
         return;
       }
       const access = await authorizationService(db).decide({
@@ -139,17 +166,32 @@ export function decisionRoutes(db: Db, options: DecisionServiceOptions) {
   );
   router.post("/companies/:companyId/decisions", validate(createSchema), async (req, res) => {
     const companyId = req.params.companyId as string; assertCompanyAccess(req, companyId);
-    const agent = agentContext(req); if (!agent) { res.status(403).json({ error: "Agent run context required" }); return; }
-    res.status(201).json(await svc.create({ companyId, actor: req.actor, ...agent, ...req.body }));
+    const { createdByAgentId, ...body } = req.body as z.infer<typeof createSchema>;
+    const agent = agentContext(req);
+    if (agent) { res.status(201).json(await svc.create({ companyId, actor: req.actor, ...agent, ...body })); return; }
+    if (!createdByAgentId) {
+      res.status(403).json({ error: "Agent identity required: authenticate as an agent, or pass createdByAgentId naming the company agent this decision is attributed to" });
+      return;
+    }
+    assertBoard(req);
+    const originAgentId = await companyAgentId(db, companyId, createdByAgentId);
+    if (!originAgentId) { res.status(422).json({ error: "createdByAgentId does not belong to this company" }); return; }
+    // The board owns the call, the named agent owns the record: the decision is
+    // filed under that agent with no run, so provenance falls back to
+    // originIssueId — which the service requires on this path.
+    res.status(201).json(await svc.create({ companyId, actor: req.actor, agentId: originAgentId, runId: null, ...body }));
   });
   router.post("/companies/:companyId/decision-bundles", validate(bundleSchema), async (req, res) => {
     const companyId = req.params.companyId as string; assertCompanyAccess(req, companyId);
-    const agent = agentContext(req); if (!agent) { res.status(403).json({ error: "Agent run context required" }); return; }
+    const agent = agentContext(req); if (!agent) { res.status(403).json({ error: "Agent identity required" }); return; }
     res.status(201).json(await svc.createBundle({ companyId, actor: req.actor, ...agent, ...req.body }));
   });
+  // Readable by agents as well as the board: an agent picking up a task needs
+  // to see what was already decided on it, and a decision is a record of what
+  // the company agreed, not a private board artifact.
   router.get("/companies/:companyId/decisions", async (req, res) => {
-    const companyId = req.params.companyId as string; assertBoard(req); assertCompanyAccess(req, companyId);
-    const query = z.object({ status: z.enum(["open", "decided", "expired", "cancelled"]).optional(), bundleId: z.string().guid().optional(), targetIssueId: z.string().guid().optional(), originAgentId: z.string().guid().optional(), limit: z.coerce.number().int().positive().max(100).optional() }).safeParse(req.query);
+    const companyId = req.params.companyId as string; assertCompanyAccess(req, companyId);
+    const query = z.object({ status: z.enum(["open", "decided", "expired", "cancelled"]).optional(), bundleId: z.string().guid().optional(), targetIssueId: z.string().guid().optional(), originIssueId: z.string().guid().optional(), originAgentId: z.string().guid().optional(), limit: z.coerce.number().int().positive().max(100).optional() }).safeParse(req.query);
     if (!query.success) { res.status(400).json({ error: "Invalid decision filters", details: query.error.flatten() }); return; }
     res.json(await svc.list(companyId, query.data));
   });
@@ -184,14 +226,12 @@ export function decisionRoutes(db: Db, options: DecisionServiceOptions) {
     const decision = await getAccessibleResource(req, res, svc.get(req.params.id as string), "Decision not found");
     if (!decision) return;
     if (req.actor.type === "agent" && req.actor.agentId && req.actor.companyId === decision.companyId) {
-      // Agent-resolvable decisions exist so mutually-made terminal decisions
-      // (claude/codex talking in the operator's shell) can be archived with
-      // the deciding agent's identity. Board-created governance decisions keep
-      // resolverPolicy "board" and never enter this branch.
-      if (decision.resolverPolicy !== "agents") {
-        res.status(403).json({ error: "Only the board may decide this decision", code: "board_resolver_only" });
-        return;
-      }
+      // Any company agent may decide, whatever the resolverPolicy (user
+      // 2026-08-27): the operator relays their verdicts through terminal
+      // agents, so "board only" in practice meant "laundered through
+      // local-board with the agent invisible". The verdict is signed by the
+      // agent that performed it; resolverPolicy stays on the record as the
+      // proposer's intent, not as a gate.
       res.json(await svc.decide({
         id: decision.id,
         decidedByAgentId: req.actor.agentId,
@@ -202,7 +242,25 @@ export function decisionRoutes(db: Db, options: DecisionServiceOptions) {
       return;
     }
     const userId = boardUserId(req);
-    res.json(await svc.decide({ id: decision.id, decidedByUserId: userId, userActor: req.actor, ...req.body }));
+    const { actingAgentId, ...decideBody } = req.body as z.infer<typeof decideSchema>;
+    // Record which terminal performed it alongside the board user who owns the
+    // call, so the card reads "<board user> · via <agent>" instead of dropping
+    // the operator. Same shape the issue list already uses for created-by.
+    let actingAgent: string | null = null;
+    if (actingAgentId) {
+      actingAgent = await companyAgentId(db, decision.companyId, actingAgentId);
+      if (!actingAgent) {
+        res.status(422).json({ error: "actingAgentId does not belong to this company" });
+        return;
+      }
+    }
+    res.json(await svc.decide({
+      id: decision.id,
+      decidedByUserId: userId,
+      decidedByAgentId: actingAgent ?? undefined,
+      userActor: req.actor,
+      ...decideBody,
+    }));
   });
   router.post("/decisions/:id/dismiss", validate(dismissSchema), async (req, res) => {
     const userId = boardUserId(req);
@@ -215,6 +273,13 @@ export function decisionRoutes(db: Db, options: DecisionServiceOptions) {
     const decision = await getAccessibleResource(req, res, svc.get(req.params.id as string), "Decision not found");
     if (!decision) return;
     const actor = getActorInfo(req); res.json(await svc.cancel(decision.id, { actorType: actor.actorType, actorId: actor.actorId, runId: actor.runId }));
+  });
+  router.delete("/decisions/:id", async (req, res) => {
+    assertBoardOrAgent(req);
+    const decision = await getAccessibleResource(req, res, svc.get(req.params.id as string), "Decision not found");
+    if (!decision) return;
+    const actor = getActorInfo(req);
+    res.json(await svc.remove(decision.id, { actorType: actor.actorType, actorId: actor.actorId, runId: actor.runId }));
   });
   return router;
 }

@@ -498,6 +498,7 @@ const createIssueBaseSchema = z.object({
   assigneeUserId: z.string().optional().nullable(),
   requestDepth: issueRequestDepthInputSchema.optional().default(0),
   createdByUserId: z.string().optional().nullable(),
+  createdBySession: z.string().trim().max(200).optional().nullable(),
   responsibleUserId: z.string().optional().nullable(),
   billingCode: z.string().optional().nullable(),
   assigneeAdapterOverrides: issueAssigneeAdapterOverridesSchema.optional().nullable(),
@@ -610,6 +611,17 @@ export const updateIssueSchema = objectWithoutDefaults(
   resume: z.boolean().optional(),
   interrupt: z.boolean().optional(),
   hiddenAt: z.string().datetime().nullable().optional(),
+  // MUL-35 driving slot: one per issue, overwritten on start/handoff.
+  // Server stamps drivingSessionAt; clients never send it.
+  drivingSession: z.string().trim().max(200).nullable().optional(),
+  workingBranch: z.string().trim().max(200).nullable().optional(),
+  drivingAgentId: z.string().guid().nullable().optional(),
+  // Correcting authorship after the fact. Board-only (enforced in the route):
+  // an agent must not be able to rewrite who opened a card, but a human fixing
+  // a card filed before its terminal had an agent key is legitimate — and
+  // without this the field is unreachable, since it is otherwise set only from
+  // the authenticated caller at create time.
+  createdByAgentId: z.string().guid().nullable().optional(),
 });
 
 export type UpdateIssue = z.infer<typeof updateIssueSchema>;
@@ -648,6 +660,29 @@ export const issueCommentPresentationSchema = z.object({
   title: z.string().trim().min(1).max(160).nullable().optional(),
   detailsDefaultOpen: z.boolean().optional().default(false),
   density: z.enum(ISSUE_COMMENT_PRESENTATION_DENSITIES).optional(),
+  // discussion_qa: pairs two comments into a bubble thread (MUL-38).
+  threadId: z.string().uuid().optional(),
+  role: z.enum(["question", "answer"]).optional(),
+  label: z.string().trim().max(200).nullable().optional(),
+  answerAgent: z.string().trim().max(120).optional(),
+  // The answering agent's id (MUL-51). answerAgent above holds only a name,
+  // which breaks the moment an agent is renamed, and the responder may be
+  // Codex today and Grok tomorrow. Distinct from authorAgentId: that records
+  // who WROTE the comment, which is the board when filing on behalf.
+  answerAgentId: z.string().uuid().optional(),
+  // The agent that ASKED. Filing a review on behalf makes board the writer on
+  // both bubbles, so without this the request side reads as "local-board" even
+  // when Claude is the one commissioning the review.
+  questionAgentId: z.string().uuid().optional(),
+  // A cold review runs to thousands of words; the full text lives in an issue
+  // document under this key (one per round) and the bubble keeps the verdict.
+  docKey: z.string().trim().min(1).max(120).optional(),
+  docTitle: z.string().trim().max(200).nullable().optional(),
+  // Which model produced the answer, and at what effort. These were being
+  // hand-written into --label text ("Codex gpt-5.6-sol high"), which no
+  // machine could read back (MUL-61, user: 保留模型名/effort).
+  answerModel: z.string().trim().max(120).optional(),
+  answerEffort: z.string().trim().max(40).optional(),
 }).strict();
 
 export type IssueCommentPresentation = z.infer<typeof issueCommentPresentationSchema>;

@@ -1,8 +1,10 @@
+import { agentCustomIcon } from "./AgentIconPicker";
 import { memo, useState, useEffect, useRef, useCallback, useMemo, type ChangeEvent, type CSSProperties, type DragEvent, type RefObject } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { AgentEnvConfig, EnvBinding, IssueWorkMode } from "@paperclipai/shared";
 import { pickTextColorForSolidBg } from "@/lib/color-contrast";
 import { useDialog } from "../context/DialogContext";
+import { useTranslation } from "@/i18n";
 import { useCompany } from "../context/CompanyContext";
 import { useAdapterCapabilities } from "../adapters/use-adapter-capabilities";
 import { executionWorkspacesApi } from "../api/execution-workspaces";
@@ -377,6 +379,7 @@ const IssueTitleTextarea = memo(function IssueTitleTextarea({
   projectSelectorRef: RefObject<HTMLButtonElement | null>;
   onChange: (value: string) => void;
 }) {
+  const { t } = useTranslation();
   const [draftValue, setDraftValue] = useState(value);
 
   useEffect(() => {
@@ -386,7 +389,7 @@ const IssueTitleTextarea = memo(function IssueTitleTextarea({
   return (
     <textarea
       className="w-full text-lg font-semibold bg-transparent outline-none resize-none overflow-hidden placeholder:text-muted-foreground/50"
-      placeholder="Task title"
+      placeholder={t("Task title")}
       rows={1}
       value={draftValue}
       onChange={(e) => {
@@ -440,6 +443,7 @@ const IssueDescriptionEditor = memo(function IssueDescriptionEditor({
   imageUploadHandler: (file: File) => Promise<string>;
   onChange: (value: string) => void;
 }) {
+  const { t } = useTranslation();
   const [draftValue, setDraftValue] = useState(value);
 
   useEffect(() => {
@@ -454,7 +458,7 @@ const IssueDescriptionEditor = memo(function IssueDescriptionEditor({
         setDraftValue(nextValue);
         onChange(nextValue);
       }}
-      placeholder="Add description..."
+      placeholder={t("Add description...")}
       bordered={false}
       mentions={mentions}
       contentClassName={cn("text-sm text-muted-foreground pb-12", expanded ? "min-h-(--sz-220px)" : "min-h-(--sz-120px)")}
@@ -464,6 +468,7 @@ const IssueDescriptionEditor = memo(function IssueDescriptionEditor({
 });
 
 export function NewIssueDialog() {
+  const { t } = useTranslation();
   const { newIssueOpen, newIssueDefaults, closeNewIssue } = useDialog();
   const visualViewportLayout = useVisualViewportLayout(newIssueOpen);
   const dialogBodyRef = useRef<HTMLDivElement>(null);
@@ -1523,7 +1528,7 @@ export function NewIssueDialog() {
                 value={assigneeValue}
                 options={assigneeOptions}
                 recentOptionIds={recentAssigneeOptionIds}
-                placeholder="Assignee"
+                placeholder={t("Assignee")}
                 disablePortal
                 noneLabel="No assignee"
                 searchPlaceholder="Search assignees..."
@@ -1550,25 +1555,25 @@ export function NewIssueDialog() {
                   option ? (
                     currentAssignee ? (
                       <>
-                        <AgentIcon icon={currentAssignee.icon} className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                        <span className="truncate">{option.label}</span>
+                        <AgentIcon customIconUrl={agentCustomIcon(currentAssignee)} icon={currentAssignee.icon} className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                        <span className="truncate">{t(option.label)}</span>
                       </>
                     ) : (
-                      <span className="truncate">{option.label}</span>
+                      <span className="truncate">{t(option.label)}</span>
                     )
                   ) : (
                     <span className="text-muted-foreground">Assignee</span>
                   )
                 }
                 renderOption={(option) => {
-                  if (!option.id) return <span className="truncate">{option.label}</span>;
+                  if (!option.id) return <span className="truncate">{t(option.label)}</span>;
                   const assignee = parseAssigneeValue(option.id).assigneeAgentId
                     ? (agents ?? []).find((agent) => agent.id === parseAssigneeValue(option.id).assigneeAgentId)
                     : null;
                   return (
                     <>
-                      {assignee ? <AgentIcon icon={assignee.icon} className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> : null}
-                      <span className="truncate">{option.label}</span>
+                      {assignee ? <AgentIcon customIconUrl={agentCustomIcon(assignee)} icon={assignee.icon} className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> : null}
+                      <span className="truncate">{t(option.label)}</span>
                       {assignee && getTrustPreset(assignee.permissions) === "low_trust_review" ? (
                         <ShieldAlert className="ml-auto h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-300" aria-label="Low-trust review agent" />
                       ) : null}
@@ -1582,7 +1587,7 @@ export function NewIssueDialog() {
                 value={projectId}
                 options={projectOptions}
                 recentOptionIds={recentProjectIds}
-                placeholder="Project"
+                placeholder={t("Project")}
                 disablePortal
                 noneLabel="No project"
                 searchPlaceholder="Search projects..."
@@ -1598,14 +1603,14 @@ export function NewIssueDialog() {
                         className="h-3.5 w-3.5 shrink-0 rounded-sm"
                         style={{ backgroundColor: currentProject.color ?? "var(--project-seed)" }}
                       />
-                      <span className="truncate">{option.label}</span>
+                      <span className="truncate">{t(option.label)}</span>
                     </>
                   ) : (
                     <span className="text-muted-foreground">Project</span>
                   )
                 }
                 renderOption={(option) => {
-                  if (!option.id) return <span className="truncate">{option.label}</span>;
+                  if (!option.id) return <span className="truncate">{t(option.label)}</span>;
                   const project = orderedProjects.find((item) => item.id === option.id);
                   return (
                     <>
@@ -1613,7 +1618,7 @@ export function NewIssueDialog() {
                         className="h-3.5 w-3.5 shrink-0 rounded-sm"
                         style={{ backgroundColor: project?.color ?? "var(--project-seed)" }}
                       />
-                      <span className="truncate">{option.label}</span>
+                      <span className="truncate">{t(option.label)}</span>
                     </>
                   );
                 }}
@@ -1695,7 +1700,7 @@ export function NewIssueDialog() {
                 value={reviewerValue}
                 options={assigneeOptions}
                 recentOptionIds={recentAssigneeOptionIds}
-                placeholder="Reviewer"
+                placeholder={t("Reviewer")}
                 disablePortal
                 noneLabel="No reviewer"
                 searchPlaceholder="Search reviewers..."
@@ -1708,23 +1713,23 @@ export function NewIssueDialog() {
                         const reviewer = parseAssigneeValue(option.id).assigneeAgentId
                           ? (agents ?? []).find((a) => a.id === parseAssigneeValue(option.id).assigneeAgentId)
                           : null;
-                        return reviewer ? <AgentIcon icon={reviewer.icon} className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> : null;
+                        return reviewer ? <AgentIcon customIconUrl={agentCustomIcon(reviewer)} icon={reviewer.icon} className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> : null;
                       })()}
-                      <span className="truncate">{option.label}</span>
+                      <span className="truncate">{t(option.label)}</span>
                     </>
                   ) : (
                     <span className="text-muted-foreground">Reviewer</span>
                   )
                 }
                 renderOption={(option) => {
-                  if (!option.id) return <span className="truncate">{option.label}</span>;
+                  if (!option.id) return <span className="truncate">{t(option.label)}</span>;
                   const reviewer = parseAssigneeValue(option.id).assigneeAgentId
                     ? (agents ?? []).find((agent) => agent.id === parseAssigneeValue(option.id).assigneeAgentId)
                     : null;
                   return (
                     <>
-                      {reviewer ? <AgentIcon icon={reviewer.icon} className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> : null}
-                      <span className="truncate">{option.label}</span>
+                      {reviewer ? <AgentIcon customIconUrl={agentCustomIcon(reviewer)} icon={reviewer.icon} className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> : null}
+                      <span className="truncate">{t(option.label)}</span>
                     </>
                   );
                 }}
@@ -1740,7 +1745,7 @@ export function NewIssueDialog() {
                 value={approverValue}
                 options={assigneeOptions}
                 recentOptionIds={recentAssigneeOptionIds}
-                placeholder="Approver"
+                placeholder={t("Approver")}
                 disablePortal
                 noneLabel="No approver"
                 searchPlaceholder="Search approvers..."
@@ -1755,21 +1760,21 @@ export function NewIssueDialog() {
                           : null;
                         return approver ? <AgentIcon icon={approver.icon} className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> : null;
                       })()}
-                      <span className="truncate">{option.label}</span>
+                      <span className="truncate">{t(option.label)}</span>
                     </>
                   ) : (
                     <span className="text-muted-foreground">Approver</span>
                   )
                 }
                 renderOption={(option) => {
-                  if (!option.id) return <span className="truncate">{option.label}</span>;
+                  if (!option.id) return <span className="truncate">{t(option.label)}</span>;
                   const approver = parseAssigneeValue(option.id).assigneeAgentId
                     ? (agents ?? []).find((agent) => agent.id === parseAssigneeValue(option.id).assigneeAgentId)
                     : null;
                   return (
                     <>
                       {approver ? <AgentIcon icon={approver.icon} className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> : null}
-                      <span className="truncate">{option.label}</span>
+                      <span className="truncate">{t(option.label)}</span>
                     </>
                   );
                 }}
@@ -1807,7 +1812,7 @@ export function NewIssueDialog() {
                       <InlineEntitySelector
                         value={watchdogAgentId}
                         options={watchdogAgentOptions}
-                        placeholder="Select agent"
+                        placeholder={t("Select agent")}
                         noneLabel="No watchdog agent"
                         searchPlaceholder="Search agents..."
                         emptyMessage="No agents found."
@@ -1818,7 +1823,7 @@ export function NewIssueDialog() {
                               {selectedWatchdogAgent ? (
                                 <AgentIcon icon={selectedWatchdogAgent.icon} className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                               ) : null}
-                              <span className="truncate">{option.label}</span>
+                              <span className="truncate">{t(option.label)}</span>
                             </>
                           ) : (
                             <span className="text-muted-foreground">Select agent</span>
@@ -1829,7 +1834,7 @@ export function NewIssueDialog() {
                           return (
                             <>
                               {agent ? <AgentIcon icon={agent.icon} className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> : null}
-                              <span className="truncate">{option.label}</span>
+                              <span className="truncate">{t(option.label)}</span>
                             </>
                           );
                         }}
@@ -1904,7 +1909,7 @@ export function NewIssueDialog() {
               >
                 {EXECUTION_WORKSPACE_MODES.map((option) => (
                   <option key={option.value} value={option.value}>
-                    {option.label}
+                    {t(option.label)}
                   </option>
                 ))}
               </select>
@@ -1993,7 +1998,7 @@ export function NewIssueDialog() {
                     <InlineEntitySelector
                       value={assigneeModelOverride}
                       options={modelOverrideOptions}
-                      placeholder="Default model"
+                      placeholder={t("Default model")}
                       disablePortal
                       noneLabel="Default model"
                       searchPlaceholder="Search models..."
@@ -2015,7 +2020,7 @@ export function NewIssueDialog() {
                           )}
                           onClick={() => setAssigneeThinkingEffort(option.value)}
                         >
-                          {option.label}
+                          {t(option.label)}
                         </button>
                       ))}
                     </div>
@@ -2138,7 +2143,7 @@ export function NewIssueDialog() {
             <PopoverTrigger asChild>
               <button className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs hover:bg-accent/50 transition-colors">
                 <CircleDot className={cn("h-3 w-3", currentStatus.color)} />
-                {currentStatus.label}
+                {t(currentStatus.label)}
               </button>
             </PopoverTrigger>
             <PopoverContent className="w-56 p-1" align="start">
@@ -2153,9 +2158,9 @@ export function NewIssueDialog() {
                 >
                   <CircleDot className={cn("h-3 w-3 mt-0.5 shrink-0", s.color)} />
                   <span className="flex flex-col text-left leading-tight">
-                    <span>{s.label}</span>
+                    <span>{t(s.label)}</span>
                     {s.description ? (
-                      <span className="text-(length:--text-nano) text-muted-foreground">{s.description}</span>
+                      <span className="text-(length:--text-nano) text-muted-foreground">{t(s.description)}</span>
                     ) : null}
                   </span>
                 </button>
@@ -2175,7 +2180,7 @@ export function NewIssueDialog() {
                 {currentPriority ? (
                   <>
                     <currentPriority.icon className={cn("h-3 w-3", currentPriority.color)} />
-                    {currentPriority.label}
+                    {t(currentPriority.label)}
                   </>
                 ) : (
                   <>
@@ -2260,7 +2265,7 @@ export function NewIssueDialog() {
                     }}
                   >
                     <Icon className="h-3 w-3" />
-                    {option.label}
+                    {t(option.label)}
                     {option.value === workMode ? <Check className="ml-auto h-3 w-3" aria-hidden /> : null}
                   </button>
                 );
@@ -2369,7 +2374,7 @@ export function NewIssueDialog() {
             >
               <span className="inline-flex items-center justify-center gap-1.5">
                 {createIssue.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-                <span>{createIssue.isPending ? "Creating..." : isSubIssueMode ? "Create Sub-Task" : "Create Task"}</span>
+                <span>{createIssue.isPending ? t("Creating...") : isSubIssueMode ? t("Create Sub-Task") : t("Create Task")}</span>
               </span>
             </Button>
           </div>

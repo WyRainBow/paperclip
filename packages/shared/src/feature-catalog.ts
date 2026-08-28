@@ -112,6 +112,14 @@ export const INSTANCE_FEATURE_CATALOG: Record<InstanceFeatureKey, FeatureCatalog
     cloudDefault: false,
     selfHostedDefault: false,
   },
+  enableStaleActiveRunEvaluations: {
+    title: "Silent-run review tasks",
+    description:
+      "Auto-raise a review task when an active run stops producing output. Turn this off if terminal-contributor sessions drive your work — an external terminal produces no observable run output, so every such session eventually looks silent.",
+    tier: "managed",
+    cloudDefault: true,
+    selfHostedDefault: true,
+  },
   enableTaskWatchdogs: {
     title: "Task Watchdogs",
     description:

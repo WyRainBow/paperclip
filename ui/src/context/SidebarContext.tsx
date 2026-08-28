@@ -142,16 +142,20 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
     };
   }, [pointerCanPeek]);
 
-  // Precedence (highest wins): forced (active secondary sidebar) > explicit user
-  // pin > route request > default expanded. The force is ephemeral and never
-  // touches the persisted pin, so dropping it restores the user's preference.
+  // Precedence (highest wins): an explicit "keep expanded" pin > forced (active
+  // secondary sidebar) > explicit collapsed pin > route request > default
+  // expanded. Pinning expanded is the user asking for the nav to stay put on
+  // every route, so a secondary sidebar no longer overrides it; without that
+  // pin the force still wins, and it never touches the persisted preference.
   const pinnedOrRequested = userCollapsed !== null ? userCollapsed : routeRequestsCollapsed;
-  const desktopCollapsed = forceCollapsed || pinnedOrRequested;
+  const pinnedExpanded = userCollapsed === false;
+  const desktopCollapsed = pinnedExpanded ? false : forceCollapsed || pinnedOrRequested;
   // Collapsed/peek are desktop-only; mobile always uses the drawer. The user
   // pin is preserved across the breakpoint and reapplies on the desktop side.
   const collapsed = isMobile ? false : desktopCollapsed;
-  // While forced, the pin is locked: the expand/toggle affordance is inert.
-  const collapseLocked = !isMobile && forceCollapsed;
+  // The toggle is only locked when the force actually applies — i.e. no
+  // pinned-expanded preference is overriding it.
+  const collapseLocked = !isMobile && forceCollapsed && !pinnedExpanded;
   // Peek only applies when collapsed on a hover-capable pointer.
   const peeking = rawPeeking && collapsed && pointerCanPeek;
 
@@ -162,10 +166,12 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
 
   const toggleCollapsed = useCallback(() => {
     // While a secondary sidebar forces the rail, the toggle is locked: it must
-    // neither expand the rail nor mutate the persisted preference.
-    if (forceCollapsed) return;
+    // neither expand the rail nor mutate the persisted preference. A
+    // pinned-expanded preference outranks the force, so the toggle stays live
+    // there and collapsing from it re-pins.
+    if (forceCollapsed && !pinnedExpanded) return;
     setCollapsed(!pinnedOrRequested);
-  }, [forceCollapsed, pinnedOrRequested, setCollapsed]);
+  }, [forceCollapsed, pinnedExpanded, pinnedOrRequested, setCollapsed]);
 
   const setPeeking = useCallback((next: boolean) => {
     setRawPeeking(next);

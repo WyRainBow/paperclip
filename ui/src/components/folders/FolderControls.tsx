@@ -1,3 +1,4 @@
+import { t } from "../../i18n";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   Check,
@@ -120,7 +121,7 @@ function selectionLabel({
   allLabel: string;
 }) {
   if (selection === "all") return allLabel;
-  if (selection === "unfiled") return "Unfiled";
+  if (selection === "unfiled") return t("Unfiled");
   return folders.find((folder) => folder.id === selection)?.name ?? allLabel;
 }
 
@@ -222,7 +223,7 @@ export function FolderRail({
   }
 
   return (
-    <nav aria-label={`${itemLabelPlural} folders`} className="hidden w-(--sz-folder-rail) shrink-0 border-r border-border pr-3 md:block">
+    <nav aria-label={t("{{items}} folders", { items: itemLabelPlural })} className="hidden w-(--sz-folder-rail) shrink-0 border-r border-border pr-3 md:block">
       <div className="mb-2 flex items-center justify-between gap-2">
         <div className="text-(length:--text-micro) font-medium uppercase tracking-wide text-muted-foreground">Folders</div>
         <Button variant="ghost" size="icon-sm" title="New folder" onClick={onCreate}>
@@ -257,7 +258,7 @@ export function FolderRail({
           <div className="px-2 pb-1 pt-3 text-(length:--text-micro) font-medium uppercase tracking-wide text-muted-foreground">
             System
           </div>
-          {renderVirtualRow("unfiled", "Unfiled", result?.unfiledCount ?? 0, <FolderSwatch color={null} className="mt-0.5" />)}
+          {renderVirtualRow("unfiled", t("Unfiled"), result?.unfiledCount ?? 0, <FolderSwatch color={null} className="mt-0.5" />)}
         </div>
       )}
     </nav>
@@ -389,12 +390,12 @@ export function AllUnfiledBanner({
     <div className="mb-3 flex flex-wrap items-center gap-2 rounded-md border border-border bg-muted/40 px-3 py-2 text-sm">
       <FolderIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
       <span className="min-w-0 flex-1 text-muted-foreground">
-        Group these {itemLabelPlural} into folders to keep things tidy.
+        {t("Group these {{items}} into folders to keep things tidy.", { items: itemLabelPlural })}
       </span>
       <Button size="sm" variant="outline" onClick={onCreateFolder}>
-        Create your first folder
+        {t("Create your first folder")}
       </Button>
-      <Button size="icon-sm" variant="ghost" aria-label="Dismiss folder suggestion" onClick={dismiss}>
+      <Button size="icon-sm" variant="ghost" aria-label={t("Dismiss folder suggestion")} onClick={dismiss}>
         <X className="h-3.5 w-3.5" />
       </Button>
     </div>
@@ -451,7 +452,7 @@ export function MobileFolderSheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="bottom" className="max-h-(--sz-folder-sheet-max) rounded-t-lg pb-4">
         <SheetHeader className="border-b border-border px-4 py-3">
-          <SheetTitle>{itemLabelPlural} folders</SheetTitle>
+          <SheetTitle>{t("{{items}} folders", { items: itemLabelPlural })}</SheetTitle>
         </SheetHeader>
         <div className="overflow-y-auto px-3">
           <MobileFolderRow
@@ -470,14 +471,14 @@ export function MobileFolderSheet({
               </div>
               {model.company.map((node) => renderBranch(node))}
               {model.projects ? renderBranch(model.projects, "Projects") : null}
-              {model.bundled ? renderBranch(model.bundled, "Bundled") : null}
+              {model.bundled ? renderBranch(model.bundled, t("Bundled")) : null}
             </>
           ) : (
             model.roots.map((node) => renderBranch(node, reservedRootLabel(node.folder)))
           )}
           <MobileFolderRow
             id="unfiled"
-            label="Unfiled"
+            label={t("Unfiled")}
             count={result?.unfiledCount ?? 0}
             selected={selection === "unfiled"}
             onSelect={select}

@@ -1,3 +1,4 @@
+import { t } from "../../i18n";
 import {
   useCallback,
   useEffect,
@@ -254,9 +255,9 @@ export function SkillFolderRail({
       >
       <div className="mb-2 flex items-center justify-between gap-2 pt-0.5">
         <div className="text-(length:--text-micro) font-medium uppercase tracking-wide text-muted-foreground">
-          Folders
+          {t("Folders")}
         </div>
-        <Button variant="ghost" size="icon-sm" title="New folder" onClick={() => onCreateFolder(null)}>
+        <Button variant="ghost" size="icon-sm" title={t("New folder")} onClick={() => onCreateFolder(null)}>
           <Plus className="h-3.5 w-3.5" />
         </Button>
       </div>
@@ -271,7 +272,7 @@ export function SkillFolderRail({
         <div className="space-y-0.5">
           <VirtualRow
             active={selection === "all"}
-            label="All skills"
+            label={t("All skills")}
             count={allCount}
             icon={<Layers className="h-3.5 w-3.5" />}
             onSelect={() => onSelect("all")}
@@ -286,7 +287,7 @@ export function SkillFolderRail({
               expanded={expanded}
               renamingId={renamingId}
               renameDraft={renameDraft}
-              rootLabel="My Skills"
+              rootLabel={t("My Skills")}
               rootIcon={<User className="h-3.5 w-3.5" />}
               onToggle={toggle}
               onSelect={onSelect}
@@ -302,7 +303,7 @@ export function SkillFolderRail({
           ) : onEnsureMyFolder ? (
             <VirtualRow
               active={false}
-              label="My Skills"
+              label={t("My Skills")}
               count={0}
               icon={<User className="h-3.5 w-3.5" />}
               muted
@@ -311,7 +312,7 @@ export function SkillFolderRail({
           ) : null}
 
           {/* Company — plain top-level company folders */}
-          <RailHeading label="Company" onCreate={() => onCreateFolder(null)} />
+          <RailHeading label={t("Company")} onCreate={() => onCreateFolder(null)} />
           {model.company.length > 0 ? (
             model.company.map((node) => (
               <TreeBranch
@@ -335,7 +336,7 @@ export function SkillFolderRail({
               />
             ))
           ) : (
-            <div className="px-2 py-1 text-xs text-muted-foreground">No company folders yet.</div>
+            <div className="px-2 py-1 text-xs text-muted-foreground">{t("No company folders yet.")}</div>
           )}
 
           {/* Projects — auto-managed, read-only structure */}
@@ -347,7 +348,7 @@ export function SkillFolderRail({
               expanded={expanded}
               renamingId={renamingId}
               renameDraft={renameDraft}
-              rootLabel="Projects"
+              rootLabel={t("Projects")}
               rootIcon={<Boxes className="h-3.5 w-3.5" />}
               onToggle={toggle}
               onSelect={onSelect}
@@ -363,7 +364,7 @@ export function SkillFolderRail({
           ) : (
             <VirtualRow
               active={false}
-              label="Projects"
+              label={t("Projects")}
               count={0}
               icon={<Boxes className="h-3.5 w-3.5" />}
               muted
@@ -381,7 +382,7 @@ export function SkillFolderRail({
               expanded={expanded}
               renamingId={renamingId}
               renameDraft={renameDraft}
-              rootLabel="Bundled"
+              rootLabel={t("Bundled")}
               rootIcon={<Boxes className="h-3.5 w-3.5" />}
               onToggle={toggle}
               onSelect={onSelect}
@@ -397,11 +398,11 @@ export function SkillFolderRail({
           ) : null}
 
           <div className="px-2 pb-1 pt-3 text-(length:--text-micro) font-medium uppercase tracking-wide text-muted-foreground">
-            System
+            {t("System")}
           </div>
           <VirtualRow
             active={selection === "unfiled"}
-            label="Unfiled"
+            label={t("Unfiled")}
             count={unfiledCount}
             icon={<FolderSwatch color={null} />}
             onSelect={() => onSelect("unfiled")}
@@ -722,7 +723,7 @@ export function FolderBreadcrumb({
         )}
       >
         <Home className="h-3.5 w-3.5" />
-        All skills
+        {t("All skills")}
       </button>
       {selection === "unfiled" ? (
         <>
@@ -779,7 +780,7 @@ export function FolderTiles({
   return (
     <div className="mb-4">
       <div className="mb-2 text-(length:--text-micro) font-medium uppercase tracking-wide text-muted-foreground">
-        Folders
+        {t("Folders")}
       </div>
       <div className="grid gap-2 [grid-template-columns:repeat(auto-fill,minmax(11rem,1fr))]">
         {children.map((node) => (
@@ -910,7 +911,7 @@ export function MoveToFolderDialog({
           {nestable ? (
             <button
               type="button"
-              title="New folder inside…"
+              title={t("New folder inside…")}
               className="opacity-0 transition-opacity group-hover:opacity-100"
               onClick={(event) => {
                 event.stopPropagation();

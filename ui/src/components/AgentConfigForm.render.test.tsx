@@ -559,7 +559,7 @@ async function runTest(container: HTMLElement) {
 }
 
 async function startLogin(container: HTMLElement) {
-  await clickByText(container, "Log in");
+  await clickByText(container, "登录");
   await flushReact();
 }
 
@@ -672,7 +672,7 @@ describe("AgentConfigForm environment selector", () => {
     ]);
     roots.push(result.root);
 
-    expect(result.container.textContent).not.toContain("Environment override");
+    expect(result.container.textContent).not.toContain("环境覆盖");
     expect(result.container.querySelector("select")).toBeNull();
   });
 
@@ -682,7 +682,7 @@ describe("AgentConfigForm environment selector", () => {
     ]);
     roots.push(result.root);
 
-    expect(result.container.textContent).not.toContain("Secret access");
+    expect(result.container.textContent).not.toContain("密钥访问");
   });
 
   it("renders secret access as dedicated form content", async () => {
@@ -693,7 +693,7 @@ describe("AgentConfigForm environment selector", () => {
     );
     roots.push(result.root);
 
-    expect(result.container.textContent).toContain("Secret access");
+    expect(result.container.textContent).toContain("密钥访问");
     expect(result.container.textContent).toContain("No secrets are bound to this agent yet.");
     expect(result.container.textContent).not.toContain("Environment variables");
   });
@@ -713,9 +713,9 @@ describe("AgentConfigForm environment selector", () => {
     const text = result.container.textContent ?? "";
     const selector = result.container.querySelector("select");
 
-    expect(text).toContain("Environment");
-    expect(text).toContain("Environment override");
-    expect(selector?.textContent).toContain("Default: Local");
+    expect(text).toContain("环境");
+    expect(text).toContain("环境覆盖");
+    expect(selector?.textContent).toContain("默认：Local");
     expect(selector?.textContent).toContain("E2B · sandbox");
     expect(text).not.toContain("Execution");
     expect(text).not.toContain("Leave this unset to inherit the instance default");
@@ -740,7 +740,7 @@ describe("AgentConfigForm environment selector", () => {
     const text = result.container.textContent ?? "";
     const selector = result.container.querySelector("select");
 
-    expect(text).toContain("Environment override");
+    expect(text).toContain("环境覆盖");
     expect(selector?.textContent).toContain("E2B · sandbox");
   });
 
@@ -762,7 +762,7 @@ describe("AgentConfigForm environment selector", () => {
     const text = result.container.textContent ?? "";
     const selector = result.container.querySelector("select");
 
-    expect(text).toContain("Environment override");
+    expect(text).toContain("环境覆盖");
     expect(selector?.textContent).toContain("E2B · sandbox");
   });
 
@@ -784,8 +784,8 @@ describe("AgentConfigForm environment selector", () => {
     const text = result.container.textContent ?? "";
     const selector = result.container.querySelector("select");
 
-    expect(text).toContain("Environment override");
-    expect(selector?.textContent).toContain("Default: Local");
+    expect(text).toContain("环境覆盖");
+    expect(selector?.textContent).toContain("默认：Local");
     expect(selector?.textContent).toContain("Fake Sandbox · sandbox");
   });
 
@@ -804,7 +804,7 @@ describe("AgentConfigForm environment selector", () => {
 
     const selector = result.container.querySelector("select");
 
-    expect(selector?.textContent).toContain("Default: Paperclip Computer");
+    expect(selector?.textContent).toContain("默认：Paperclip Computer");
     expect(selector?.textContent).toContain("Paperclip Computer");
     expect(selector?.textContent).not.toContain("(sandbox)");
     expect(selector?.textContent).not.toContain("· sandbox");
@@ -1037,11 +1037,11 @@ describe("AgentConfigForm environment selector", () => {
     const result = await renderCodexSandbox();
     roots.push(result.root);
 
-    expect(findButton(result.container, "Log in")).toBeFalsy();
+    expect(findButton(result.container, "登录")).toBeFalsy();
 
     await runTest(result.container);
 
-    expect(findButton(result.container, "Log in")).toBeTruthy();
+    expect(findButton(result.container, "登录")).toBeTruthy();
   });
 
   it("hides the Codex login for a provider without the login pseudo-terminal capability", async () => {
@@ -1066,7 +1066,7 @@ describe("AgentConfigForm environment selector", () => {
 
     await runTest(result.container);
 
-    expect(findButton(result.container, "Log in")).toBeFalsy();
+    expect(findButton(result.container, "登录")).toBeFalsy();
   });
 
   it("shows the login affordance and the displayed-code panel for a third adapter with a projected login capability", async () => {
@@ -1077,13 +1077,13 @@ describe("AgentConfigForm environment selector", () => {
     const result = await renderVendorSandbox();
     roots.push(result.root);
 
-    expect(findButton(result.container, "Log in")).toBeFalsy();
+    expect(findButton(result.container, "登录")).toBeFalsy();
 
     await runTest(result.container);
 
     // The projected capability gates the login affordance on for the third
     // adapter.
-    expect(findButton(result.container, "Log in")).toBeTruthy();
+    expect(findButton(result.container, "登录")).toBeTruthy();
 
     await startLogin(result.container);
 
@@ -1091,7 +1091,7 @@ describe("AgentConfigForm environment selector", () => {
     // URL. It shows no browser-code input, so the dispatcher picked the panel
     // from the projected `displayed_code` mode.
     expect(result.container.textContent).toContain("WXYZ-1234");
-    expect(result.container.querySelector('input[aria-label="Browser code"]')).toBeFalsy();
+    expect(result.container.querySelector('input[aria-label="浏览器验证码"]')).toBeFalsy();
   });
 
   it("hides the Login button before Test and shows it after the adapter_auth_missing check for a Claude sandbox", async () => {
@@ -1099,11 +1099,11 @@ describe("AgentConfigForm environment selector", () => {
     const result = await renderClaudeSandbox();
     roots.push(result.root);
 
-    expect(findButton(result.container, "Log in")).toBeFalsy();
+    expect(findButton(result.container, "登录")).toBeFalsy();
 
     await runTest(result.container);
 
-    expect(findButton(result.container, "Log in")).toBeTruthy();
+    expect(findButton(result.container, "登录")).toBeTruthy();
   });
 
   it("hides the Login button for a Claude sandbox whose provider lacks the setup-token login capability", async () => {
@@ -1127,7 +1127,7 @@ describe("AgentConfigForm environment selector", () => {
 
     // E2B does not advertise the setup-token login capability, so the panel
     // stays hidden even after the auth-missing check.
-    expect(findButton(result.container, "Log in")).toBeFalsy();
+    expect(findButton(result.container, "登录")).toBeFalsy();
   });
 
   it("hides the Login button for a Daytona sandbox while the capabilities report no setup-token support", async () => {
@@ -1162,7 +1162,7 @@ describe("AgentConfigForm environment selector", () => {
 
     await runTest(result.container);
 
-    expect(findButton(result.container, "Log in")).toBeFalsy();
+    expect(findButton(result.container, "登录")).toBeFalsy();
   });
 
   it("gates a pseudo-terminal login on the provider pty capability for a non-Claude adapter", async () => {
@@ -1188,7 +1188,7 @@ describe("AgentConfigForm environment selector", () => {
 
     await runTest(result.container);
 
-    expect(findButton(result.container, "Log in")).toBeFalsy();
+    expect(findButton(result.container, "登录")).toBeFalsy();
   });
 
   it("shows a pseudo-terminal login for a non-Claude adapter when the provider advertises pty support", async () => {
@@ -1213,7 +1213,7 @@ describe("AgentConfigForm environment selector", () => {
 
     await runTest(result.container);
 
-    expect(findButton(result.container, "Log in")).toBeTruthy();
+    expect(findButton(result.container, "登录")).toBeTruthy();
   });
 
   it("shows the Login button when a parent lifts the test feedback and renders the panel from the descriptor", async () => {
@@ -1281,11 +1281,11 @@ describe("AgentConfigForm environment selector", () => {
     });
     await flushReact();
 
-    expect(findButton(container, "Log in")).toBeFalsy();
+    expect(findButton(container, "登录")).toBeFalsy();
 
     await runTest(container);
 
-    expect(findButton(container, "Log in")).toBeTruthy();
+    expect(findButton(container, "登录")).toBeTruthy();
   });
 
   it("does not show the Login button when the Test result has no adapter_auth_missing check", async () => {
@@ -1294,7 +1294,7 @@ describe("AgentConfigForm environment selector", () => {
 
     await runTest(result.container);
 
-    expect(findButton(result.container, "Log in")).toBeFalsy();
+    expect(findButton(result.container, "登录")).toBeFalsy();
   });
 
   it("does not show the Login button when the effective environment is Local", async () => {
@@ -1308,7 +1308,7 @@ describe("AgentConfigForm environment selector", () => {
 
     await runTest(result.container);
 
-    expect(findButton(result.container, "Log in")).toBeFalsy();
+    expect(findButton(result.container, "登录")).toBeFalsy();
   });
 
   it("shows the Login button for an agent with no own environment under the managed-sandbox-only policy", async () => {
@@ -1344,11 +1344,11 @@ describe("AgentConfigForm environment selector", () => {
     );
     roots.push(result.root);
 
-    expect(findButton(result.container, "Log in")).toBeFalsy();
+    expect(findButton(result.container, "登录")).toBeFalsy();
 
     await runTest(result.container);
 
-    expect(findButton(result.container, "Log in")).toBeTruthy();
+    expect(findButton(result.container, "登录")).toBeTruthy();
   });
 
   it("keeps the Login button hidden under the managed-sandbox-only policy when no managed sandbox is available", async () => {
@@ -1375,7 +1375,7 @@ describe("AgentConfigForm environment selector", () => {
     );
     roots.push(result.root);
 
-    expect(findButton(result.container, "Log in")).toBeFalsy();
+    expect(findButton(result.container, "登录")).toBeFalsy();
   });
 
   it("starts a login session for the effective sandbox and shows the code and the authentication URL", async () => {
@@ -1409,7 +1409,7 @@ describe("AgentConfigForm environment selector", () => {
     await runTest(result.container);
     await startLogin(result.container);
 
-    expect(result.container.textContent).toContain("Preparing the login");
+    expect(result.container.textContent).toContain("正在准备登录");
     expect(result.container.textContent).not.toContain("https://");
   });
 
@@ -1421,8 +1421,8 @@ describe("AgentConfigForm environment selector", () => {
     await runTest(result.container);
     await startLogin(result.container);
 
-    await clickElement(findByAriaLabel(result.container, "Copy code"));
-    await clickElement(findByAriaLabel(result.container, "Copy URL"));
+    await clickElement(findByAriaLabel(result.container, "复制验证码"));
+    await clickElement(findByAriaLabel(result.container, "复制链接"));
 
     expect(mockClipboard.copyTextToClipboard).toHaveBeenCalledWith("WXYZ-1234");
     expect(mockClipboard.copyTextToClipboard).toHaveBeenCalledWith("https://auth.example.test/device");
@@ -1490,7 +1490,7 @@ describe("AgentConfigForm environment selector", () => {
       "session-1",
     );
     // The panel resets: the Log in button is available again and the code is gone.
-    const login = findButton(result.container, "Log in");
+    const login = findButton(result.container, "登录");
     expect(login?.disabled).toBe(false);
     expect(findButton(result.container, "Cancel")).toBeFalsy();
     expect(result.container.textContent).not.toContain("WXYZ-1234");
@@ -1531,7 +1531,7 @@ describe("AgentConfigForm environment selector", () => {
     await runTest(result.container);
     await startLogin(result.container);
 
-    const startButton = findButton(result.container, "Log in");
+    const startButton = findButton(result.container, "登录");
     expect(startButton).toBeTruthy();
     expect(startButton?.disabled).toBe(true);
     expect(mockAgentsApi.startAdapterAuthLogin).toHaveBeenCalledTimes(1);
@@ -1553,7 +1553,7 @@ describe("AgentConfigForm environment selector", () => {
     await runTest(result.container);
     await startLogin(result.container);
 
-    expect(result.container.textContent).toContain("Authenticated");
+    expect(result.container.textContent).toContain("认证完成");
   });
 
   it("renders the failed terminal state with the non-secret message", async () => {
@@ -1572,7 +1572,7 @@ describe("AgentConfigForm environment selector", () => {
     await runTest(result.container);
     await startLogin(result.container);
 
-    expect(result.container.textContent).toContain("Login failed");
+    expect(result.container.textContent).toContain("登录失败");
     expect(result.container.textContent).toContain("The device rejected the code.");
   });
 
@@ -1592,7 +1592,7 @@ describe("AgentConfigForm environment selector", () => {
     await runTest(result.container);
     await startLogin(result.container);
 
-    expect(result.container.textContent).toContain("Login timed out");
+    expect(result.container.textContent).toContain("登录超时");
   });
 
   it("hides the Login button when the effective environment changes after a Test", async () => {
@@ -1601,7 +1601,7 @@ describe("AgentConfigForm environment selector", () => {
     roots.push(result.root);
 
     await runTest(result.container);
-    expect(findButton(result.container, "Log in")).toBeTruthy();
+    expect(findButton(result.container, "登录")).toBeTruthy();
 
     const select = result.container.querySelector("select");
     await act(async () => {
@@ -1613,7 +1613,7 @@ describe("AgentConfigForm environment selector", () => {
     });
     await flushReact();
 
-    expect(findButton(result.container, "Log in")).toBeFalsy();
+    expect(findButton(result.container, "登录")).toBeFalsy();
   });
 
   it("shows the authorization URL and a browser-code input for a Claude sandbox", async () => {
@@ -1634,11 +1634,11 @@ describe("AgentConfigForm environment selector", () => {
     // shows a server-displayed code.
     expect(result.container.textContent).toContain("https://claude.example.test/authorize");
     expect(
-      result.container.querySelector('input[aria-label="Browser code"]'),
+      result.container.querySelector('input[aria-label="浏览器验证码"]'),
     ).toBeTruthy();
     // The default prompt carries no advisory: a confidential transport. So the
     // panel shows no disclaimer.
-    expect(result.container.textContent).not.toContain("not encrypted");
+    expect(result.container.textContent).not.toContain("没有加密");
   });
 
   it("shows a non-blocking disclaimer when the transport advisory is present", async () => {
@@ -1655,16 +1655,16 @@ describe("AgentConfigForm environment selector", () => {
 
     await runTest(result.container);
     await startLogin(result.container);
-    await flushUntil(() => (result.container.textContent ?? "").includes("not encrypted"));
+    await flushUntil(() => (result.container.textContent ?? "").includes("没有加密"));
 
     // The disclaimer states the transport risk in plain language.
-    expect(result.container.textContent).toContain("not encrypted");
-    expect(result.container.textContent).toContain("clear text");
+    expect(result.container.textContent).toContain("没有加密");
+    expect(result.container.textContent).toContain("明文");
     // The login still proceeds: the panel shows the URL and the browser-code
     // input, so the disclaimer never blocks the flow.
     expect(result.container.textContent).toContain("https://claude.example.test/authorize");
     expect(
-      result.container.querySelector('input[aria-label="Browser code"]'),
+      result.container.querySelector('input[aria-label="浏览器验证码"]'),
     ).toBeTruthy();
   });
 
@@ -1676,15 +1676,15 @@ describe("AgentConfigForm environment selector", () => {
     await runTest(result.container);
     await startLogin(result.container);
     await flushUntil(() =>
-      Boolean(result.container.querySelector('input[aria-label="Browser code"]')),
+      Boolean(result.container.querySelector('input[aria-label="浏览器验证码"]')),
     );
 
     const input = result.container.querySelector<HTMLInputElement>(
-      'input[aria-label="Browser code"]',
+      'input[aria-label="浏览器验证码"]',
     );
     setInputValue(input!, "BROWSERCODE-9");
     await flushReact();
-    await clickByText(result.container, "Submit");
+    await clickByText(result.container, "提交");
     await flushReact();
 
     expect(mockAgentsApi.submitClaudeSetupTokenBrowserCode).toHaveBeenCalledWith(
@@ -1695,7 +1695,7 @@ describe("AgentConfigForm environment selector", () => {
     // The panel clears the browser code after submit, so the secret does not
     // linger in the input.
     const clearedInput = result.container.querySelector<HTMLInputElement>(
-      'input[aria-label="Browser code"]',
+      'input[aria-label="浏览器验证码"]',
     );
     expect(clearedInput?.value).toBe("");
   });
@@ -1714,13 +1714,13 @@ describe("AgentConfigForm environment selector", () => {
 
     await runTest(result.container);
     await startLogin(result.container);
-    await flushUntil(() => (result.container.textContent ?? "").includes("Authenticated"));
+    await flushUntil(() => (result.container.textContent ?? "").includes("认证完成"));
 
     expect(mockAgentsApi.completeClaudeSetupTokenLogin).toHaveBeenCalledWith(
       "company-1",
       "claude-session-1",
     );
-    expect(result.container.textContent).toContain("Authenticated");
+    expect(result.container.textContent).toContain("认证完成");
   });
 
   it("clears the stored-session claim and the fixed binding when the effective environment changes", async () => {
@@ -1922,16 +1922,16 @@ describe("AgentConfigForm environment selector", () => {
         </QueryClientProvider>,
       );
     });
-    await flushUntil(() => Boolean(findButton(container, "Use saved login")));
+    await flushUntil(() => Boolean(findButton(container, "使用已保存的登录")));
 
-    await clickByText(container, "Use saved login");
+    await clickByText(container, "使用已保存的登录");
 
     expect(onApplyStored).toHaveBeenCalledTimes(1);
     // The panel shows the applied confirmation and hides the apply affordance.
     await flushUntil(() =>
       (container.textContent ?? "").includes("The saved Claude login is bound to this agent now."),
     );
-    expect(findButton(container, "Use saved login")).toBeUndefined();
+    expect(findButton(container, "使用已保存的登录")).toBeUndefined();
     // The apply-existing path never starts a login round trip.
     expect(mockAgentsApi.startClaudeSetupTokenLogin).not.toHaveBeenCalled();
   });
@@ -1964,9 +1964,9 @@ describe("AgentConfigForm environment selector", () => {
         </QueryClientProvider>,
       );
     });
-    await flushUntil(() => Boolean(findButton(container, "Log in")));
+    await flushUntil(() => Boolean(findButton(container, "登录")));
 
-    expect(findButton(container, "Use saved login")).toBeUndefined();
+    expect(findButton(container, "使用已保存的登录")).toBeUndefined();
     expect(onApplyStored).not.toHaveBeenCalled();
   });
 
@@ -1985,13 +1985,13 @@ describe("AgentConfigForm environment selector", () => {
     await runTest(result.container);
     await startLogin(result.container);
     await flushUntil(() =>
-      (result.container.textContent ?? "").includes("The login did not finish"),
+      (result.container.textContent ?? "").includes("登录没有完成"),
     );
 
     // The panel shows a fixed message and returns to its start state. The Log in
     // button is available again.
-    expect(result.container.textContent).toContain("The login did not finish");
-    expect(findButton(result.container, "Log in")?.disabled).toBe(false);
+    expect(result.container.textContent).toContain("登录没有完成");
+    expect(findButton(result.container, "登录")?.disabled).toBe(false);
     // The panel never shows the provider failure message, which could carry a
     // secret.
     expect(result.container.textContent).not.toContain("the provider rejected the browser code");
@@ -2012,11 +2012,11 @@ describe("AgentConfigForm environment selector", () => {
     await runTest(result.container);
     await startLogin(result.container);
     await flushUntil(() =>
-      (result.container.textContent ?? "").includes("The login did not finish"),
+      (result.container.textContent ?? "").includes("登录没有完成"),
     );
 
-    expect(result.container.textContent).toContain("The login did not finish");
-    expect(findButton(result.container, "Log in")?.disabled).toBe(false);
+    expect(result.container.textContent).toContain("登录没有完成");
+    expect(findButton(result.container, "登录")?.disabled).toBe(false);
   });
 
   it("shows a terminal failure and stops polling on a status 404 from server cleanup", async () => {
@@ -2042,17 +2042,17 @@ describe("AgentConfigForm environment selector", () => {
     await runTest(result.container);
     await startLogin(result.container);
     await flushUntil(() =>
-      (result.container.textContent ?? "").includes("The login did not finish"),
+      (result.container.textContent ?? "").includes("登录没有完成"),
     );
 
     // The panel shows the fixed failure message and returns to its start state.
-    expect(result.container.textContent).toContain("The login did not finish");
-    expect(findButton(result.container, "Log in")?.disabled).toBe(false);
+    expect(result.container.textContent).toContain("登录没有完成");
+    expect(findButton(result.container, "登录")?.disabled).toBe(false);
 
     // The panel shows no credential material: no authorization URL and no
     // browser-code input.
     expect(result.container.textContent).not.toContain("https://claude.example.test/authorize");
-    expect(result.container.querySelector('input[aria-label="Browser code"]')).toBeFalsy();
+    expect(result.container.querySelector('input[aria-label="浏览器验证码"]')).toBeFalsy();
 
     // The stale polling stopped. The status call count stays fixed after the
     // failure, so the panel does not poll a session the server removed.
@@ -2086,10 +2086,10 @@ describe("AgentConfigForm environment selector", () => {
     );
     // The panel resets: the Log in button is available again, and the URL and the
     // browser-code input are gone.
-    expect(findButton(result.container, "Log in")?.disabled).toBe(false);
+    expect(findButton(result.container, "登录")?.disabled).toBe(false);
     expect(findButton(result.container, "Cancel")).toBeFalsy();
     expect(result.container.textContent).not.toContain("https://claude.example.test/authorize");
-    expect(result.container.querySelector('input[aria-label="Browser code"]')).toBeFalsy();
+    expect(result.container.querySelector('input[aria-label="浏览器验证码"]')).toBeFalsy();
   });
 
   it("treats a 404 cancel the same as success and returns to its start state", async () => {
@@ -2121,10 +2121,10 @@ describe("AgentConfigForm environment selector", () => {
     // The panel reset even though the cancel returned a 404: the Log in button is
     // available again, and the URL and the browser-code input are gone. No error
     // message remains.
-    expect(findButton(result.container, "Log in")?.disabled).toBe(false);
+    expect(findButton(result.container, "登录")?.disabled).toBe(false);
     expect(findButton(result.container, "Cancel")).toBeFalsy();
     expect(result.container.textContent).not.toContain("https://claude.example.test/authorize");
-    expect(result.container.querySelector('input[aria-label="Browser code"]')).toBeFalsy();
+    expect(result.container.querySelector('input[aria-label="浏览器验证码"]')).toBeFalsy();
     expect(result.container.textContent).not.toContain("Could not cancel the login.");
   });
 
@@ -2159,7 +2159,7 @@ describe("AgentConfigForm environment selector", () => {
     await runTest(result.container);
     // The panel shows the Log in button but no session started, so no active
     // session exists to cancel.
-    expect(findButton(result.container, "Log in")).toBeTruthy();
+    expect(findButton(result.container, "登录")).toBeTruthy();
 
     await act(async () => {
       result.root.unmount();
@@ -2263,7 +2263,7 @@ describe("AgentConfigForm environment selector", () => {
       await flushFake();
 
       await clickFake(container, "Test");
-      await clickFake(container, "Log in");
+      await clickFake(container, "登录");
 
       // The login is active: both polls have run at least once.
       const statusCallsAtStart = mockAgentsApi.getClaudeSetupTokenLoginStatus.mock.calls.length;
@@ -2280,19 +2280,19 @@ describe("AgentConfigForm environment selector", () => {
       expect(mockAgentsApi.getClaudeSetupTokenLoginPrompt.mock.calls.length).toBeGreaterThan(
         promptCallsAtStart,
       );
-      expect(container.textContent).not.toContain("The login timed out");
+      expect(container.textContent).not.toContain("登录超时");
 
       // Advance past the old fixed sixty-second cutoff. The panel does NOT time
       // out now, because the cutoff comes from the server `expiresAt`, which is
       // far longer than sixty seconds. This proves the fixed 60-second cap is
       // gone.
       await advanceFake(60_000);
-      expect(container.textContent).not.toContain("The login timed out");
+      expect(container.textContent).not.toContain("登录超时");
 
       // Advance past the server deadline. The panel enters the timed-out state.
       // Total elapsed after this step is 1 second past `serverDeadlineMs`.
       await advanceFake(serverDeadlineMs - 66_000 + 1_000);
-      expect(container.textContent).toContain("The login timed out");
+      expect(container.textContent).toContain("登录超时");
       // The panel released the server session when the cutoff fired. The cancel
       // frees the per-owner reservation now, so an immediate retry by the same
       // owner starts a new session and does not hit the "too many active
@@ -2302,7 +2302,7 @@ describe("AgentConfigForm environment selector", () => {
         "claude-session-1",
       );
       // The Log in button is available again, and the Cancel button is gone.
-      expect(findButton(container, "Log in")?.disabled).toBe(false);
+      expect(findButton(container, "登录")?.disabled).toBe(false);
       expect(findButton(container, "Cancel")).toBeFalsy();
 
       // Both polls stopped. A further ten seconds adds no new poll call.
@@ -2362,9 +2362,9 @@ describe("AgentConfigForm environment selector", () => {
 
     await runTest(result.container);
     await startLogin(result.container);
-    await flushUntil(() => (result.container.textContent ?? "").includes("Authenticated"));
+    await flushUntil(() => (result.container.textContent ?? "").includes("认证完成"));
 
-    expect(result.container.textContent).toContain("Authenticated");
+    expect(result.container.textContent).toContain("认证完成");
     expect(result.container.textContent).not.toContain("sk-ant-SECRET-TOKEN");
   });
 });
@@ -2520,12 +2520,12 @@ describe("AgentConfigForm create-mode Claude OAuth binding", () => {
     await runTest(result.container);
     await startLogin(result.container);
     await flushUntil(() =>
-      (result.container.textContent ?? "").includes("The login did not finish"),
+      (result.container.textContent ?? "").includes("登录没有完成"),
     );
 
     // The panel shows a fixed, non-secret message and returns to its start state.
-    expect(result.container.textContent).toContain("The login did not finish");
-    expect(findButton(result.container, "Log in")?.disabled).toBe(false);
+    expect(result.container.textContent).toContain("登录没有完成");
+    expect(findButton(result.container, "登录")?.disabled).toBe(false);
     expect(result.container.textContent).not.toContain(
       "the provider rejected the stored-session claim",
     );

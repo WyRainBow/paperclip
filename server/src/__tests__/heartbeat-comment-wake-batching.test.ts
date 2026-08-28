@@ -711,7 +711,7 @@ describeEmbeddedPostgres("heartbeat comment wake batching", () => {
             sections: [
               {
                 rows: [
-                  { type: "key_value", label: "Cause", value: "successful_run_missing_state" },
+                  { type: "key_value", label: "原因", value: "successful_run_missing_state" },
                 ],
               },
             ],

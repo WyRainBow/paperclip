@@ -1,5 +1,8 @@
 import type { CSSProperties, ReactNode } from "react";
+import type { IssueWorkProduct } from "@paperclipai/shared";
 import { Badge } from "@/components/ui/badge";
+import { AgentIcon } from "@/components/AgentIconPicker";
+import { t } from "@/i18n";
 import { cn } from "../../lib/utils";
 
 export function PropertySection({
@@ -87,5 +90,111 @@ export function PropertyChip({
     >
       {children}
     </Badge>
+  );
+}
+
+/**
+ * A session row: who it was, then the session id. The id alone identifies a
+ * session but not a participant — two ids side by side are indistinguishable
+ * to a reader, so the name carries recognition and the id carries traceability.
+ *
+ * Cards are usually opened by a terminal agent rather than a person, so the
+ * agent branch is the common case, not the fallback.
+ */
+export function SessionIdentity({
+  agentId,
+  agentName,
+  agentIcon,
+  agentCustomIconUrl,
+  userId,
+  sessionId,
+  tag,
+  live,
+}: {
+  agentId: string | null;
+  agentName: string | null;
+  agentIcon?: string | null;
+  agentCustomIconUrl?: string | null;
+  userId: string | null;
+  sessionId: string | null;
+  tag?: string;
+  live?: boolean;
+}) {
+  const label = agentId ? (agentName ?? agentId.slice(0, 8)) : userId;
+  if (!label && !sessionId) {
+    return <span className="text-sm text-muted-foreground">{t("Unknown")}</span>;
+  }
+
+  return (
+    <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+      {label && (
+        <span className="flex min-w-0 items-center gap-1.5">
+          {agentId ? (
+            <AgentIcon icon={agentIcon} customIconUrl={agentCustomIconUrl} className="h-3.5 w-3.5 shrink-0" />
+          ) : null}
+          <span className="truncate text-sm">{label}</span>
+        </span>
+      )}
+      {sessionId && (
+        <span
+          className="shrink-0 rounded-sm border border-border bg-muted/40 px-1.5 font-mono text-(length:--text-micro) text-muted-foreground"
+          title={sessionId}
+        >
+          {shortSessionId(sessionId)}
+        </span>
+      )}
+      {tag && (
+        <span className="shrink-0 rounded-full border border-border px-1.5 text-(length:--text-micro) text-muted-foreground">
+          {tag}
+        </span>
+      )}
+      {live && (
+        <span className="flex shrink-0 items-center gap-1 text-(length:--text-micro) text-emerald-600 dark:text-emerald-400">
+          <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden />
+          {t("Running")}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/** `sess_1ecef3b3-9a23-…` → `sess_1ecef3b3`; the full id stays in the tooltip. */
+function shortSessionId(sessionId: string) {
+  return sessionId;  // full ID — user wants complete session visible (2026-08-26)
+}
+
+/**
+ * A pull request work product. `status` (is it still open) and `reviewState`
+ * (what did review conclude) are separate chips on purpose — a PR can be open
+ * *and* have changes requested, and collapsing them to one word drops half of
+ * that.
+ */
+export function PullRequestValue({ workProduct }: { workProduct: IssueWorkProduct }) {
+  const number = workProduct.externalId ? `#${workProduct.externalId}` : workProduct.title;
+  return (
+    <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+      {workProduct.url ? (
+        <a
+          href={workProduct.url}
+          target="_blank"
+          rel="noreferrer"
+          className="truncate text-sm font-medium text-primary hover:underline"
+        >
+          {number}
+        </a>
+      ) : (
+        <span className="truncate text-sm font-medium">{number}</span>
+      )}
+      {workProduct.status && (
+        <span className="shrink-0 rounded-full border border-border px-1.5 text-(length:--text-micro) text-muted-foreground">
+          {workProduct.status}
+        </span>
+      )}
+      {workProduct.reviewState && workProduct.reviewState !== "none" && (
+        <span className="shrink-0 rounded-full border border-amber-500/40 bg-amber-500/10 px-1.5 text-(length:--text-micro) text-amber-700 dark:text-amber-300">
+          {workProduct.reviewState.replaceAll("_", " ")}
+        </span>
+      )}
+    </div>
   );
 }

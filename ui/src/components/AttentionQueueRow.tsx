@@ -30,7 +30,7 @@ import {
   isInlineResolvable,
   sourceMeta,
 } from "../lib/attention";
-import { cn, relativeTime } from "../lib/utils";
+import { absoluteTimestamp, cn, relativeTime } from "../lib/utils";
 import { DecisionTriageStrip } from "./DecisionTriageStrip";
 import { InteractionAudienceLine } from "./InteractionAudienceLine";
 import { StatusGlyph } from "./StatusGlyph";
@@ -298,7 +298,12 @@ export const AttentionQueueRow = memo(function AttentionQueueRow({
               Reappears {reappearLabel(snoozedUntil)}
             </span>
           ) : (
-            <span className="text-(length:--text-nano) text-muted-foreground">{relativeTime(item.activityAt)}</span>
+            <span
+              className="text-(length:--text-nano) tabular-nums text-muted-foreground"
+              title={relativeTime(item.activityAt)}
+            >
+              {absoluteTimestamp(item.activityAt)}
+            </span>
           )}
           {!isHidden && (
             <DropdownMenu>
@@ -350,10 +355,16 @@ export const AttentionQueueRow = memo(function AttentionQueueRow({
             }
           : {})}
       >
-        <span className="line-clamp-2 text-sm font-medium text-foreground" title={item.subject.title ?? undefined}>
-          {item.subject.title ?? meta.label}
-        </span>
-        <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{detailLine}</p>
+        {/* Expanded inline resolvers render their own title and body, so the
+            row's summary would be the same text twice on the same screen. */}
+        {expanded && inline ? null : (
+          <>
+            <span className="line-clamp-2 text-sm font-medium text-foreground" title={item.subject.title ?? undefined}>
+              {item.subject.title ?? meta.label}
+            </span>
+            <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{detailLine}</p>
+          </>
+        )}
       </div>
 
       {/* Collapsed-only content. It has no counterpart to morph into — the

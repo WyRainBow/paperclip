@@ -141,7 +141,7 @@ describe("DecisionCard", () => {
 
   it("links the target issue the decision applies to, not just the origin", () => {
     const el = render({});
-    expect(el.textContent).toContain("applies to");
+    expect(el.textContent).toContain("适用于");
     const provenance = el.querySelector("p");
     expect(provenance?.textContent).toContain("PAP-456");
     expect(
@@ -157,7 +157,7 @@ describe("DecisionCard", () => {
         ],
       }),
     });
-    expect(el.textContent).not.toContain("applies to");
+    expect(el.textContent).not.toContain("适用于");
   });
 
   it("links secondary target issues referenced by an effect", () => {
@@ -276,8 +276,11 @@ describe("DecisionCard", () => {
     expect(el.textContent).toContain("Created PAP-999");
     expect(el.textContent).toContain("Set PAP-456 to done");
     expect([...el.querySelectorAll("a")].some((a) => a.getAttribute("href") === "/PAP/issues/PAP-999")).toBe(true);
-    // No option buttons on a terminal decision.
-    expect([...el.querySelectorAll("button")].length).toBe(0);
+    // A terminal decision offers no option buttons — the only button is the
+    // chosen-summary disclosure that reveals what the other options were.
+    const buttons = [...el.querySelectorAll("button")];
+    expect(buttons.length).toBe(1);
+    expect(buttons[0]?.textContent).toContain("Chosen:");
   });
 
   it("surfaces failure cause and the fail-closed / re-propose guidance on partial", () => {

@@ -3,6 +3,7 @@ import { Tabs } from "@/components/ui/tabs";
 import { useHiddenSettings } from "@/hooks/useHiddenSettings";
 import { INSTANCE_SETTINGS_PATH_PREFIX } from "@/lib/instance-settings";
 import { useLocation, useNavigate } from "@/lib/router";
+import { useTranslation } from "@/i18n";
 
 const items = [
   { value: "general", label: "General", href: "/company/settings" },
@@ -94,6 +95,7 @@ export function getCompanySettingsTab(pathname: string): CompanySettingsTab {
 }
 
 export function CompanySettingsNav() {
+  const { t } = useTranslation();
   const location = useLocation();
   const navigate = useNavigate();
   const { hidden: hiddenSettings } = useHiddenSettings();
@@ -112,7 +114,7 @@ export function CompanySettingsNav() {
   return (
     <Tabs value={activeTab} onValueChange={handleTabChange}>
       <PageTabBar
-        items={visibleItems.map(({ value, label }) => ({ value, label }))}
+        items={visibleItems.map(({ value, label }) => ({ value, label: t(label) }))}
         value={activeTab}
         onValueChange={handleTabChange}
         align="start"

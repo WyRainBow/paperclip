@@ -41,3 +41,24 @@ describe("buildOnboardingGreeting", () => {
     expect(greeting).toContain("propose a team of agents");
   });
 });
+
+describe("buildOnboardingGreeting (zh-CN)", () => {
+  it("writes the greeting in Simplified Chinese when the language is zh-CN", () => {
+    const greeting = buildOnboardingGreeting({
+      agentName: "Nova",
+      teamName: "Acme",
+      goals: "做一个本地手艺人的市集。",
+      language: "zh-CN",
+    });
+
+    expect(greeting).toContain("欢迎！我是 Nova，你在 Paperclip 上的第一位 Agent 队友。");
+    expect(greeting).toContain("我理解你想达成的是：");
+    expect(greeting).toContain("> 做一个本地手艺人的市集。");
+    expect(greeting).toContain("稍等片刻");
+  });
+
+  it("keeps English wording for unknown or absent languages", () => {
+    expect(buildOnboardingGreeting({ agentName: "Nova", language: "fr" })).toContain("Welcome!");
+    expect(buildOnboardingGreeting({ agentName: "Nova", language: null })).toContain("Welcome!");
+  });
+});

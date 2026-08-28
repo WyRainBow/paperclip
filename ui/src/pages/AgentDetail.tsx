@@ -59,7 +59,7 @@ import { SourceResolvedFoldCallout } from "../components/SourceResolvedFoldCallo
 import { SourceResolvedFoldBadge } from "../components/SourceResolvedFoldBadge";
 import { readSourceResolvedWatchdogFold } from "../lib/source-resolved-watchdog-fold";
 import { buildSameOriginWebSocketUrl } from "../lib/websocket-url";
-import { formatCents, formatDate, relativeTime, formatTokens, visibleRunCostUsd } from "../lib/utils";
+import { formatCents, formatDate, relativeTime, formatTokens, visibleRunCostUsd, chineseTimestamp } from "../lib/utils";
 import { cn } from "../lib/utils";
 import { describeRunRetryState } from "../lib/runRetryState";
 import { Button } from "@/components/ui/button";
@@ -85,6 +85,7 @@ import {
   HelpCircle,
   FolderOpen,
   AlertTriangle,
+  Upload, X,
 } from "lucide-react";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -279,14 +280,14 @@ type AgentDetailView = "dashboard" | "instructions" | "configuration" | "secrets
 
 export const AGENT_DETAIL_TABS: ReadonlyArray<{ value: AgentDetailView; label: string }> = [
   { value: "dashboard", label: "Dashboard" },
-  { value: "instructions", label: "Instructions" },
+  { value: "instructions", label: "Brief" },
   { value: "skills", label: "Skills" },
-  { value: "configuration", label: "Configuration" },
+  { value: "configuration", label: "配置" },
   { value: "secrets", label: "Secrets" },
   { value: "tools", label: "Tools" },
   { value: "runs", label: "Runs" },
-  { value: "audit", label: "Audit" },
-  { value: "budget", label: "Budget" },
+  { value: "audit", label: "审核" },
+  { value: "budget", label: "预算" },
 ];
 
 export const DISCARD_AGENT_CONFIG_CHANGES_MESSAGE = "Discard unsaved agent configuration changes?";
@@ -1027,6 +1028,39 @@ export function AgentDetail() {
     },
   });
 
+  const uploadIcon = useMutation({
+    mutationFn: async (file: File) => {
+      const form = new FormData();
+      form.append("file", file);
+      const response = await fetch(`/api/agents/${agentLookupRef}/icon`, {
+        method: "POST",
+        body: form,
+      });
+      if (!response.ok) throw new Error(await response.text());
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.agents.detail(routeAgentRef) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.agents.detail(agentLookupRef) });
+      if (resolvedCompanyId) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.agents.list(resolvedCompanyId) });
+      }
+    },
+  });
+  const removeIcon = useMutation({
+    mutationFn: async () => {
+      const response = await fetch(`/api/agents/${agentLookupRef}/icon`, { method: "DELETE" });
+      if (!response.ok) throw new Error(await response.text());
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.agents.detail(routeAgentRef) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.agents.detail(agentLookupRef) });
+      if (resolvedCompanyId) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.agents.list(resolvedCompanyId) });
+      }
+    },
+  });
   const updateIcon = useMutation({
     mutationFn: (icon: string) => agentsApi.update(agentLookupRef, { icon }, resolvedCompanyId ?? undefined),
     onSuccess: () => {
@@ -1067,9 +1101,9 @@ export function AgentDetail() {
         crumbs.push({ label: "Runs", href: `/agents/${canonicalAgentRef}/runs` });
         crumbs.push({ label: `Run ${urlRunId.slice(0, 8)}` });
       } else if (activeView === "instructions") {
-        crumbs.push({ label: "Instructions" });
+        crumbs.push({ label: "Brief" });
       } else if (activeView === "configuration") {
-        crumbs.push({ label: "Configuration" });
+        crumbs.push({ label: "配置" });
       } else if (activeView === "secrets") {
         crumbs.push({ label: "Secrets" });
       // } else if (activeView === "skills") { // TODO: bring back later
@@ -1079,7 +1113,7 @@ export function AgentDetail() {
       } else if (activeView === "runs") {
         crumbs.push({ label: "Runs" });
       } else if (activeView === "budget") {
-        crumbs.push({ label: "Budget" });
+        crumbs.push({ label: "预算" });
       } else {
         crumbs.push({ label: "Dashboard" });
       }
@@ -1273,14 +1307,41 @@ export function AgentDetail() {
       {/* Header */}
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-3 min-w-0">
-          <AgentIconPicker
-            value={agent.icon}
-            onChange={(icon) => updateIcon.mutate(icon)}
-          >
-            <button className="shrink-0 flex items-center justify-center h-12 w-12 rounded-lg bg-accent hover:bg-accent/80 transition-colors">
-              <AgentIcon icon={agent.icon} className="h-6 w-6" />
-            </button>
-          </AgentIconPicker>
+          <div className="relative shrink-0">
+            <AgentIconPicker
+              value={agent.icon}
+              onChange={(icon) => updateIcon.mutate(icon)}
+            >
+              <button className="shrink-0 flex items-center justify-center h-12 w-12 rounded-lg bg-accent hover:bg-accent/80 transition-colors overflow-hidden">
+                <AgentIcon icon={agent.icon} customIconUrl={(agent.metadata as { customIcon?: string } | null)?.customIcon ?? null} className="h-6 w-6" />
+              </button>
+            </AgentIconPicker>
+            <label
+              className="absolute -bottom-1 -right-1 flex h-5 w-5 cursor-pointer items-center justify-center rounded-full border border-border bg-background shadow-sm hover:bg-accent"
+              title="上传自定义头像"
+            >
+              <Upload className="h-3 w-3" aria-hidden />
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/svg+xml,image/gif"
+                className="hidden"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) uploadIcon.mutate(file);
+                  event.target.value = "";
+                }}
+              />
+            </label>
+            {(agent.metadata as { customIcon?: string } | null)?.customIcon ? (
+              <button
+                className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full border border-border bg-background shadow-sm hover:bg-accent"
+                title="移除自定义头像"
+                onClick={() => removeIcon.mutate()}
+              >
+                <X className="h-3 w-3" aria-hidden />
+              </button>
+            ) : null}
+          </div>
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <h2 className="text-2xl font-bold truncate">{agent.name}</h2>
@@ -2002,7 +2063,7 @@ function AgentConfigurePage({
         hideInstructionsFile
       />
       <div>
-        <h3 className="text-sm font-medium mb-3">API Keys</h3>
+        <h3 className="text-sm font-medium mb-3">API Key</h3>
         <KeysTab agentId={agentId} companyId={companyId} />
       </div>
 
@@ -2016,13 +2077,13 @@ function AgentConfigurePage({
             ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
             : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
           }
-          Configuration Revisions
+          配置修订
           <span className="text-xs font-normal text-muted-foreground">{configRevisions?.length ?? 0}</span>
         </button>
         {revisionsOpen && (
           <div className="mt-3">
             {(configRevisions ?? []).length === 0 ? (
-              <p className="text-sm text-muted-foreground">No configuration revisions yet.</p>
+              <p className="text-sm text-muted-foreground">还没有配置修订。</p>
             ) : (
               <div className="space-y-2">
                 {(configRevisions ?? []).slice(0, 10).map((revision) => (
@@ -2042,12 +2103,12 @@ function AgentConfigurePage({
                         onClick={() => rollbackConfig.mutate(revision.id)}
                         disabled={rollbackConfig.isPending}
                       >
-                        Restore
+                        回滚
                       </Button>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      Changed:{" "}
-                      {revision.changedKeys.length > 0 ? revision.changedKeys.join(", ") : "no tracked changes"}
+                      改动：{" "}
+                      {revision.changedKeys.length > 0 ? revision.changedKeys.join("、") : "没有记录到的改动"}
                     </p>
                   </div>
                 ))}
@@ -2162,14 +2223,14 @@ function ConfigurationTab({
   const taskAssignLocked = agent.role === "ceo" || canCreateAgents;
   const taskAssignHint =
     taskAssignSource === "ceo_role"
-      ? "Enabled automatically for CEO agents."
+      ? "CEO 角色自动开启。"
       : taskAssignSource === "agent_creator"
-        ? "Enabled automatically while this agent can create new agents."
+        ? "只要这个 Agent 能创建新 Agent，就自动开启。"
         : taskAssignSource === "explicit_grant"
-          ? "Enabled via explicit company permission grant."
+          ? "由公司显式授权开启。"
           : taskAssignSource === "simple_default"
-            ? "Enabled by simple company-wide task assignment defaults."
-            : "Disabled unless explicitly granted.";
+            ? "由公司级的简单派活默认值开启。"
+            : "未显式授权时关闭。";
 
   return (
     <div className="space-y-6">
@@ -2190,7 +2251,7 @@ function ConfigurationTab({
       />
       {content === "configuration" ? (
         <p className="text-xs text-muted-foreground">
-          Saved adapter config affects the next run. Active runs keep the config they started with, and config changes may start a fresh adapter session.
+          保存的适配器配置从下一次运行开始生效。正在跑的运行沿用它启动时的配置，改配置可能会开一个新的适配器会话。
         </p>
       ) : null}
 
@@ -2218,13 +2279,13 @@ function ConfigurationTab({
       /> : null}
 
       {content === "configuration" ? <div>
-        <h3 className="text-sm font-medium mb-3">Permissions</h3>
+        <h3 className="text-sm font-medium mb-3">权限</h3>
         <div className="border border-border rounded-lg p-4 space-y-4">
           <div className="flex items-center justify-between gap-4 text-sm">
             <div className="space-y-1">
-              <div>Can create new agents</div>
+              <div>可以创建新 Agent</div>
               <p className="text-xs text-muted-foreground">
-                Lets this agent create or hire agents. This also grants task assignment authority.
+                允许这个 Agent 创建或雇佣 Agent，同时会一并获得派活权限。
               </p>
             </div>
             <ToggleSwitch
@@ -2241,9 +2302,9 @@ function ConfigurationTab({
           </div>
           <div className="flex items-center justify-between gap-4 text-sm">
             <div className="space-y-1">
-              <div>Can create/import skills</div>
+              <div>可以创建 / 导入技能</div>
               <p className="text-xs text-muted-foreground">
-                Lets this agent install, import, create, and scan company skills without creating agents.
+                允许这个 Agent 安装、导入、创建和扫描公司技能，不含创建 Agent。
               </p>
             </div>
             <ToggleSwitch
@@ -2260,7 +2321,7 @@ function ConfigurationTab({
           </div>
           <div className="flex items-center justify-between gap-4 text-sm">
             <div className="space-y-1">
-              <div>Can assign tasks</div>
+              <div>可以派活</div>
               <p className="text-xs text-muted-foreground">
                 {taskAssignHint}
               </p>
@@ -2643,7 +2704,7 @@ export function PromptsTab({
         </div>
       )}
       <p className="text-xs text-muted-foreground">
-        Saved instructions affect the next run. Active runs keep the instructions they started with, and instruction changes may start a fresh adapter session.
+        Saved brief affects the next run. Active runs keep the brief they started with, and brief changes may start a fresh adapter session.
       </p>
 
       <Collapsible defaultOpen={currentMode === "external"}>
@@ -2662,7 +2723,7 @@ export function PromptsTab({
                       <HelpCircle className="h-3 w-3 text-muted-foreground cursor-help" />
                     </TooltipTrigger>
                     <TooltipContent side="right" sideOffset={4}>
-                      Managed: Paperclip stores and serves the instructions bundle. External: you provide a path on disk where the instructions live.
+                      Managed: Paperclip stores and serves the brief bundle. External: you provide a path on disk where the brief lives.
                     </TooltipContent>
                   </Tooltip>
                 </span>
@@ -2717,7 +2778,7 @@ export function PromptsTab({
                       <HelpCircle className="h-3 w-3 text-muted-foreground cursor-help" />
                     </TooltipTrigger>
                     <TooltipContent side="right" sideOffset={4}>
-                      The absolute directory on disk where the instructions bundle lives. In managed mode this is set by Paperclip automatically.
+                      The absolute directory on disk where the brief bundle lives. In managed mode this is set by Paperclip automatically.
                     </TooltipContent>
                   </Tooltip>
                 </span>
@@ -2766,7 +2827,7 @@ export function PromptsTab({
                       <HelpCircle className="h-3 w-3 text-muted-foreground cursor-help" />
                     </TooltipTrigger>
                     <TooltipContent side="right" sideOffset={4}>
-                      The main file the agent reads first when loading instructions. Defaults to AGENTS.md.
+                      The main file the agent reads first when loading its brief. Defaults to AGENTS.md.
                     </TooltipContent>
                   </Tooltip>
                 </span>
@@ -4390,7 +4451,7 @@ function KeysTab({ agentId, companyId }: { agentId: string; companyId?: string }
       {newToken && (
         <div className="border border-yellow-300 dark:border-yellow-600/40 bg-yellow-50 dark:bg-yellow-500/5 rounded-lg p-4 space-y-2">
           <p className="text-sm font-medium text-yellow-700 dark:text-yellow-400">
-            API key created — copy it now, it will not be shown again.
+            API Key 已创建，现在就复制，之后不会再显示。
           </p>
           <div className="flex items-center gap-2">
             <code className="flex-1 bg-neutral-100 dark:bg-neutral-950 rounded px-3 py-1.5 text-xs font-mono text-green-700 dark:text-green-300 truncate">
@@ -4400,7 +4461,7 @@ function KeysTab({ agentId, companyId }: { agentId: string; companyId?: string }
               variant="ghost"
               size="icon-sm"
               onClick={() => setTokenVisible((v) => !v)}
-              title={tokenVisible ? "Hide" : "Show"}
+              title={tokenVisible ? "隐藏" : "显示"}
             >
               {tokenVisible ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
             </Button>
@@ -4408,11 +4469,11 @@ function KeysTab({ agentId, companyId }: { agentId: string; companyId?: string }
               variant="ghost"
               size="icon-sm"
               onClick={copyToken}
-              title="Copy"
+              title="复制"
             >
               <Copy className="h-3.5 w-3.5" />
             </Button>
-            {copied && <span className="text-xs text-green-400">Copied!</span>}
+            {copied && <span className="text-xs text-green-400">已复制</span>}
           </div>
           <Button
             variant="ghost"
@@ -4420,7 +4481,7 @@ function KeysTab({ agentId, companyId }: { agentId: string; companyId?: string }
             className="text-muted-foreground text-xs"
             onClick={() => setNewToken(null)}
           >
-            Dismiss
+            知道了
           </Button>
         </div>
       )}
@@ -4429,14 +4490,22 @@ function KeysTab({ agentId, companyId }: { agentId: string; companyId?: string }
       <div className="border border-border rounded-lg p-4 space-y-3">
         <h3 className="text-xs font-medium text-muted-foreground flex items-center gap-2">
           <Key className="h-3.5 w-3.5" />
-          Create API Key
+          创建 API Key
         </h3>
         <p className="text-xs text-muted-foreground">
-          API keys allow this agent to authenticate calls to the Paperclip server.
+          API Key 让这个 Agent 能以自己的身份调用 Paperclip 服务端。
+        </p>
+        <p className="text-xs text-muted-foreground">
+          <span className="font-medium text-foreground">一个 Agent 只能有一把生效中的 Key。</span>
+          {" "}已经有一把还去创建会被服务端拒绝（409）——Key 就是这个 Agent 的终端身份凭证，
+          明文常驻在对应终端的 <code className="font-mono">~/.zshenv</code>（按终端分流，
+          Claude 会话只读 Claude 的 Key，Codex 只读 Codex 的），
+          再铸一把只会让旧的那把继续留在别人机器上生效。
+          丢了就先吊销下面那把，再创建新的。
         </p>
         <div className="flex items-center gap-2">
           <Input
-            placeholder="Key name (e.g. production)"
+            placeholder="Key 名称（如 production）"
             value={newKeyName}
             onChange={(e) => setNewKeyName(e.target.value)}
             className="h-8 text-sm"
@@ -4447,25 +4516,31 @@ function KeysTab({ agentId, companyId }: { agentId: string; companyId?: string }
           <Button
             size="sm"
             onClick={() => createKey.mutate()}
-            disabled={createKey.isPending}
+            disabled={createKey.isPending || activeKeys.length > 0}
+            title={activeKeys.length > 0 ? "已有一把生效中的 Key，先吊销它再创建" : undefined}
           >
             <Plus className="h-3.5 w-3.5 mr-1" />
-            Create
+            创建
           </Button>
         </div>
+        {createKey.isError && (
+          <p className="text-xs text-destructive">
+            {createKey.error instanceof Error ? createKey.error.message : "创建 Key 失败"}
+          </p>
+        )}
       </div>
 
       {/* Active keys */}
-      {isLoading && <p className="text-sm text-muted-foreground">Loading keys...</p>}
+      {isLoading && <p className="text-sm text-muted-foreground">加载 Key…</p>}
 
       {!isLoading && activeKeys.length === 0 && !newToken && (
-        <p className="text-sm text-muted-foreground">No active API keys.</p>
+        <p className="text-sm text-muted-foreground">没有生效中的 API Key。</p>
       )}
 
       {activeKeys.length > 0 && (
         <div>
           <h3 className="text-xs font-medium text-muted-foreground mb-2">
-            Active Keys
+            生效中的 Key
           </h3>
           <div className="border border-border rounded-lg divide-y divide-border">
             {activeKeys.map((key: AgentKey) => (
@@ -4473,7 +4548,7 @@ function KeysTab({ agentId, companyId }: { agentId: string; companyId?: string }
                 <div>
                   <span className="text-sm font-medium">{key.name}</span>
                   <span className="text-xs text-muted-foreground ml-3">
-                    Created {formatDate(key.createdAt)}
+                    创建于 {chineseTimestamp(key.createdAt)}
                   </span>
                 </div>
                 <Button
@@ -4483,7 +4558,7 @@ function KeysTab({ agentId, companyId }: { agentId: string; companyId?: string }
                   onClick={() => revokeKey.mutate(key.id)}
                   disabled={revokeKey.isPending}
                 >
-                  Revoke
+                  吊销
                 </Button>
               </div>
             ))}
@@ -4495,7 +4570,7 @@ function KeysTab({ agentId, companyId }: { agentId: string; companyId?: string }
       {revokedKeys.length > 0 && (
         <div>
           <h3 className="text-xs font-medium text-muted-foreground mb-2">
-            Revoked Keys
+            已吊销的 Key
           </h3>
           <div className="border border-border rounded-lg divide-y divide-border opacity-50">
             {revokedKeys.map((key: AgentKey) => (
@@ -4503,7 +4578,7 @@ function KeysTab({ agentId, companyId }: { agentId: string; companyId?: string }
                 <div>
                   <span className="text-sm line-through">{key.name}</span>
                   <span className="text-xs text-muted-foreground ml-3">
-                    Revoked {key.revokedAt ? formatDate(key.revokedAt) : ""}
+                    吊销于 {key.revokedAt ? chineseTimestamp(key.revokedAt) : ""}
                   </span>
                 </div>
               </div>

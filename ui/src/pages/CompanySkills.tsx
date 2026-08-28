@@ -25,6 +25,7 @@ import { companySkillsApi } from "../api/companySkills";
 import { foldersApi } from "../api/folders";
 import { agentsApi } from "../api/agents";
 import { useCompany } from "../context/CompanyContext";
+import { t, useTranslation } from "../i18n";
 import { useBreadcrumbs, type Breadcrumb } from "../context/BreadcrumbContext";
 import { useToastActions } from "../context/ToastContext";
 import { queryKeys } from "../lib/queryKeys";
@@ -162,6 +163,7 @@ import {
   History,
   X,
   XOctagon,
+  Plug,
 } from "lucide-react";
 import { GithubIcon } from "../components/icons/github-icon";
 import type { FolderListItem, FolderListResult } from "@paperclipai/shared";
@@ -254,7 +256,13 @@ function buildTree(entries: CompanySkillFileInventoryEntry[]) {
   return root.children;
 }
 
-function sourceMeta(sourceBadge: CompanySkillSourceBadge, sourceLabel: string | null) {
+function sourceMeta(sourceBadge: CompanySkillSourceBadge, sourceLabel: string | null, skillKey?: string | null) {
+  // Plugin-shipped skills carry raw install paths as their source label;
+  // surface a clean "plugin" provenance keyed off the skill key instead.
+  if (skillKey?.startsWith("plugin/")) {
+    const pluginName = skillKey.split("/")[1] ?? "plugin";
+    return { icon: Plug, label: t("Plugin"), managedLabel: pluginName };
+  }
   const normalizedLabel = sourceLabel?.toLowerCase() ?? "";
   const isSkillsShManaged =
     normalizedLabel.includes("skills.sh") || normalizedLabel.includes("vercel-labs/skills");
@@ -393,11 +401,11 @@ function SourceFilterMenu({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-48">
-        <DropdownMenuLabel>Source</DropdownMenuLabel>
+        <DropdownMenuLabel>{t("Source")}</DropdownMenuLabel>
         <DropdownMenuRadioGroup value={value} onValueChange={(next) => onChange(next as SourceFilter)}>
           {filters.map((filter) => (
             <DropdownMenuRadioItem key={filter} value={filter}>
-              <span>{SOURCE_FILTER_LABELS[filter]}</span>
+              <span>{t(SOURCE_FILTER_LABELS[filter])}</span>
               <span className="ml-auto text-xs text-muted-foreground">{counts[filter] ?? 0}</span>
             </DropdownMenuRadioItem>
           ))}
@@ -875,7 +883,7 @@ function SkillCard({
         </div>
         {/* Where the skill came from (PAP-10907 E); native title gives a hover hint. */}
         {(() => {
-          const meta = sourceMeta(card.sourceBadge ?? "catalog", card.sourceLabel ?? null);
+          const meta = sourceMeta(card.sourceBadge ?? "catalog", card.sourceLabel ?? null, card.key);
           const SourceIcon = meta.icon;
           return (
             <span className="shrink-0 text-muted-foreground" title={`From ${meta.label}`} aria-label={`From ${meta.label}`}>
@@ -937,7 +945,9 @@ function SkillCard({
       <div className="mt-auto pt-3">
         {/* Stats: installed agents · stars · forks — stars/forks only when > 0. */}
         <div className="flex items-center gap-2 text-(length:--text-micro) text-muted-foreground">
-          <span>{card.agentCount} {card.agentCount === 1 ? "agent" : "agents"}</span>
+          <span>{card.agentCount === 1
+            ? t("{{count}} agent", { count: card.agentCount })
+            : t("{{count}} agents", { count: card.agentCount })}</span>
           {card.starCount > 0 ? (
             <>
               <span aria-hidden="true">·</span>
@@ -954,7 +964,7 @@ function SkillCard({
         <div className="mt-2 flex flex-wrap items-center gap-1">
           {card.installed ? (
             <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-(length:--text-nano) text-emerald-700 dark:text-emerald-300">
-              Installed
+              {t("Installed")}
             </Badge>
           ) : null}
           {card.categories.slice(0, 2).map((category) => (
@@ -1115,6 +1125,7 @@ export function DiscoveryGrid({
   /** When set and no folders exist yet, show the dismissible all-unfiled nudge (ux-spec §6.3). */
   folderNudgeStorageKey?: string;
 }) {
+  const { t } = useTranslation();
   // Source filter (github / skills.sh / local / …) lives in the grid so it
   // narrows whatever the parent already filtered by tab/category/search (PAP-10907 E).
   const [sourceBadgeFilter, setSourceBadgeFilter] = useState<string>("all");
@@ -1177,7 +1188,7 @@ export function DiscoveryGrid({
       <aside className={cn("hidden w-60 shrink-0 flex-col overflow-hidden border-r border-border md:flex", showFolderRail && "md:hidden")}>
         <div className="border-b border-border px-4 py-4">
           <h2 className="text-sm font-semibold text-foreground">Skills Store</h2>
-          <p className="text-xs text-muted-foreground">Discover, install, fork, share</p>
+          <p className="text-xs text-muted-foreground">{t("Discover, install, fork, share")}</p>
         </div>
         <div className="px-4 pb-1 pt-3 text-(length:--text-micro) font-medium uppercase tracking-wide text-muted-foreground">
           Categories
@@ -1200,15 +1211,15 @@ export function DiscoveryGrid({
             <input
               value={search}
               onChange={(event) => onSearchChange(event.target.value)}
-              placeholder="Search skills, authors, categories…"
+              placeholder={t("Search skills, authors, categories…")}
               className="h-full w-full bg-transparent text-base outline-none placeholder:text-muted-foreground sm:text-sm"
             />
           </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm">
-                <span className="text-muted-foreground">Sort</span>
-                <span className="ml-1.5">{DISCOVERY_SORT_LABELS[sort]}</span>
+                <span className="text-muted-foreground">{t("Sort")}</span>
+                <span className="ml-1.5">{t(DISCOVERY_SORT_LABELS[sort])}</span>
                 <ChevronDown className="ml-1 h-3.5 w-3.5" />
               </Button>
             </DropdownMenuTrigger>
@@ -1216,7 +1227,7 @@ export function DiscoveryGrid({
               <DropdownMenuRadioGroup value={sort} onValueChange={(value) => onSortChange(value as DiscoverySort)}>
                 {DISCOVERY_SORTS.map((option) => (
                   <DropdownMenuRadioItem key={option} value={option}>
-                    {DISCOVERY_SORT_LABELS[option]}
+                    {t(DISCOVERY_SORT_LABELS[option])}
                   </DropdownMenuRadioItem>
                 ))}
               </DropdownMenuRadioGroup>
@@ -1226,16 +1237,16 @@ export function DiscoveryGrid({
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="sm">
-                  <span className="text-muted-foreground">Source</span>
+                  <span className="text-muted-foreground">{t("Source")}</span>
                   <span className="ml-1.5 capitalize">
-                    {sourceBadgeFilter === "all" ? "All" : sourceMeta(sourceBadgeFilter as CompanySkillSourceBadge, null).label}
+                    {sourceBadgeFilter === "all" ? t("All") : sourceMeta(sourceBadgeFilter as CompanySkillSourceBadge, null).label}
                   </span>
                   <ChevronDown className="ml-1 h-3.5 w-3.5" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuRadioGroup value={sourceBadgeFilter} onValueChange={setSourceBadgeFilter}>
-                  <DropdownMenuRadioItem value="all">All sources</DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="all">{t("All sources")}</DropdownMenuRadioItem>
                   {availableSources.map((badge) => (
                     <DropdownMenuRadioItem key={badge} value={badge}>
                       {sourceMeta(badge as CompanySkillSourceBadge, null).label}
@@ -1250,41 +1261,41 @@ export function DiscoveryGrid({
             size="icon-sm"
             onClick={() => onScan()}
             disabled={scanPending}
-            aria-label="Scan project workspaces for skills"
-            title="Scan project workspaces for skills"
+            aria-label={t("Scan project workspaces for skills")}
+            title={t("Scan project workspaces for skills")}
           >
             <RefreshCw className={cn("h-4 w-4", scanPending && "animate-spin")} />
           </Button>
           <Button asChild variant="outline" size="sm">
             <Link to="/skills/studio">
               <FlaskConical className="h-3.5 w-3.5" />
-              Studio
+              {t("Studio")}
             </Link>
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button size="sm" variant="default">
                 <Plus className="mr-1 h-3.5 w-3.5" />
-                New
+                {t("New")}
                 <ChevronDown className="ml-1 h-3.5 w-3.5" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onSelect={onCreate}>
                 <Pencil className="mr-2 h-4 w-4" />
-                Create new skill
+                {t("Create new skill")}
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={onBrowseCatalog}>
                 <Boxes className="mr-2 h-4 w-4" />
-                Browse catalog
+                {t("Browse catalog")}
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={onImport}>
                 <Globe className="mr-2 h-4 w-4" />
-                Import from path or URL
+                {t("Import from path or URL")}
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={onImportFromProject}>
                 <FolderSearch className="mr-2 h-4 w-4" />
-                Import skills from project
+                {t("Import skills from project")}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -1293,20 +1304,18 @@ export function DiscoveryGrid({
               <FolderChip
                 result={folderResult}
                 selection={folderSelection}
-                allLabel="All skills"
+                allLabel={t("All skills")}
                 onClick={onOpenMobileFolders ?? (() => undefined)}
               />
             </div>
           ) : null}
           {onCreateFolder && !showFolderRail ? (
             <Button variant="outline" size="sm" onClick={onCreateFolder}>
-              <Plus className="mr-1 h-3.5 w-3.5" />
-              New folder
-            </Button>
+              <Plus className="mr-1 h-3.5 w-3.5" />{t("New folder")}</Button>
           ) : null}
           {onToggleSelectMode ? (
             <Button variant="ghost" size="sm" onClick={onToggleSelectMode}>
-              {selectMode ? "Done" : "Select"}
+              {selectMode ? t("Done") : t("Select")}
             </Button>
           ) : null}
         </div>
@@ -1343,19 +1352,19 @@ export function DiscoveryGrid({
           <Tabs value={tab} onValueChange={(value) => onTabChange(value as DiscoveryTab)}>
             <TabsList variant="line" className="p-0">
               <TabsTrigger value="all" className="px-3">
-                <span>All</span>
+                <span>{t("All")}</span>
                 <span className="ml-1.5 text-(length:--text-micro) text-muted-foreground">{tabCounts.all}</span>
               </TabsTrigger>
               <TabsTrigger value="installed" className="px-3">
-                <span>Installed</span>
+                <span>{t("Installed")}</span>
                 <span className="ml-1.5 text-(length:--text-micro) text-muted-foreground">{tabCounts.installed}</span>
               </TabsTrigger>
               <TabsTrigger value="catalog" className="px-3">
-                <span>Catalog</span>
+                <span>{t("Catalog")}</span>
                 <span className="ml-1.5 text-(length:--text-micro) text-muted-foreground">{tabCounts.catalog}</span>
               </TabsTrigger>
               <TabsTrigger value="bundled" className="px-3">
-                <span>Bundled</span>
+                <span>{t("Bundled")}</span>
                 <span className="ml-1.5 text-(length:--text-micro) text-muted-foreground">{tabCounts.bundled}</span>
               </TabsTrigger>
             </TabsList>
@@ -1446,7 +1455,9 @@ export function DiscoveryGrid({
           ) : (
             <>
               <p className="mb-3 text-xs text-muted-foreground">
-                {sourceFilteredCards.length} {sourceFilteredCards.length === 1 ? "skill" : "skills"}
+                {sourceFilteredCards.length === 1
+                  ? t("{{count}} skill", { count: sourceFilteredCards.length })
+                  : t("{{count}} skills", { count: sourceFilteredCards.length })}
                 {activeCategory ? <span className="capitalize"> · {activeCategory}</span> : null}
               </p>
               <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(19rem,1fr))]">
@@ -2419,7 +2430,7 @@ function SkillList({
       {filteredSkills.map((skill) => {
         const expanded = expandedSkillId === skill.id;
         const tree = buildTree(skill.fileInventory);
-        const source = sourceMeta(skill.sourceBadge, skill.sourceLabel);
+        const source = sourceMeta(skill.sourceBadge, skill.sourceLabel, skill.key);
         const SourceIcon = source.icon;
 
         return (
@@ -2915,7 +2926,7 @@ export function SkillDetailPage({
 
   const skill = detail;
   const resolvedStudioHref = studioHref ?? skillStudioRoute(skill.id);
-  const source = sourceMeta(skill.sourceBadge, skill.sourceLabel);
+  const source = sourceMeta(skill.sourceBadge, skill.sourceLabel, skill.key);
   const SourceIcon = source.icon;
   const body = file?.markdown ? stripFrontmatter(file.content) : file?.content ?? "";
   const currentPin = shortRef(skill.sourceRef);
@@ -3157,7 +3168,9 @@ export function SkillDetailPage({
       <div className="space-y-3">
         <div className="flex items-center justify-between gap-3">
           <p className="text-sm text-muted-foreground">
-            {attached.length} {attached.length === 1 ? "agent" : "agents"} attached
+            {attached.length === 1
+              ? t("{{count}} agent attached", { count: attached.length })
+              : t("{{count}} agents attached", { count: attached.length })}
             {selectedVersion ? ` · ${versionLabel(selectedVersion)}` : " · Latest"}
           </p>
           <AttachAgentsPopover
@@ -3375,7 +3388,9 @@ export function SkillDetailPage({
                 fullWidth
               />
               {detail.usedByAgents.length === 0 ? (
-                <p className="text-xs text-muted-foreground">No agents attached yet.</p>
+                <p className="text-xs text-muted-foreground">
+                  {t("Not attached to any Paperclip-run Agent. Attaching is for Agents Paperclip runs itself (adapter skill sync); terminal Agents read this skill directly over the API/CLI and never need attaching.")}
+                </p>
               ) : (
                 <div className="space-y-0.5">
                   {/* Preview up to three attached agents, then summarise the rest. */}
@@ -5267,7 +5282,7 @@ export function CompanySkills() {
         onOpenChange={setMobileFoldersOpen}
         result={railSkillFolderResult}
         selection={folderSelection}
-        allLabel="All skills"
+        allLabel={t("All skills")}
         itemLabelPlural="Skills"
         onSelect={setFolderSelection}
         onCreate={() => openCreateFolder()}

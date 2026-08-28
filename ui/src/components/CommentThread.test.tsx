@@ -156,7 +156,8 @@ describe("CommentThread", () => {
     expect(runRow?.className).not.toContain("border");
     expect(container.textContent).toContain("CodexCoder");
     expect(container.textContent).toContain("succeeded");
-    expect(container.textContent).toContain("2h ago");
+    // Absolute since 2026-08-27; match the 月/日 时:分 shape, not a fixed string.
+    expect(container.textContent).toMatch(/\d+月\d+日 \d{2}:\d{2}/);
     expect(container.textContent).not.toContain("4h ago");
     const runLink = container.querySelector('a[href="/agents/agent-1/runs/run-12345678abcd"]') as HTMLAnchorElement | null;
     expect(runLink?.textContent).toContain("run-1234");

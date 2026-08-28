@@ -1,3 +1,4 @@
+import { agentCustomIcon } from "./AgentIconPicker";
 import { useMemo, useState } from "react";
 import type { Agent, Issue } from "@paperclipai/shared";
 import { useQuery } from "@tanstack/react-query";
@@ -189,7 +190,7 @@ export function ExecutionParticipantPicker({
                   )}
                   onClick={() => toggle(encoded)}
                 >
-                  <AgentIcon icon={agent.icon} className="shrink-0 h-3 w-3 text-muted-foreground" />
+                  <AgentIcon customIconUrl={agentCustomIcon(agent)} icon={agent.icon} className="shrink-0 h-3 w-3 text-muted-foreground" />
                   {agent.name}
                 </button>
               );

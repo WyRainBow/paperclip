@@ -345,7 +345,7 @@ export function BuiltInBundlePanel({
         {instructions &&
           renderResourceRow(
             "instructions",
-            "Instructions",
+            "Brief",
             bundle.instructions.entryFile,
             `/agents/${agentRef}/instructions`,
             instructions,

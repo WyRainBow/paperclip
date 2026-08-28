@@ -80,7 +80,7 @@ describe("trust-policy-ui low-trust boundary helpers", () => {
     });
 
     expect(getSingleLowTrustBoundaryTarget(boundary)).toEqual({ type: "root_issue", id: "issue-root" });
-    expect(summarizeLowTrustBoundaryTarget(boundary)).toBe("Root issue issue-ro");
+    expect(summarizeLowTrustBoundaryTarget(boundary)).toBe("根 Issue issue-ro");
   });
 
   it("marks multi-boundary policies read-only for CE", () => {
@@ -92,7 +92,7 @@ describe("trust-policy-ui low-trust boundary helpers", () => {
 
     expect(isCeLowTrustBoundaryEditable(boundary)).toBe(false);
     expect(getSingleLowTrustBoundaryTarget(boundary)).toBeNull();
-    expect(summarizeLowTrustBoundaryTarget(boundary)).toBe("2 boundaries");
+    expect(summarizeLowTrustBoundaryTarget(boundary)).toBe("2 条边界");
   });
 
   it("clears the CE boundary without removing non-scope fields", () => {

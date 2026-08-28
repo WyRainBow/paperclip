@@ -52,6 +52,9 @@ export function commentsToTaskChatItems(
   const items: TaskChatItem[] = [];
   for (const comment of comments) {
     if (comment.deletedAt) continue;
+    // progress_note lives in the Progress tab only, not in chat (user 2026-08-26)
+    const presentation = comment.presentation as { kind?: string } | null | undefined;
+    if (presentation?.kind === "progress_note") continue;
     const kind = authorKind(comment);
     let authorName: string | undefined;
     let agentIcon: string | null | undefined;

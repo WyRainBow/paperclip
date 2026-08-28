@@ -8,6 +8,7 @@ import { Link } from "@/lib/router";
 import {
   deriveOriginatingActor,
   isArtifactReviewDocumentKey,
+  type Agent,
   type Issue,
   type IssueLabel,
 } from "@paperclipai/shared";
@@ -55,7 +56,7 @@ import { PriorityIcon } from "../PriorityIcon";
 import { SHOW_TASK_PRIORITY_UI } from "../../lib/ui-flags";
 import { Identity } from "../Identity";
 import { IssueReferencePill } from "../IssueReferencePill";
-import { formatDate, formatDateTime, cn, projectUrl } from "../../lib/utils";
+import { chineseTimestamp, formatDate, formatDateTime, cn, projectUrl } from "../../lib/utils";
 import type { IssueExternalObjectGroup } from "../../hooks/useIssueExternalObjects";
 import { timeAgo } from "../../lib/timeAgo";
 import { invalidateInboxIssueQueries } from "../../lib/inboxArchiveCache";
@@ -69,6 +70,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { IssuePropertiesPlansTab } from "./IssuePropertiesPlansTab";
 import { IssuePropertiesArtifactsTab } from "./IssuePropertiesArtifactsTab";
 import { IssuePropertiesProgressTab, isProgressNoteComment } from "./IssuePropertiesProgressTab";
+import { useTranslation } from "@/i18n";
 import { User, ArrowUpRight, Plus, GitBranch, FolderOpen, HardDrive, Check, Clock, RotateCcw, Loader2, CheckCircle2, ArchiveRestore } from "lucide-react";
 import { AgentIcon } from "../AgentIconPicker";
 import { InlineEntitySelector, type InlineEntityOption } from "../InlineEntitySelector";
@@ -97,12 +99,14 @@ import {
   thinkingEffortValueFor,
   toDateTimeLocalValue,
 } from "./helpers";
+import { agentCustomIcon } from "@/components/AgentIconPicker";
 import { PropertyPicker } from "./property-picker";
-import { PropertyChip, PropertyRow, PropertySection } from "./primitives";
+import { PropertyChip, PropertyRow, PropertySection, PullRequestValue, SessionIdentity } from "./primitives";
 import { issueReviewPolicyBadge } from "../../lib/review-policy";
 import { IssueCasesPanel } from "../IssueCasesPanel";
 import { ExpandRelationListButton, RemovableIssueReferencePill } from "./relation-controls";
 import { Badge } from "@/components/ui/badge";
+import { t } from "../../i18n";
 
 function TruncatedCopyable({ value, icon: Icon }: { value: string; icon: ComponentType<{ className?: string }> }) {
   const [copied, setCopied] = useState(false);
@@ -236,19 +240,12 @@ export function IssueProperties({
   const paneTabStandaloneDocuments = (paneTabDocuments ?? []).filter(
     (doc) => !isArtifactReviewDocumentKey(doc.key),
   );
-  const hasPlanTab =
-    Boolean(paneTabPlanDocument)
-    || (paneTabAcceptedPlans?.length ?? 0) > 0
-    || paneTabStandaloneDocuments.length > 0
-    || issue.workMode === "planning";
+  const hasPlanTab = true;
   // Artifacts covers the same three sources the tab body composes: work
   // products, documents (redundant with the Plan tab, intentionally), and
   // agent-created attachments. User comment uploads stay thread-only and
   // no longer summon the tab.
-  const hasArtifactsTab =
-    (paneTabWorkProducts?.length ?? 0) > 0
-    || paneTabStandaloneDocuments.length > 0
-    || selectAgentArtifactAttachments(paneTabAttachments, paneTabWorkProducts).length > 0;
+  const hasArtifactsTab = true;
   // Progress ledger: agent progress notes (terminal contributors file them as
   // they work) earn their own pane tab once the first note lands. Runs in both
   // the chat shell and the classic task interface — progress is pane content,
@@ -257,25 +254,16 @@ export function IssueProperties({
     queryKey: [...queryKeys.issues.comments(issue.id), "progress-ledger"],
     queryFn: () => issuesApi.listComments(issue.id, { order: "desc", limit: 200 }),
   });
-  const hasProgressTab = Array.isArray(paneTabComments) && paneTabComments.some(isProgressNoteComment);
+  const hasProgressTab = true;
   const [paneTab, setPaneTab] = useState("properties");
-  // Once a plan document exists, surface it: switch the pane to the Plan tab so
-  // the write-up is exposed alongside the plan-approval card, instead of leaving
-  // the user on Properties. Only auto-switch until the user picks a tab by hand —
-  // after that their choice wins. Ref-guarded so it fires once per mount.
-  const paneTabUserChosenRef = useRef(false);
+  // The pane opens on Properties (user 2026-08-26); the earlier auto-switch to
+  // Plan fired on every mount because hasPlanTab is a constant, and the plan
+  // area is deliberately empty until MUL-43 decides what lives there.
   const handlePaneTabChange = useCallback((value: string) => {
-    paneTabUserChosenRef.current = true;
     setPaneTab(value);
   }, []);
   useEffect(() => {
-    if (hasPlanTab && !paneTabUserChosenRef.current) {
-      setPaneTab("plans");
-    }
-  }, [hasPlanTab]);
-  useEffect(() => {
     if (!documentDeepLink) return;
-    paneTabUserChosenRef.current = true;
     setPaneTab(documentDeepLink.tab);
   }, [documentDeepLink]);
   const [assigneeOpen, setAssigneeOpen] = useState(false);
@@ -341,6 +329,20 @@ export function IssueProperties({
     queryFn: () => agentsApi.list(companyId!),
     enabled: !!companyId,
   });
+
+  // Attribution resolves terminated agents too: the card's creator or driver
+  // may be an agent that has since been terminated (same rule as decisions).
+  const { data: withTerminatedAgents } = useQuery({
+    queryKey: ["agents", companyId, "with-terminated"],
+    queryFn: () => agentsApi.list(companyId, { includeTerminated: true }),
+    enabled: Boolean(companyId),
+  });
+  const agentById = (() => {
+    const map = new Map<string, Agent>();
+    for (const agent of withTerminatedAgents ?? []) map.set(agent.id, agent);
+    for (const agent of agents ?? []) map.set(agent.id, agent);
+    return map;
+  })();
   const { data: companyMembers } = useQuery({
     queryKey: queryKeys.access.companyUserDirectory(companyId!),
     queryFn: () => accessApi.listUserDirectory(companyId!),
@@ -439,6 +441,10 @@ export function IssueProperties({
       : [...ids, labelId];
     onUpdate({ labelIds: next });
   };
+
+  const createdByAgent = agentById.get(issue.createdByAgentId ?? "") ?? null;
+  // Only pull requests; other work product types have their own surfaces.
+  const pullRequests = (issue.workProducts ?? []).filter((product) => product.type === "pull_request");
 
   const agentName = (id: string | null) => {
     if (!id || !agents) return null;
@@ -1475,7 +1481,7 @@ export function IssueProperties({
       className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
       onClick={() => setLabelsOpen(true)}
       aria-label="Add label"
-      title="Add label"
+      title={t("Add label")}
     >
       <Plus className="h-3 w-3" />
       Add label
@@ -2105,8 +2111,8 @@ export function IssueProperties({
 
   const propertiesBody = (
     <div>
-      <PropertySection title="Triage" first>
-        <PropertyRow label="Status">
+      <PropertySection title={t("Triage")} first>
+        <PropertyRow label={t("Status")}>
           <StatusIcon
             status={issue.status}
             size="lg"
@@ -2118,7 +2124,7 @@ export function IssueProperties({
 
         {/* PAP-411: priority UI is hidden behind SHOW_TASK_PRIORITY_UI. Revive by flipping the flag. */}
         {SHOW_TASK_PRIORITY_UI && (
-          <PropertyRow label="Priority">
+          <PropertyRow label={t("Priority")}>
             <PriorityIcon
               priority={issue.priority}
               onChange={(priority) => onUpdate({ priority })}
@@ -2129,7 +2135,7 @@ export function IssueProperties({
 
         <PropertyPicker
           inline={inline}
-          label="Labels"
+          label={t("Labels")}
           open={labelsOpen}
           onOpenChange={(open) => { setLabelsOpen(open); if (!open) setLabelSearch(""); }}
           triggerContent={labelsTrigger}
@@ -2142,7 +2148,7 @@ export function IssueProperties({
 
         <PropertyPicker
           inline={inline}
-          label="Assignee"
+          label={t("Assignee")}
           open={assigneeOpen}
           onOpenChange={(open) => { setAssigneeOpen(open); if (!open) { setAssigneeSearch(""); setPendingAssignee(null); } }}
           triggerContent={assigneeTrigger}
@@ -2176,7 +2182,7 @@ export function IssueProperties({
 
         <PropertyPicker
           inline={inline}
-          label="Project"
+          label={t("Project")}
           open={projectOpen}
           onOpenChange={(open) => { setProjectOpen(open); if (!open) setProjectSearch(""); }}
           triggerContent={projectTrigger}
@@ -2196,10 +2202,72 @@ export function IssueProperties({
         </PropertyPicker>
       </PropertySection>
 
-      <PropertySection title="Relationships">
+      {/* Session — who opened this card, and who is driving it now. Two rows
+          rather than one: the first is written once and never changes, the
+          second follows whoever picks the work up. */}
+      <PropertySection title={t("Session")}>
+        <PropertyRow label={t("Opened by")}>
+          <SessionIdentity
+            agentId={issue.createdByAgentId ?? null}
+            agentName={createdByAgent?.name ?? null}
+            agentIcon={createdByAgent?.icon ?? null}
+            agentCustomIconUrl={createdByAgent ? agentCustomIcon(createdByAgent) : null}
+            userId={issue.createdByUserId ?? null}
+            sessionId={issue.createdBySession ?? null}
+            /* Whoever opened the card owns it, so the ownership tag belongs on
+               this row rather than repeated as its own property. */
+            tag={t("Owner")}
+          />
+        </PropertyRow>
+        <PropertyRow label={t("Driving")}>
+          {/* Driving = the claiming agent (MUL-72): the agent alone counts. A
+              CLI claim carries no terminal session env, and "Unclaimed" for a
+              card with drivingAgentId set contradicts the claim flow. */}
+          {issue.drivingSession || issue.drivingAgentId ? (
+            <SessionIdentity
+              agentId={issue.drivingAgentId ?? null}
+              agentName={(agentById.get(issue.drivingAgentId ?? "") ?? null)?.name ?? null}
+              agentIcon={(agentById.get(issue.drivingAgentId ?? "") ?? null)?.icon ?? null}
+              agentCustomIconUrl={(() => {
+                const driver = agentById.get(issue.drivingAgentId ?? "") ?? null;
+                return driver ? agentCustomIcon(driver) : null;
+              })()}
+              userId={null}
+              sessionId={issue.drivingSession ?? null}
+              live={Boolean(
+                issue.drivingSession
+                  && issue.drivingSessionAt
+                  && Date.now() - new Date(issue.drivingSessionAt).getTime() < 2 * 60 * 60 * 1000,
+              )}
+            />
+          ) : (
+            <span className="text-sm text-muted-foreground">{t("Unclaimed")}</span>
+          )}
+        </PropertyRow>
+        {issue.workingBranch ? (
+          <PropertyRow label="分支">
+            <span className="font-mono text-xs" title={issue.workingBranch}>{issue.workingBranch}</span>
+          </PropertyRow>
+        ) : null}
+      </PropertySection>
+
+      {/* Pull request — display-only, from work products already stored on the
+          issue. Omitted entirely when there is none: an empty row would imply
+          this card should have code attached to it. */}
+      {pullRequests.length > 0 && (
+        <PropertySection title={t("Pull request")}>
+          {pullRequests.map((pr) => (
+            <PropertyRow key={pr.id} label={pr.provider} wrap>
+              <PullRequestValue workProduct={pr} />
+            </PropertyRow>
+          ))}
+        </PropertySection>
+      )}
+
+      <PropertySection title={t("Relationships")}>
         <PropertyPicker
           inline={inline}
-          label="Parent"
+          label={t("Parent")}
           open={parentOpen}
           onOpenChange={(open) => {
             setParentOpen(open);
@@ -2339,10 +2407,10 @@ export function IssueProperties({
         />
       </PropertySection>
 
-      <PropertySection title="Execution">
+      <PropertySection title={t("Execution")}>
         {/* Read-only: agents set the policy, the board does not. */}
         {reviewPolicyBadge ? (
-          <PropertyRow label="Approvals">
+          <PropertyRow label={t("Approvals")}>
             <PropertyChip title={reviewPolicyBadge.description}>
               <reviewPolicyBadge.Icon className="shrink-0 text-muted-foreground" aria-hidden />
               <span className="min-w-0 truncate">{reviewPolicyBadge.label}</span>
@@ -2411,7 +2479,7 @@ export function IssueProperties({
 
         <PropertyPicker
           inline={inline}
-          label="Monitor"
+          label={t("Monitor")}
           open={monitorOpen}
           onOpenChange={setMonitorOpen}
           triggerContent={monitorTrigger}
@@ -2450,7 +2518,7 @@ export function IssueProperties({
       </PropertySection>
 
       {hasWorkspaceRuntimeControls || issue.currentExecutionWorkspace?.branchName || issue.currentExecutionWorkspace?.cwd || issue.executionWorkspaceId ? (
-        <PropertySection title="Workspace">
+        <PropertySection title={t("Workspace")}>
           {showWorkspaceDetailLink && issue.executionWorkspaceId && (
             <PropertyRow label="Workspace">
               <Link
@@ -2503,7 +2571,7 @@ export function IssueProperties({
         </PropertySection>
       ) : null}
 
-      <PropertySection title="About">
+      <PropertySection title={t("About")}>
         {originatingActor ? (
           <PropertyRow label="Originating">
             {originatingActor.kind === "agent" ? (
@@ -2533,21 +2601,16 @@ export function IssueProperties({
             )}
           </PropertyRow>
         ) : null}
-        {issue.startedAt && (
-          <PropertyRow label="Started">
-            <span className="text-sm">{formatDateTime(issue.startedAt)}</span>
-          </PropertyRow>
-        )}
         {issue.completedAt && (
-          <PropertyRow label="Completed">
-            <span className="text-sm">{formatDateTime(issue.completedAt)}</span>
+          <PropertyRow label="完成时间">
+            <span className="text-sm">{chineseTimestamp(issue.completedAt)}</span>
           </PropertyRow>
         )}
-        <PropertyRow label="Created">
-          <span className="text-sm">{formatDateTime(issue.createdAt)}</span>
+        <PropertyRow label="创建时间">
+          <span className="text-sm">{chineseTimestamp(issue.createdAt)}</span>
         </PropertyRow>
-        <PropertyRow label="Updated">
-          <span className="text-sm">{timeAgo(issue.updatedAt)}</span>
+        <PropertyRow label="更新时间">
+          <span className="text-sm">{chineseTimestamp(issue.updatedAt)}</span>
         </PropertyRow>
         {issue.archivedAt && issue.archivedByActorType === "agent" && issue.archivedByAgentId ? (
           (() => {
@@ -2610,22 +2673,10 @@ export function IssueProperties({
     </div>
   );
 
-  // Classic Task Interface ON: the legacy stacked pane, byte-for-byte.
-  if (!taskChatShellEnabled) return propertiesBody;
-
-  // Chat-style with nothing to switch between: no tab strip — the header bar
-  // shows a plain title and the pane body is just the properties stack.
-  if (!hasPlanTab && !hasArtifactsTab && !hasProgressTab) {
-    return (
-      <>
-        {paneHeaderSlot
-          ? createPortal(<span className="text-sm font-medium">Properties</span>, paneHeaderSlot)
-          : null}
-        {propertiesBody}
-      </>
-    );
-  }
-
+  // Both interfaces wrap the same body in a Properties | Plan | Progress |
+  // Artifacts tab shell (tabs always render, empty states included). The
+  // classic mode previously returned the bare stack — the pane tabs are now
+  // mode-independent per MUL-16.
   // Flag ON: wrap the same body in a Properties | Plan | Artifacts tab shell
   // (v5 decision: singular "Plan", Docs merged into Artifacts). The Properties
   // tab is unchanged. Panel hosts portal the strip into the pane header bar;

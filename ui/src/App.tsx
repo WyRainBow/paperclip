@@ -69,6 +69,11 @@ import { GatewaysList } from "./pages/apps/gateways/GatewaysList";
 import { GatewayDetail } from "./pages/apps/gateways/GatewayDetail";
 import { CompanyInvites } from "./pages/CompanyInvites";
 import { CompanySkills } from "./pages/CompanySkills";
+import { TeamRules } from "./pages/TeamRules";
+import { Hooks } from "./pages/Hooks";
+import { TeamTemplates } from "./pages/TeamTemplates";
+import { TeamSkills } from "./pages/TeamSkills";
+import { TeamWiki } from "./pages/TeamWiki";
 import { SkillStudio } from "./pages/SkillStudio";
 import { Secrets } from "./pages/Secrets";
 import { CompanyImport } from "./pages/CompanyImport";
@@ -116,6 +121,9 @@ function boardRoutes() {
       <Route path="company/settings/environments" element={<Navigate to="/company/settings/instance/environments" replace />} />
       <Route path="company/settings/cloud-upstream" element={<Navigate to="/company/export" replace />} />
       <Route path="company/settings/members" element={<CompanyAccess />} />
+      <Route path="company/settings/personal-files" element={<Navigate to="/personal-assets" replace />} />
+      <Route path="personal-assets" element={<TeamWiki fixedSpace="personal" />} />
+      <Route path="team-wiki/personal" element={<Navigate to="/personal-assets" replace />} />
       <Route path="company/settings/access" element={<CompanyAccessLegacyRoute />} />
       <Route path="company/settings/invites" element={<CompanyInvites />} />
       <Route
@@ -187,6 +195,14 @@ function boardRoutes() {
       <Route path="skills/studio/:skillId" element={<SkillStudio />} />
       <Route path="skills/:skillId/studio" element={<LegacySkillStudioRedirect />} />
       <Route path="skills/*" element={<CompanySkills />} />
+      <Route path="team-rules" element={<TeamRules />} />
+      <Route path="team-skills" element={<TeamSkills />} />
+      <Route path="hooks" element={<Hooks />} />
+      <Route path="team-templates" element={<TeamTemplates />} />
+      {/* Bare /team-wiki lands on the human-facing space; the space is a path
+          segment so a link to either one survives sharing and reload. */}
+      <Route path="team-wiki" element={<Navigate to="paperclip" replace />} />
+      <Route path="team-wiki/:space" element={<TeamWiki />} />
       <Route path="settings" element={<LegacySettingsRedirect />} />
       <Route path="settings/*" element={<LegacySettingsRedirect />} />
       <Route path="plugins/:pluginId" element={<PluginPage />} />
@@ -550,14 +566,14 @@ function NoCompaniesStartPage() {
     <div className="mx-auto max-w-xl py-10">
       <div className="rounded-lg border border-border bg-card p-6">
         <h1 className="text-xl font-semibold">
-          {t("app.noCompanies.title", { defaultValue: "Create your first company" })}
+          {t("Create your first company")}
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          {t("app.noCompanies.description", { defaultValue: "Get started by creating a company." })}
+          {t("Get started by creating a company.")}
         </p>
         <div className="mt-4">
           <Button onClick={() => openOnboarding()}>
-            {t("app.noCompanies.newCompany", { defaultValue: "New Company" })}
+            {t("New Company")}
           </Button>
         </div>
       </div>

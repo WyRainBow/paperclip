@@ -2913,7 +2913,14 @@ export function issueRoutes(
     kind: CrossIssueInfluenceKind,
   ) {
     if (req.actor.type !== "agent") return true;
-    if (!req.actor.agentId || !req.actor.runId) throw crossIssueInfluenceRunContextError();
+    if (!req.actor.agentId) return true;
+    // No run, no cap. The counter derives the "source issue" from the run's
+    // context snapshot, so without a run there is nothing for a write to be
+    // *cross* to — the concept does not apply. Refusing instead meant a
+    // terminal agent holding a valid key could not comment at all, on any
+    // card, which is not what the cap was protecting against (user
+    // 2026-08-27). Run-backed agents are still counted and still capped.
+    if (!req.actor.runId) return true;
 
     // The counter transaction locks and validates the persisted run before it
     // derives the source issue. Never trust the API-key run header by itself.
@@ -5029,15 +5036,21 @@ export function issueRoutes(
     const hasStructuredFields = input.presentation !== undefined || input.metadata !== undefined;
     if (!hasStructuredFields) return true;
     if (req.actor.type === "board") return true;
-    // Agents may file progress notes about their own work; every other
-    // structured presentation/metadata shape stays board-only.
+    // Agents may file the shapes that describe their own work: progress notes
+    // and discussion Q&A. Both are how a terminal agent reports what it did,
+    // and requiring the board to write them meant a registered agent could not
+    // speak as itself — the comment ended up authored by local-board even
+    // though the whole point of the agent's identity is to sign its own words.
+    // Everything else (and anything carrying metadata) stays board-only.
+    const AGENT_WRITABLE_PRESENTATION_KINDS = new Set(["progress_note", "discussion_qa"]);
     const presentation = input.presentation as { kind?: unknown } | null | undefined;
-    const isAgentProgressNote = req.actor.type === "agent"
+    const isAgentOwnedShape = req.actor.type === "agent"
       && input.metadata === undefined
       && presentation != null
       && typeof presentation === "object"
-      && presentation.kind === "progress_note";
-    if (isAgentProgressNote) return true;
+      && typeof presentation.kind === "string"
+      && AGENT_WRITABLE_PRESENTATION_KINDS.has(presentation.kind);
+    if (isAgentOwnedShape) return true;
     res.status(403).json({
       error: "Only board users may set structured comment presentation or metadata",
       details: {
@@ -8779,6 +8792,7 @@ export function issueRoutes(
           agentName: assigneeAgent?.name ?? null,
           teamName: company?.name ?? null,
           goals: goal?.description ?? goal?.title ?? null,
+          language: (await instanceSettings.get()).general.agentOutputLanguage ?? null,
         });
         await svc.addComment(
           issue.id,
@@ -9418,6 +9432,15 @@ export function issueRoutes(
       onBehalfOfUserId: _requestedOnBehalfOfUserId,
       ...updateFields
     } = req.body;
+    if (updateFields.drivingSession !== undefined) {
+      updateFields.drivingSessionAt = new Date();
+    }
+    // Authorship is stamped from the authenticated caller at create time. Only
+    // a board user may correct it afterwards — letting an agent rewrite it
+    // would make "who opened this" forgeable by the same actor it names.
+    if (updateFields.createdByAgentId !== undefined && req.actor.type !== "board") {
+      throw forbidden("Only board users may change who opened a task");
+    }
     const reviewPolicyChangeRequested =
       req.body.reviewPolicy !== undefined
       && req.body.reviewPolicy !== existing.reviewPolicy;
@@ -9468,6 +9491,27 @@ export function issueRoutes(
     await assertIssueEnvironmentSelection(existing.companyId, updateFields.executionWorkspaceSettings?.environmentId);
     const requestedAssigneeAgentId =
       normalizedAssigneeAgentId === undefined ? existing.assigneeAgentId : normalizedAssigneeAgentId;
+    // Unclaimed cards (no assignee AND no Driving) must be claimed before an
+    // agent advances them — otherwise finished work shows "Driving Unclaimed"
+    // in the ledger (user 2026-08-27, MUL-72). A patch that itself assigns or
+    // records Driving (the claim flow) passes.
+    const advancingStatusRequested =
+      typeof updateFields.status === "string" &&
+      updateFields.status !== existing.status &&
+      ["in_progress", "in_review", "done"].includes(updateFields.status);
+    if (
+      req.actor.type === "agent" &&
+      advancingStatusRequested &&
+      requestedAssigneeAgentId == null &&
+      existing.drivingAgentId == null &&
+      updateFields.drivingAgentId == null
+    ) {
+      res.status(409).json({
+        error: "Unclaimed issue: advancing status require an assignee or Driving — run `issue claim` first",
+        details: { issueId: existing.id, requestedStatus: updateFields.status },
+      });
+      return;
+    }
     const explicitMoveToTodoRequested = reopenRequested || resumeRequested === true;
     const recoveryRelevantSourceMutationRequested =
       req.body.status !== undefined ||
@@ -12160,6 +12204,21 @@ export function issueRoutes(
       presentation: req.body.presentation,
       metadata: req.body.metadata,
     })) return;
+    // Progress notes are work-ledger entries: an agent filing one on an
+    // unclaimed card (no assignee AND no Driving) skipped the claim step, so
+    // the ledger would show work by nobody (user 2026-08-27, MUL-72).
+    if (
+      req.actor.type === "agent" &&
+      (req.body.presentation as { kind?: unknown } | null | undefined)?.kind === "progress_note" &&
+      issue.assigneeAgentId == null &&
+      issue.drivingAgentId == null
+    ) {
+      res.status(409).json({
+        error: "Unclaimed issue: progress notes require an assignee or Driving — run `issue claim` first",
+        details: { issueId: issue.id },
+      });
+      return;
+    }
     const closedExecutionWorkspace = await getClosedIssueExecutionWorkspace(issue);
 
     const actor = getActorInfo(req);

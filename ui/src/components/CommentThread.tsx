@@ -1,3 +1,4 @@
+import { agentCustomIcon } from "./AgentIconPicker";
 import { memo, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { Link, useLocation } from "react-router-dom";
 import type {
@@ -13,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { ArrowRight, Check, Copy, Paperclip } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Identity } from "./Identity";
+import { useTranslation } from "@/i18n";
 import { InlineEntitySelector, type InlineEntityOption } from "./InlineEntitySelector";
 import { MarkdownBody, type MarkdownExternalReferenceMap } from "./MarkdownBody";
 import { MarkdownEditor, type MarkdownEditorRef, type MentionOption } from "./MarkdownEditor";
@@ -323,6 +325,7 @@ function CommentCard({
   queued?: boolean;
   externalReferences?: MarkdownExternalReferenceMap;
 }) {
+  const { t } = useTranslation();
   const isHighlighted = highlightCommentId === comment.id;
   const isPending = comment.clientStatus === "pending";
   const isQueued = queued || comment.queueState === "queued" || comment.clientStatus === "queued";
@@ -380,7 +383,7 @@ function CommentCard({
             />
           ) : null}
           {isPending ? (
-            <span className="text-xs text-muted-foreground">{isQueued ? "Queueing..." : "Sending..."}</span>
+            <span className="text-xs text-muted-foreground">{isQueued ? t("Queueing...") : t("Sending...")}</span>
           ) : (
             <a
               href={`#comment-${comment.id}`}
@@ -749,6 +752,7 @@ export function CommentThread({
   composerDisabledReason = null,
   externalReferences,
 }: CommentThreadProps) {
+  const { t } = useTranslation();
   const [body, setBody] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [attaching, setAttaching] = useState(false);
@@ -1016,7 +1020,7 @@ export function CommentThread({
             ref={editorRef}
             value={body}
             onChange={setBody}
-            placeholder="Leave a comment..."
+            placeholder={t("Leave a comment...")}
             mentions={mentions}
             onSubmit={handleSubmit}
             imageUploadHandler={imageUploadHandler}
@@ -1047,7 +1051,7 @@ export function CommentThread({
               <InlineEntitySelector
                 value={reassignTarget}
                 options={reassignOptions}
-                placeholder="Responsible"
+                placeholder={t("Responsible")}
                 noneLabel="No responsible"
                 searchPlaceholder="Search responsible..."
                 emptyMessage="No responsible found."
@@ -1060,7 +1064,7 @@ export function CommentThread({
                   return (
                     <>
                       {agent ? (
-                        <AgentIcon icon={agent.icon} className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                        <AgentIcon customIconUrl={agentCustomIcon(agent)} icon={agent.icon} className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                       ) : null}
                       <span className="truncate">{option.label}</span>
                     </>
@@ -1073,7 +1077,7 @@ export function CommentThread({
                   return (
                     <>
                       {agent ? (
-                        <AgentIcon icon={agent.icon} className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                        <AgentIcon customIconUrl={agentCustomIcon(agent)} icon={agent.icon} className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                       ) : null}
                       <span className="truncate">{option.label}</span>
                     </>

@@ -9,6 +9,7 @@ import { instanceSettingsApi } from "../api/instanceSettings";
 import { useCompany } from "../context/CompanyContext";
 import { useDialogActions } from "../context/DialogContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
+import { useTranslation } from "@/i18n";
 import { useSidebar } from "../context/SidebarContext";
 import { queryKeys } from "../lib/queryKeys";
 import { isPlatformManagedEnvironment } from "../lib/managed-sandbox-environment";
@@ -35,6 +36,7 @@ import {
 import { usePublishSharedQueryData, useSharedPollingQuery } from "../hooks/useSharedPolling";
 
 import { getAdapterLabel } from "../adapters/adapter-display-registry";
+import { AgentIcon, agentCustomIcon } from "../components/AgentIconPicker";
 
 const roleLabels = AGENT_ROLE_LABELS as Record<string, string>;
 
@@ -189,6 +191,7 @@ function filterOrgTree(nodes: OrgNode[], tab: FilterTab, builtInAgentIds: Set<st
 }
 
 export function Agents() {
+  const { t } = useTranslation();
   const { selectedCompanyId } = useCompany();
   const { openNewAgent } = useDialogActions();
   const { setBreadcrumbs } = useBreadcrumbs();
@@ -318,7 +321,7 @@ export function Agents() {
   }, [agents, environmentsById, environmentCapabilities, instanceSettings?.defaultEnvironmentId]);
 
   useEffect(() => {
-    setBreadcrumbs([{ label: "Agents" }]);
+    setBreadcrumbs([{ label: t("Agents") }]);
   }, [setBreadcrumbs]);
 
   useEffect(() => {
@@ -402,8 +405,10 @@ export function Agents() {
         )}
         leading={hasInvalidOrgChain ? (
           <AlertTriangle className="h-3.5 w-3.5 text-amber-500" aria-label="Invalid reporting chain" />
+        ) : agentCustomIcon(agent) ? (
+          <img src={agentCustomIcon(agent)!} alt="" className="h-4 w-4 shrink-0 rounded-sm object-cover" />
         ) : (
-          <AgentStatusCapsule status={agent.status} />
+          <AgentIcon icon={agent.icon} className="h-4 w-4 shrink-0 text-muted-foreground" />
         )}
         secondaryRow={
           builtInCluster ? (
@@ -674,6 +679,11 @@ function OrgTreeNode({
         ) : (
           <AgentStatusCapsule status={node.status} />
         )}
+        <AgentIcon
+          icon={agent?.icon}
+          customIconUrl={agentCustomIcon(agent)}
+          className="h-4 w-4 shrink-0 text-muted-foreground"
+        />
         <div className="flex-1 min-w-0 flex flex-wrap items-center gap-2">
           {/* Name floor + `truncate` keeps the primary identifier readable; the
               cluster wraps to a second line under pressure instead of starving
@@ -815,10 +825,22 @@ function AgentMetaColumns({
   environment: EnvironmentDescriptor;
   showEnvironment: boolean;
 }) {
+  const { t } = useTranslation();
   const model = getConfiguredModel(agent);
   const adapterLabel = getAdapterLabel(agent.adapterType);
   return (
     <>
+      {/* The agent id is what a terminal exports as PAPERCLIP_AGENT_ID and what
+          the CLI and API address the agent by, so it belongs where someone is
+          already looking at the roster. Full id in the tooltip. */}
+      <div className="w-40 min-w-0 leading-tight">
+        <div className="truncate font-mono text-xs text-muted-foreground" title={agent.id}>
+          {agent.id.slice(0, 8)}
+        </div>
+        <div className="truncate font-mono text-(length:--text-micro) text-muted-foreground/70">
+          agent ID
+        </div>
+      </div>
       <div className="w-44 min-w-0 leading-tight">
         <div
           className="truncate font-mono text-xs text-muted-foreground"
@@ -833,10 +855,10 @@ function AgentMetaColumns({
       {showEnvironment && (
         <div className="w-44 min-w-0 leading-tight">
           <div className="truncate text-xs text-muted-foreground" title={environment.title}>
-            {environment.label}
+            {t(environment.label)}
           </div>
           <div className="truncate text-(length:--text-micro) text-muted-foreground/70">
-            {environment.detail}
+            {t(environment.detail)}
           </div>
         </div>
       )}

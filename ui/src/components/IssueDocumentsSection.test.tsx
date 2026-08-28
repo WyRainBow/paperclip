@@ -258,6 +258,10 @@ function createIssue(): Issue {
     responsibleUserId: null,
     createdByAgentId: null,
     createdByUserId: "user-1",
+    createdBySession: null,
+    drivingSession: null,
+    drivingAgentId: null,
+    drivingSessionAt: null,
     issueNumber: 807,
     requestDepth: 0,
     billingCode: null,
@@ -295,8 +299,52 @@ describe("IssueDocumentsSection", () => {
     markdownEditorMockState.emitMountEmptyChange = false;
   });
 
+
+  async function expandAllDocuments() {
+    const buttons = Array.from(
+      container.querySelectorAll<HTMLButtonElement>('button[aria-label^="Expand "][aria-label$=" document"]'),
+    );
+    for (const button of buttons) {
+      await act(async () => {
+        button.click();
+      });
+    }
+    await flush();
+  }
+
   afterEach(() => {
     container.remove();
+  });
+
+  it("folds every document by default when the reader has no stored preference", async () => {
+    // The default is the whole point: one long spec otherwise pushes every
+    // other document, and the rest of the page, off the screen.
+    window.localStorage.clear();
+    const issue = createIssue();
+    const root = createRoot(container);
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    mockIssuesApi.listDocuments.mockResolvedValue([
+      createIssueDocument({ key: "plan", body: "# Plan" }),
+    ]);
+
+    await act(async () => {
+      root.render(
+        <QueryClientProvider client={queryClient}>
+          <IssueDocumentsSection issue={issue} canDeleteDocuments={false} />
+        </QueryClientProvider>,
+      );
+    });
+    await flush();
+    await flush();
+
+    // Header still visible, body not.
+    expect(container.textContent).toContain("plan");
+    expect(container.textContent).not.toContain("# Plan");
+
+    await act(async () => { root.unmount(); });
+    queryClient.clear();
   });
 
   it("keeps system handoff documents out of the normal document surface", async () => {
@@ -332,6 +380,7 @@ describe("IssueDocumentsSection", () => {
     });
     await flush();
     await flush();
+    await expandAllDocuments();
 
     expect(container.textContent).toContain("# Plan");
     expect(container.textContent).not.toContain("# Handoff");
@@ -505,6 +554,7 @@ describe("IssueDocumentsSection", () => {
     });
     await flush();
     await flush();
+    await expandAllDocuments();
 
     expect(container.textContent).toContain("Locked plan body");
     expect(container.textContent).not.toContain("Edit document");
@@ -578,7 +628,7 @@ describe("IssueDocumentsSection", () => {
     await flush();
 
     const revisionButton = Array.from(container.querySelectorAll("button"))
-      .find((button) => button.textContent?.includes("rev 4"));
+      .find((button) => button.textContent?.includes("revision 4"));
     expect(revisionButton).toBeTruthy();
 
     await act(async () => {
@@ -648,7 +698,7 @@ describe("IssueDocumentsSection", () => {
     expect(container.textContent).not.toContain("Restored plan body");
 
     const revisionButtons = Array.from(container.querySelectorAll("button"));
-    const historicalRevisionButton = revisionButtons.find((button) => button.textContent?.includes("rev 3"));
+    const historicalRevisionButton = revisionButtons.find((button) => button.textContent?.includes("revision 3"));
     expect(historicalRevisionButton).toBeTruthy();
 
     await act(async () => {
@@ -721,11 +771,12 @@ describe("IssueDocumentsSection", () => {
     });
     await flush();
     await flush();
+    await expandAllDocuments();
 
     expect(container.textContent).toContain("Current plan body");
 
     const revisionButtons = Array.from(container.querySelectorAll("button"));
-    const historicalRevisionButton = revisionButtons.find((button) => button.textContent?.includes("rev 3"));
+    const historicalRevisionButton = revisionButtons.find((button) => button.textContent?.includes("revision 3"));
     expect(historicalRevisionButton).toBeTruthy();
 
     await act(async () => {
@@ -736,7 +787,7 @@ describe("IssueDocumentsSection", () => {
     expect(container.textContent).toContain("Historical plan body");
 
     const currentRevisionButton = Array.from(container.querySelectorAll("button"))
-      .find((button) => button.textContent?.includes("rev 4"));
+      .find((button) => button.textContent?.includes("revision 4"));
     expect(currentRevisionButton).toBeTruthy();
 
     await act(async () => {
@@ -800,11 +851,12 @@ describe("IssueDocumentsSection", () => {
     });
     await flush();
     await flush();
+    await expandAllDocuments();
 
     expect(container.textContent).toContain("Current plan body");
 
     const revisionButtons = Array.from(container.querySelectorAll("button"));
-    const historicalRevisionButton = revisionButtons.find((button) => button.textContent?.includes("rev 2"));
+    const historicalRevisionButton = revisionButtons.find((button) => button.textContent?.includes("revision 2"));
     expect(historicalRevisionButton).toBeTruthy();
 
     await act(async () => {
@@ -815,7 +867,7 @@ describe("IssueDocumentsSection", () => {
     expect(container.textContent).toContain("Original plan body");
 
     const currentRevisionButton = Array.from(container.querySelectorAll("button"))
-      .find((button) => button.textContent?.includes("rev 3"));
+      .find((button) => button.textContent?.includes("revision 3"));
     expect(currentRevisionButton).toBeTruthy();
 
     await act(async () => {
@@ -862,6 +914,7 @@ describe("IssueDocumentsSection", () => {
 
     await flush();
     await flush();
+    await expandAllDocuments();
 
     expect(container.textContent).toContain("Loaded plan body");
     expect(container.textContent).not.toContain("Markdown body");
@@ -910,6 +963,7 @@ describe("IssueDocumentsSection", () => {
     });
     await flush();
     await flush();
+    await expandAllDocuments();
 
     const markdownBodies = Array.from(
       container.querySelectorAll('[data-testid="markdown-body"]'),
@@ -1032,6 +1086,7 @@ describe("IssueDocumentsSection", () => {
     });
     await flush();
     await flush();
+    await expandAllDocuments();
 
     expect(listDocuments).toHaveBeenCalled();
     expect(container.textContent).toContain("Reusable case document body");

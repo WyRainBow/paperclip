@@ -372,7 +372,19 @@ function addWhoamiCommand(parent: Command): void {
       .action(async (opts: BaseClientOptions) => {
         try {
           const ctx = resolveCommandContext(opts);
-          printOutput(await ctx.api.get("/api/cli-auth/me"), { json: ctx.json });
+          try {
+            printOutput(await ctx.api.get("/api/cli-auth/me"), { json: ctx.json });
+          } catch (err) {
+            // /api/cli-auth/me only understands board auth, so a shell holding
+            // an agent key got a bare 401 — the one command meant to answer
+            // "who am I" couldn't. Fall back to the agent identity endpoint
+            // before giving up (MUL-63 需求4: 失效可诊断).
+            const status = (err as { status?: number } | null)?.status;
+            if (status !== 401) throw err;
+            const agent = await ctx.api.get<{ id: string; name: string; companyId: string; role?: string }>("/api/agents/me");
+            if (!agent?.id) throw err;
+            printOutput({ kind: "agent", id: agent.id, name: agent.name, companyId: agent.companyId, role: agent.role ?? null }, { json: ctx.json });
+          }
         } catch (err) {
           handleCommandError(err);
         }

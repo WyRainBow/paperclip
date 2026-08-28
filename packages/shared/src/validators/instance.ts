@@ -8,6 +8,7 @@ import {
   DEFAULT_ISSUE_GRAPH_LIVENESS_AUTO_RECOVERY_LOOKBACK_HOURS,
   MAX_ISSUE_GRAPH_LIVENESS_AUTO_RECOVERY_LOOKBACK_HOURS,
   MIN_ISSUE_GRAPH_LIVENESS_AUTO_RECOVERY_LOOKBACK_HOURS,
+  AGENT_OUTPUT_LANGUAGES,
 } from "../types/instance.js";
 import { feedbackDataSharingPreferenceSchema } from "./feedback.js";
 import { shapeWithoutDefaults } from "./partial.js";
@@ -35,6 +36,10 @@ export const instanceGeneralSettingsSchema = z.object({
   // Execution policy. Absent/"any" = unrestricted; "kubernetes" forces the
   // Kubernetes sandbox provider and denies local/ssh execution (cloud_tenant).
   executionMode: z.enum(["kubernetes", "any"]).optional(),
+  // Preferred language for agent-authored user-facing content. Absent/"en"
+  // leaves agents' natural language untouched; other values add a wake-prompt
+  // language directive.
+  agentOutputLanguage: z.enum(AGENT_OUTPUT_LANGUAGES).optional(),
 }).strict();
 
 export const patchInstanceGeneralSettingsSchema = z
@@ -53,6 +58,10 @@ export const instanceExperimentalSettingsSchema = z.object({
   enableConferenceRoomChat: z.boolean().default(false),
   enableClassicTaskInterface: z.boolean().default(false),
   enableTaskWatchdogs: z.boolean().default(false),
+  // Auto-raised "Review silent active run" tasks. On by default so existing
+  // installs keep their safety net; terminal-contributor sessions look silent
+  // to Paperclip by construction, so operators who run those need it off.
+  enableStaleActiveRunEvaluations: z.boolean().default(true),
   enableIssuePlanDecompositions: z.boolean().default(false),
   enableExperimentalFileViewer: z.boolean().default(false),
   enableExternalObjects: z.boolean().default(false),

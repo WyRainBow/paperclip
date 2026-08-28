@@ -2923,14 +2923,19 @@ export function agentRoutes(
   router.get("/companies/:companyId/agents", async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
-    const unsupportedQueryParams = Object.keys(req.query).sort();
+    // includeTerminated serves attribution rendering (decision history names a
+    // terminated proposer or decider); pickers keep the default active-only list.
+    const includeTerminated = req.query.includeTerminated === "true";
+    const unsupportedQueryParams = Object.keys(req.query)
+      .filter((key) => key !== "includeTerminated")
+      .sort();
     if (unsupportedQueryParams.length > 0) {
       res.status(400).json({
         error: `Unsupported query parameter${unsupportedQueryParams.length === 1 ? "" : "s"}: ${unsupportedQueryParams.join(", ")}`,
       });
       return;
     }
-    const result = await filterAgentsForActor(req, await svc.list(companyId));
+    const result = await filterAgentsForActor(req, await svc.list(companyId, { includeTerminated }));
     const canReadConfigs = await actorCanReadConfigurationsForCompany(req, companyId);
     if (canReadConfigs) {
       res.json(result);

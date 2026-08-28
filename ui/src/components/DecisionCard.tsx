@@ -10,6 +10,7 @@ import {
   Loader2,
   MinusCircle,
   ShieldAlert,
+  Trash2,
   XCircle,
 } from "lucide-react";
 import { decisionEffectTargetIssueIds, type DecisionEffect, type DecisionOption } from "@paperclipai/shared";
@@ -18,11 +19,21 @@ import type {
   DecisionEffectExecution,
   DecisionTargetSnapshot,
 } from "../api/decisions";
-import { cn } from "../lib/utils";
+import { t } from "../i18n";
+import { absoluteTimestamp, chineseTimestamp, cn } from "../lib/utils";
+
+const BRAND_COLORS: Record<string, string> = {
+  "Claude（Terminal）": "#D97757",
+  "Codex（Terminal）": "#10A37F",
+  "Codex Review": "#10A37F",
+  "Zcode（Terminal）": "#2563eb",
+  Grok: "#6366f1",
+};
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
 import { MarkdownBody } from "./MarkdownBody";
+import { AgentIcon } from "./AgentIconPicker";
 
 /**
  * Presentational card for a single Decisions-v1 decision (PAP-14966 / PAP-14939
@@ -53,14 +64,19 @@ export interface DecisionCardProps {
   /** Full sub-tree that a `cancel_issue_tree` option would cancel. */
   cancelTreePreview?: (targetIssueId: string) => DecisionIssueRef[] | null;
   originAgentName?: string | null;
+  /** Resolve an agent id to the bits needed for a recommendation badge. */
+  resolveAgent?: (agentId: string) => { name: string; icon: string | null; customIconUrl: string | null } | null;
   /** Resolved name of the agent that decided, when an agent resolved it. */
   decidedByAgentName?: string | null;
+  decidedByUserName?: string | null;
   originIssue?: DecisionIssueRef | null;
   runHref?: string | null;
   busy?: boolean;
   errorMessage?: string | null;
   onDecide?: (optionId: string, inputValues: Record<string, string>) => void;
   onDismiss?: (reason?: string) => void;
+  /** Permanently delete the record (two-step inline confirm; board-side). */
+  onDelete?: () => void;
   className?: string;
 }
 
@@ -227,6 +243,20 @@ const RESULT_ICON: Record<ResultRow["status"], ReactNode> = {
   claimed: <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-muted-foreground" aria-hidden />,
 };
 
+/**
+ * The body up to (but not including) the second heading — the "背景" section
+ * under the team's decision template, and a sensible lead-in for any other
+ * shape. Used as the collapsed preview of a settled decision.
+ */
+function firstBodySection(body: string): string {
+  const lines = body.split("\n");
+  const headings = lines
+    .map((line, index) => ({ line, index }))
+    .filter(({ line }) => /^#{1,6}\s/.test(line));
+  if (headings.length < 2) return body;
+  return lines.slice(0, headings[1]!.index).join("\n").trimEnd();
+}
+
 export function DecisionCard({
   decision,
   executions,
@@ -234,19 +264,23 @@ export function DecisionCard({
   resolveIssue = () => null,
   cancelTreePreview,
   originAgentName,
+  resolveAgent,
   decidedByAgentName,
+  decidedByUserName,
   originIssue,
   runHref,
   busy = false,
   errorMessage,
   onDecide,
   onDismiss,
+  onDelete,
   className,
 }: DecisionCardProps) {
   const [inputValues, setInputValues] = useState<Record<string, string>>({});
   const [confirmOptionId, setConfirmOptionId] = useState<string | null>(null);
   const [confirmText, setConfirmText] = useState("");
   const [optionsExpanded, setOptionsExpanded] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const open = decision.status === "open";
   const dismissed =
@@ -275,7 +309,9 @@ export function DecisionCard({
             ? "partial"
             : "failed";
 
-  const badgeLabel = open
+  // The data attribute keeps the English key (selectors and tests match on it);
+  // only the rendered text is localized.
+  const badgeKey = open
     ? "Pending"
     : decision.status === "expired"
       ? "Expired"
@@ -288,6 +324,22 @@ export function DecisionCard({
             : decision.executionStatus === "partial"
               ? "Partial"
               : "Failed";
+  const badgeLabel = t(badgeKey);
+
+  // A settled decision is history: the reader is scanning for which one it was,
+  // not re-reading the case. Collapse it to the background paragraph and let a
+  // click restore the rest. An open decision is never collapsed — the reader
+  // has to see the whole case before choosing.
+  const [collapsed, setCollapsed] = useState(!open);
+  const isCollapsed = !open && collapsed;
+  const collapsedBody = useMemo(() => firstBodySection(decision.body ?? ""), [decision.body]);
+  const chosenOption = decision.options.find((option) => option.id === decision.chosenOptionId) ?? null;
+  const recommendedOption = decision.options.find((option) => option.recommendedByAgentId) ?? null;
+  const recommendedBy =
+    recommendedOption?.recommendedByAgentId
+      ? resolveAgent?.(recommendedOption.recommendedByAgentId) ?? null
+      : null;
+  const decidedAgent = decision.decidedByAgentId ? resolveAgent?.(decision.decidedByAgentId) ?? null : null;
 
   const requiredUnmet = (decision.inputs ?? []).some(
     (field) => field.required && !(inputValues[field.id] ?? "").trim(),
@@ -330,7 +382,7 @@ export function DecisionCard({
         dimmed && "opacity-80",
         className,
       )}
-      data-decision-state={badgeLabel.toLowerCase()}
+      data-decision-state={badgeKey.toLowerCase()}
     >
       {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -348,19 +400,40 @@ export function DecisionCard({
       </div>
 
       {/* Provenance */}
-      <p className="mt-1 text-xs text-muted-foreground">
-        Proposed by <span className="font-medium text-foreground">{originAgentName ?? "an agent"}</span>
-        {originIssue && (
-          <>
-            {" "}while running{" "}
-            <a href={originIssue.href} className="font-medium text-primary underline-offset-2 hover:underline">
-              {issueLabel(originIssue, originIssue.id)}
-            </a>
-          </>
+      <p className="mt-1 flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-muted-foreground">
+        {/* The id is the handle the CLI and API address this decision by, so a
+            reader can act on the card they are looking at without a lookup. */}
+        <span className="font-mono" title={decision.id}>decision:{decision.id.slice(0, 8)}</span>
+        {/* Segments carry their own tight inner spacing so the wide gap-x only
+            separates whole facts, not the words inside one. */}
+        <span className="inline-flex items-center gap-1.5">
+          提案人
+          {(() => {
+            const name = originAgentName ?? "";
+            const agent = resolveAgent?.(decision.originAgentId);
+            return agent?.customIconUrl ? (
+              <img src={agent.customIconUrl} alt="" className="inline-block h-3.5 w-3.5 rounded-full object-cover" />
+            ) : agent?.icon ? (
+              <span className="inline-block h-3 w-3 rounded-full" style={{ backgroundColor: BRAND_COLORS[name] ?? "#64748b" }} aria-hidden />
+            ) : null;
+          })()}
+          <span className="font-medium text-foreground">{originAgentName ?? "某个 agent"}</span>
+          {originIssue && (
+            <>
+              <span>处理</span>
+              <a href={originIssue.href} className="font-medium text-primary underline-offset-2 hover:underline">
+                {issueLabel(originIssue, originIssue.id)}
+              </a>
+              <span>时</span>
+            </>
+          )}
+        </span>
+        {decision.createdAt && (
+          <span className="tabular-nums">{chineseTimestamp(decision.createdAt)}</span>
         )}
         {targetRefs.length > 0 && (
-          <>
-            {" · applies to "}
+          <span className="inline-flex items-center gap-1.5">
+            适用于
             {targetRefs.map(({ id, ref }, index) => (
               <span key={id}>
                 {index > 0 && ", "}
@@ -373,23 +446,62 @@ export function DecisionCard({
                 )}
               </span>
             ))}
-          </>
+          </span>
         )}
         {runHref && (
-          <>
-            {" · "}
-            <a href={runHref} className="hover:underline">view run</a>
-          </>
+          <a href={runHref} className="hover:underline">查看运行</a>
         )}
       </p>
+
+      {/* Verdict summary — a settled card collapsed to its background still has
+          to answer "which one, by whom, and what was recommended"; that one
+          line is exactly what a reader scanning decision history wants. */}
+      {isCollapsed && (chosenOption || recommendedOption) && (
+        <div className="mt-2">
+          {chosenOption && (
+            <p className="text-sm">
+              {decidedByAgentName ? (
+                <span className="font-medium text-foreground">{decidedByAgentName}</span>
+              ) : null}
+              <span className="text-muted-foreground">{decidedByAgentName ? " 选了 " : "选了 "}</span>
+              <span className="font-medium text-foreground">「{chosenOption.label}」</span>
+              {recommendedOption && (
+                chosenOption.id === recommendedOption.id ? (
+                  <span className="ml-2 text-emerald-700 dark:text-emerald-300">与推荐一致</span>
+                ) : (
+                  <span className="ml-2 text-amber-700 dark:text-amber-300">未采纳推荐（{recommendedBy?.name ?? "提案 agent"} 推荐 {recommendedOption.label}）</span>
+                )
+              )}
+              {decision.decidedAt && (
+                <span className="ml-5 tabular-nums text-muted-foreground">{absoluteTimestamp(decision.decidedAt)}</span>
+              )}
+            </p>
+          )}
+
+        </div>
+      )}
 
       {/* Body */}
       {decision.body?.trim() && (
         <div className="mt-3 text-sm leading-6 text-foreground/90">
-          <MarkdownBody>{decision.body}</MarkdownBody>
+          <MarkdownBody>{isCollapsed ? collapsedBody : decision.body}</MarkdownBody>
         </div>
       )}
 
+      {!open && (
+        <button
+          type="button"
+          onClick={() => setCollapsed((value) => !value)}
+          className="mt-2 flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+          aria-expanded={!isCollapsed}
+        >
+          <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", !isCollapsed && "rotate-180")} aria-hidden />
+          {isCollapsed ? t("Show more") : t("Show less")}
+        </button>
+      )}
+
+      {isCollapsed ? null : (
+      <>
       {/* Stale-target warning (open only) */}
       {open && isStale && (
         <div className="mt-3 rounded-lg border border-amber-500/50 bg-amber-500/10 px-3 py-2">
@@ -413,6 +525,24 @@ export function DecisionCard({
           </ul>
           <p className="mt-1.5 text-xs text-amber-800/80 dark:text-amber-200/80">
             Options that require an unchanged target are disabled below.
+          </p>
+        </div>
+      )}
+
+      {/* Recommendation pitch (open only) — the proposer's reason travels with
+          the recommendation, visually separate from the decider's final
+          rationale input below. Falls back to the option description for
+          decisions proposed before the structured field existed. */}
+      {open && recommendedOption && (recommendedOption.recommendationReason ?? recommendedOption.description)?.trim() && (
+        <div className="mt-3 rounded-lg border border-border bg-muted/30 px-3 py-2">
+          <p className="text-(length:--text-micro) flex items-center gap-1 font-medium text-muted-foreground">
+            {recommendedBy?.customIconUrl ? (
+              <img src={recommendedBy.customIconUrl} alt="" className="inline-block h-3 w-3 rounded-full object-cover" />
+            ) : null}
+            推荐理由 · {recommendedBy?.name ?? "提案 agent"}
+          </p>
+          <p className="mt-1 text-sm leading-6 text-foreground/90">
+            {recommendedOption.recommendationReason ?? recommendedOption.description}
           </p>
         </div>
       )}
@@ -451,6 +581,7 @@ export function DecisionCard({
             const confirming = confirmOptionId === option.id;
             const previewRows = cancelTree && cancelTreePreview ? cancelTreePreview(cancelTree.targetIssueId) : null;
             const confirmRef = cancelTree ? resolveIssue(cancelTree.targetIssueId) : null;
+            const recommender = option.recommendedByAgentId ? resolveAgent?.(option.recommendedByAgentId) ?? null : null;
             const confirmToken = confirmRef?.identifier ?? confirmRef?.id ?? cancelTree?.targetIssueId ?? "";
             return (
               <div key={option.id} className="space-y-2">
@@ -470,6 +601,17 @@ export function DecisionCard({
                     <span className={cn("text-sm font-medium", destructive && "text-rose-700 dark:text-rose-300")}>
                       {option.label}
                     </span>
+                    {recommender && (
+                      <span className="flex shrink-0 items-center gap-1.5 rounded-full border border-sky-500/40 bg-sky-500/10 py-0.5 pl-1.5 pr-2 text-(length:--text-micro) text-muted-foreground">
+                        <AgentIcon
+                          icon={recommender.icon}
+                          customIconUrl={recommender.customIconUrl}
+                          className="h-3.5 w-3.5 shrink-0"
+                        />
+                        <span className="font-medium text-foreground">{recommender.name}</span>
+                        推荐
+                      </span>
+                    )}
                     {blockedStale && (
                       <span className="shrink-0 rounded-full border border-amber-500/60 bg-amber-500/10 px-2 py-0.5 text-(length:--text-micro) font-medium text-amber-800 dark:text-amber-200">
                         Blocked · stale
@@ -609,19 +751,49 @@ export function DecisionCard({
               >
                 <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden />
                 <span className="font-medium text-foreground">
-                  Chosen:{" "}
+                  {t("Chosen")}{": "}
                   {decision.options.find((option) => option.id === decision.chosenOptionId)?.label ??
                     decision.chosenOptionId}
                 </span>
                 {decision.decidedAt && (
-                  <span className="text-muted-foreground"> · {new Date(decision.decidedAt).toLocaleString()}</span>
+                  <>
+                    <span className="text-muted-foreground" aria-hidden>·</span>
+                    <span className="tabular-nums text-muted-foreground">{absoluteTimestamp(decision.decidedAt)}</span>
+                  </>
                 )}
-                {decision.decidedByAgentId && decidedByAgentName && (
-                  <span className="text-muted-foreground"> · by {decidedByAgentName}</span>
-                )}
-                {!decision.decidedByAgentId && decision.decidedByUserId && (
-                  <span className="text-muted-foreground"> · by {decision.decidedByUserId}</span>
-                )}
+                {/* A board-policy decision belongs to the board but is still
+                    performed from a terminal, so both are shown: dropping the
+                    agent made every such verdict read as anonymous local-board. */}
+                {decision.decidedByUserId && decision.decidedByAgentId && decidedByAgentName ? (
+                  <>
+                    <span className="text-muted-foreground" aria-hidden>·</span>
+                    <span className="flex items-center gap-1.5 text-muted-foreground">
+                      {t("by")} {decidedByUserName ?? decision.decidedByUserId}
+                      <span aria-hidden>·</span>
+                      via
+                      {decidedAgent && (
+                        <AgentIcon icon={decidedAgent.icon} customIconUrl={decidedAgent.customIconUrl} className="h-3.5 w-3.5 shrink-0" />
+                      )}
+                      {decidedByAgentName}
+                    </span>
+                  </>
+                ) : decision.decidedByAgentId && decidedByAgentName ? (
+                  <>
+                    <span className="text-muted-foreground" aria-hidden>·</span>
+                    <span className="flex items-center gap-1.5 text-muted-foreground">
+                      {t("by")}
+                      {decidedAgent && (
+                        <AgentIcon icon={decidedAgent.icon} customIconUrl={decidedAgent.customIconUrl} className="h-3.5 w-3.5 shrink-0" />
+                      )}
+                      {decidedByAgentName}
+                    </span>
+                  </>
+                ) : decision.decidedByUserId ? (
+                  <>
+                    <span className="text-muted-foreground" aria-hidden>·</span>
+                    <span className="text-muted-foreground">{t("by")} {decidedByUserName ?? decision.decidedByUserId}</span>
+                  </>
+                ) : null}
                 <ChevronDown
                   className={cn(
                     "ml-auto h-4 w-4 shrink-0 text-muted-foreground transition-transform",
@@ -630,6 +802,21 @@ export function DecisionCard({
                   aria-hidden
                 />
               </button>
+              {/* The rationale is collected as a required input and then was
+                  never shown again — the one sentence a reader comes back for
+                  was write-only. Rendered under the verdict, above options. */}
+              {(decision.inputs ?? []).map((field) => {
+                const value = (decision.inputValues ?? {})[field.id]?.trim();
+                if (!value) return null;
+                return (
+                  <div key={field.id} className="rounded-sm border border-border/60 bg-muted/30 px-3 py-2">
+                    <p className="text-(length:--text-micro) font-medium text-muted-foreground">
+                      {field.label}
+                    </p>
+                    <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-foreground">{value}</p>
+                  </div>
+                );
+              })}
               {optionsExpanded && (
                 <ul className="space-y-1.5">
                   {decision.options.map((option) => {
@@ -648,7 +835,7 @@ export function DecisionCard({
                           <span className="text-sm font-medium text-foreground">{option.label}</span>
                           {chosen && (
                             <span className="shrink-0 rounded-full border border-emerald-500/60 bg-emerald-500/10 px-2 py-0.5 text-(length:--text-micro) font-medium text-emerald-800 dark:text-emerald-200">
-                              Chosen
+                              {t("Chosen")}
                             </span>
                           )}
                         </div>
@@ -689,6 +876,36 @@ export function DecisionCard({
             </>
           )}
         </div>
+      )}
+
+      {/* Delete is destructive and irreversible, so it never fires on one
+          click: the trash icon arms an inline confirm instead of a dialog. */}
+      {onDelete && (
+        <div className="mt-3 flex items-center justify-end gap-2">
+          {confirmDelete ? (
+            <>
+              <span className="text-xs text-muted-foreground">{t("Permanently delete this decision record?")}</span>
+              <Button variant="ghost" size="sm" disabled={busy} onClick={() => setConfirmDelete(false)}>
+                {t("Cancel")}
+              </Button>
+              <Button variant="destructive" size="sm" disabled={busy} onClick={() => { setConfirmDelete(false); onDelete(); }}>
+                <Trash2 className="h-3.5 w-3.5" /> {t("Confirm delete")}
+              </Button>
+            </>
+          ) : (
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={busy}
+              className="text-muted-foreground hover:text-destructive"
+              onClick={() => setConfirmDelete(true)}
+            >
+              <Trash2 className="h-3.5 w-3.5" /> {t("Delete")}
+            </Button>
+          )}
+        </div>
+      )}
+      </>
       )}
     </div>
   );

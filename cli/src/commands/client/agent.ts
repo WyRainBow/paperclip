@@ -93,7 +93,7 @@ interface CreatedAgentKey {
 }
 
 interface SkillsInstallSummary {
-  tool: "codex" | "claude" | "kimi";
+  tool: "codex" | "claude" | "kimi" | "zcode";
   target: string;
   linked: string[];
   removed: string[];
@@ -121,10 +121,19 @@ function kimiSkillsHome(): string {
   return path.join(base, "skills");
 }
 
+// ZCode discovers skills in ~/.agents/skills (the cross-tool shared dir) in
+// addition to its own ~/.zcode/skills — installing into the shared dir keeps
+// one link serving ZCode today and any other tool that adopts the convention.
+function zcodeSkillsHome(): string {
+  const fromEnv = process.env.ZCODE_HOME?.trim();
+  const base = fromEnv && fromEnv.length > 0 ? fromEnv : path.join(os.homedir(), ".agents");
+  return path.join(base, "skills");
+}
+
 async function installSkillsForTarget(
   sourceSkillsDir: string,
   targetSkillsDir: string,
-  tool: "codex" | "claude" | "kimi",
+  tool: "codex" | "claude" | "kimi" | "zcode",
 ): Promise<SkillsInstallSummary> {
   const summary: SkillsInstallSummary = {
     tool,
@@ -770,14 +779,14 @@ export function registerAgentCommands(program: Command): void {
     agent
       .command("local-cli")
       .description(
-        "Create an agent API key, install local Paperclip skills for Codex/Claude, and print shell exports",
+        "Create an agent API key, install local Paperclip skills for Codex/Claude/ZCode, and print shell exports",
       )
       .argument("<agentRef>", "Agent ID or shortname/url-key")
       .requiredOption("-C, --company-id <id>", "Company ID")
       .option("--key-name <name>", "API key label", "local-cli")
       .option(
         "--no-install-skills",
-        "Skip installing Paperclip skills into ~/.codex/skills, ~/.claude/skills, and ~/.kimi-code/skills",
+        "Skip installing Paperclip skills into ~/.codex/skills, ~/.claude/skills, ~/.kimi-code/skills, and ~/.agents/skills",
       )
       .action(async (agentRef: string, opts: AgentLocalCliOptions) => {
         try {
@@ -810,6 +819,7 @@ export function registerAgentCommands(program: Command): void {
               await installSkillsForTarget(skillsDir, codexSkillsHome(), "codex"),
               await installSkillsForTarget(skillsDir, claudeSkillsHome(), "claude"),
               await installSkillsForTarget(skillsDir, kimiSkillsHome(), "kimi"),
+              await installSkillsForTarget(skillsDir, zcodeSkillsHome(), "zcode"),
             );
           }
 

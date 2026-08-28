@@ -362,6 +362,9 @@ function DocumentRow({
       </div>
       {expanded ? (
         <div className="border-t border-border px-2.5 py-2">
+          {/* Identity and timestamps moved to the document header row, where
+              they sit next to the key a reader is already looking at (user
+              2026-08-27). Repeating them here only pushed the body down. */}
           {doc.body.trim().length > 0 ? (
             <IssueDocumentAnnotations
               issueId={issueId}

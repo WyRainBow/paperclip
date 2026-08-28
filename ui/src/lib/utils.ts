@@ -75,18 +75,47 @@ export function formatShortDate(date: Date | string): string {
   });
 }
 
+/**
+ * Absolute local time to the minute, for list rows and headers: `8月27日
+ * 00:40`, or `2026年8月27日 00:40` once the year differs from today's.
+ *
+ * Seconds are left to `chineseTimestamp` / `absoluteTimestamp`, which audit
+ * surfaces use — a list row does not need them, an audit record does.
+ */
+export function listTimestamp(date: Date | string): string {
+  const value = new Date(date);
+  if (!Number.isFinite(value.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const time = `${pad(value.getHours())}:${pad(value.getMinutes())}`;
+  const day = `${value.getMonth() + 1}月${value.getDate()}日`;
+  const sameYear = value.getFullYear() === new Date().getFullYear();
+  return sameYear ? `${day} ${time}` : `${value.getFullYear()}年${day} ${time}`;
+}
+
+/** Absolute local time. Was relative ("3m ago") until 2026-08-27. */
 export function relativeTime(date: Date | string): string {
-  const now = Date.now();
-  const then = new Date(date).getTime();
-  const diffSec = Math.round((now - then) / 1000);
-  if (diffSec < 60) return "just now";
-  const diffMin = Math.round(diffSec / 60);
-  if (diffMin < 60) return `${diffMin}m ago`;
-  const diffHr = Math.round(diffMin / 60);
-  if (diffHr < 24) return `${diffHr}h ago`;
-  const diffDay = Math.round(diffHr / 24);
-  if (diffDay < 30) return `${diffDay}d ago`;
-  return formatDate(date);
+  return listTimestamp(date);
+}
+
+/**
+ * Absolute local timestamp to the second. Decisions are an audit record, so
+ * "3m ago" is not enough — a reader needs to know exactly when a decision was
+ * proposed and when it was made.
+ */
+export function absoluteTimestamp(date: Date | string): string {
+  const value = new Date(date);
+  if (!Number.isFinite(value.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())} `
+    + `${pad(value.getHours())}:${pad(value.getMinutes())}:${pad(value.getSeconds())}`;
+}
+
+export function chineseTimestamp(date: Date | string): string {
+  const value = new Date(date);
+  if (!Number.isFinite(value.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${value.getFullYear()}年${value.getMonth() + 1}月${value.getDate()}日 `
+    + `${pad(value.getHours())}:${pad(value.getMinutes())}:${pad(value.getSeconds())}`;
 }
 
 export function formatTokens(n: number): string {

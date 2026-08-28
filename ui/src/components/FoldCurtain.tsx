@@ -17,6 +17,12 @@ interface FoldCurtainProps {
   activationBuffer?: number;
   moreLabel?: string;
   lessLabel?: string;
+  /**
+   * Start expanded. The toggle stays available, so this only changes which
+   * state costs a click — use it where the content is the point of the screen
+   * (an issue's own description) rather than an aside.
+   */
+  defaultExpanded?: boolean;
   className?: string;
   contentClassName?: string;
   /** Extra classes for the Show more/less button (e.g. contrast lift on a colored bubble). */
@@ -64,6 +70,7 @@ export function FoldCurtain({
   activationBuffer = 120,
   moreLabel = "Show more",
   lessLabel = "Show less",
+  defaultExpanded = false,
   className,
   contentClassName,
   toggleClassName,
@@ -71,7 +78,7 @@ export function FoldCurtain({
   const collapsedHeight = useResponsiveCollapsedHeight(explicitCollapsedHeight);
   const contentRef = useRef<HTMLDivElement>(null);
   const [naturalHeight, setNaturalHeight] = useState(0);
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(defaultExpanded);
   const [hasMeasured, setHasMeasured] = useState(false);
   const [allowTransition, setAllowTransition] = useState(false);
 

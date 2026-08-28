@@ -83,6 +83,8 @@ export interface DecisionListFilter {
   status?: DecisionStatus;
   bundleId?: string;
   targetIssueId?: string;
+  /** Decisions raised while working this issue, as opposed to ones targeting it. */
+  originIssueId?: string;
   originAgentId?: string;
   limit?: number;
 }
@@ -98,6 +100,7 @@ function listQuery(filter: DecisionListFilter): string {
   if (filter.status) params.set("status", filter.status);
   if (filter.bundleId) params.set("bundleId", filter.bundleId);
   if (filter.targetIssueId) params.set("targetIssueId", filter.targetIssueId);
+  if (filter.originIssueId) params.set("originIssueId", filter.originIssueId);
   if (filter.originAgentId) params.set("originAgentId", filter.originAgentId);
   if (filter.limit != null) params.set("limit", String(filter.limit));
   const qs = params.toString();
@@ -113,4 +116,5 @@ export const decisionsApi = {
   dismiss: (id: string, reason?: string | null) =>
     api.post<DecisionOutcome>(`/decisions/${id}/dismiss`, reason ? { reason } : {}),
   cancel: (id: string) => api.post<Decision>(`/decisions/${id}/cancel`, {}),
+  remove: (id: string) => api.delete<{ id: string; deleted: boolean }>(`/decisions/${id}`),
 };

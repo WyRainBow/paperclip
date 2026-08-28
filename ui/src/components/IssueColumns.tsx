@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { deriveOriginatingActor, type Issue } from "@paperclipai/shared";
 import { Columns3 } from "lucide-react";
+import { useTranslation } from "@/i18n";
 import { pickTextColorForPillBg } from "@/lib/color-contrast";
 import { Button } from "@/components/ui/button";
 import {
@@ -55,7 +56,7 @@ function issueTrailingGridTemplate(columns: InboxIssueColumn[]): string {
   return columns
     .map((column) => {
       if (column === "assignee") return "minmax(6rem, 8rem)";
-      if (column === "kickedOffBy") return "minmax(6rem, 8rem)";
+      if (column === "kickedOffBy") return "minmax(6rem, 9.5rem)";
       if (column === "project") return "minmax(4.5rem, 7rem)";
       if (column === "workspace") return "minmax(6rem, 9rem)";
       if (column === "parent") return "minmax(3.5rem, 5.5rem)";
@@ -63,6 +64,40 @@ function issueTrailingGridTemplate(columns: InboxIssueColumn[]): string {
       return "minmax(3.5rem, 4.5rem)";
     })
     .join(" ");
+}
+
+/**
+ * Column names for the trailing grid, rendered once above the list. Uses the
+ * SAME grid template as the rows so the labels sit over their own columns —
+ * without it a reader has to guess whether a date is "created" or "updated".
+ */
+export function InboxIssueTrailingColumnsHeader({
+  columns,
+  className,
+}: {
+  columns: InboxIssueColumn[];
+  className?: string;
+}) {
+  const { t } = useTranslation();
+  if (columns.length === 0) return null;
+  return (
+    <div
+      className={cn("hidden pr-3 pl-2 sm:flex sm:items-center sm:pl-1", className)}
+      data-testid="issue-columns-header"
+      aria-hidden
+    >
+      <span
+        className="ml-auto grid shrink-0 items-center gap-4 text-(length:--text-nano) font-semibold uppercase tracking-(--tracking-caps) text-muted-foreground"
+        style={{ gridTemplateColumns: issueTrailingGridTemplate(columns) }}
+      >
+        {columns.map((column) => (
+          <span key={column} className="min-w-0 truncate">
+            {t(issueColumnLabels[column])}
+          </span>
+        ))}
+      </span>
+    </div>
+  );
 }
 
 export function IssueColumnPicker({
@@ -80,6 +115,7 @@ export function IssueColumnPicker({
   title: string;
   iconOnly?: boolean;
 }) {
+  const { t } = useTranslation();
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -88,17 +124,17 @@ export function IssueColumnPicker({
           variant={iconOnly ? "outline" : "ghost"}
           size={iconOnly ? "icon" : "sm"}
           className={iconOnly ? "h-8 w-8 shrink-0" : "hidden h-8 shrink-0 px-2 text-xs sm:inline-flex"}
-          title="Columns"
+          title={t("Columns")}
         >
           <Columns3 className={iconOnly ? "h-3.5 w-3.5" : "mr-1 h-3.5 w-3.5"} />
-          {!iconOnly && "Columns"}
+          {!iconOnly && t("Columns")}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-(--sz-300px) rounded-xl border-border/70 p-1.5 shadow-xl shadow-black/10">
         <DropdownMenuLabel className="px-2 pb-1 pt-1.5">
           <div className="space-y-1">
             <div className="text-(length:--text-nano) font-semibold uppercase tracking-(--tracking-caps) text-muted-foreground">
-              Desktop task rows
+              {t("Desktop task rows")}
             </div>
             <div className="text-sm font-medium text-foreground">
               {title}
@@ -116,10 +152,10 @@ export function IssueColumnPicker({
           >
             <span className="flex flex-col gap-0.5">
               <span className="text-sm font-medium text-foreground">
-                {issueColumnLabels[column]}
+                {t(issueColumnLabels[column])}
               </span>
               <span className="text-xs leading-relaxed text-muted-foreground">
-                {issueColumnDescriptions[column]}
+                {t(issueColumnDescriptions[column])}
               </span>
             </span>
           </DropdownMenuCheckboxItem>
@@ -129,8 +165,8 @@ export function IssueColumnPicker({
           onSelect={onResetColumns}
           className="rounded-lg px-3 py-2 text-sm"
         >
-          Reset defaults
-          <span className="ml-auto text-xs text-muted-foreground">status, id, updated</span>
+          {t("Reset defaults")}
+          <span className="ml-auto text-xs text-muted-foreground">{t("status, id, updated")}</span>
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -231,9 +267,11 @@ export function InboxIssueTrailingColumns({
   workspaceId,
   workspaceName,
   assigneeName,
+  assigneeAgentIconUrl,
   assigneeUserName,
   assigneeUserAvatarUrl,
   creatorAgentName,
+  creatorAgentIconUrl,
   creatorUserName,
   creatorUserAvatarUrl,
   viaAgentName,
@@ -250,9 +288,12 @@ export function InboxIssueTrailingColumns({
   workspaceId?: string | null;
   workspaceName: string | null;
   assigneeName: string | null;
+  /** Provider logo (metadata.customIcon); falls back to initials when absent. */
+  assigneeAgentIconUrl?: string | null;
   assigneeUserName?: string | null;
   assigneeUserAvatarUrl?: string | null;
   creatorAgentName?: string | null;
+  creatorAgentIconUrl?: string | null;
   creatorUserName?: string | null;
   creatorUserAvatarUrl?: string | null;
   viaAgentName?: string | null;
@@ -270,7 +311,7 @@ export function InboxIssueTrailingColumns({
 
   return (
     <span
-      className="grid items-center gap-2"
+      className="grid items-center gap-4"
       style={{ gridTemplateColumns: issueTrailingGridTemplate(columns) }}
     >
       {columns.map((column) => {
@@ -281,9 +322,10 @@ export function InboxIssueTrailingColumns({
 
           if (issue.assigneeAgentId) {
             return (
-              <span key={column} className="min-w-0 text-xs text-foreground">
+              <span key={column} className="flex min-w-0 text-xs text-foreground">
                 <Identity
                   name={assigneeName ?? issue.assigneeAgentId.slice(0, 8)}
+                  avatarUrl={assigneeAgentIconUrl}
                   size="sm"
                   shape="square"
                   className="min-w-0"
@@ -294,7 +336,7 @@ export function InboxIssueTrailingColumns({
 
           if (issue.assigneeUserId) {
             return (
-              <span key={column} className="min-w-0 text-xs text-foreground">
+              <span key={column} className="flex min-w-0 text-xs text-foreground">
                 <Identity
                   name={userLabel}
                   avatarUrl={assigneeUserAvatarUrl}
@@ -318,9 +360,10 @@ export function InboxIssueTrailingColumns({
             return (
               <Tooltip key={column}>
                 <TooltipTrigger asChild>
-                  <span className="min-w-0 text-xs text-foreground">
+                  <span className="flex min-w-0 text-xs text-foreground">
                     <Identity
                       name={name}
+                      avatarUrl={creatorAgentIconUrl}
                       size="sm"
                       shape="square"
                       className="min-w-0"
@@ -337,7 +380,7 @@ export function InboxIssueTrailingColumns({
             return (
               <Tooltip key={column}>
                 <TooltipTrigger asChild>
-                  <span className="min-w-0 text-xs text-foreground">
+                  <span className="flex min-w-0 text-xs text-foreground">
                     <Identity
                       name={creatorUserLabel}
                       avatarUrl={creatorUserAvatarUrl}

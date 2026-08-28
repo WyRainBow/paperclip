@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { and, asc, count, desc, eq, gt, gte, inArray, lte, or, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import { companyMemberships, decisionBundles, decisionEffectExecutions, decisionRetention, decisions, decisionTargetIssues, heartbeatRuns, issueRelations, issues } from "@paperclipai/db";
-import { ATTENTION_SOURCE_KINDS, decisionEffectTargetIssueIds } from "@paperclipai/shared";
+import { ATTENTION_SOURCE_KINDS, DECISION_TEMPLATE_INPUTS, decisionEffectTargetIssueIds } from "@paperclipai/shared";
 import type { AttentionArchiveManifestEntry, DecisionEffect, DecisionInput, DecisionOption, DecisionStatsCounts, DecisionStatsResponse } from "@paperclipai/shared";
 import { conflict, forbidden, notFound, tooManyRequests, unprocessable } from "../errors.js";
 import { authorizationService, type AuthorizationActor } from "./authorization.js";
@@ -117,13 +117,20 @@ function boardCanActDirectly(actor: AuthorizationActor, companyId: string) {
 export function decisionService(db: Db, options: DecisionServiceOptions) {
   const authz = authorizationService(db);
   let targetSweepCursor: string | null = null;
-  type CreateInput = { companyId: string; actor: AuthorizationActor; agentId: string; runId: string; bundleId?: string | null;
+  type CreateInput = { companyId: string; actor: AuthorizationActor; agentId: string; runId: string | null; bundleId?: string | null;
     ruleKey?: string | null; title: string; body: string; options: DecisionOption[]; inputs?: DecisionInput[] | null; expiresAt?: Date | null;
     idempotencyKey?: string | null; continuationPolicy?: "none" | "wake_origin_agent"; metadata?: Record<string, unknown>;
     resolverPolicy?: "board" | "agents"; originIssueId?: string | null };
   type CreateInputWithSnapshots = CreateInput & { additionalTargetSnapshots?: Record<string, Snapshot> };
 
-  async function origin(companyId: string, agentId: string, runId: string, fallbackIssueId?: string | null) {
+  async function origin(companyId: string, agentId: string, runId: string | null, fallbackIssueId?: string | null) {
+    // A keyed terminal agent has no run at all (standard key, MUL-63). Its
+    // provenance issue cannot be derived from a run snapshot, so the create
+    // call must name it — same contract terminal_contributor runs already had.
+    if (!runId) {
+      if (!fallbackIssueId) throw unprocessable("originIssueId is required when creating a decision without a run");
+      return { run: null, issueId: fallbackIssueId };
+    }
     const run = await db.select().from(heartbeatRuns).where(and(eq(heartbeatRuns.id, runId), eq(heartbeatRuns.companyId, companyId), eq(heartbeatRuns.agentId, agentId)))
       .then((rows) => rows[0] ?? null);
     if (!run) throw forbidden("Decision provenance requires the origin run");
@@ -209,11 +216,26 @@ export function decisionService(db: Db, options: DecisionServiceOptions) {
             .filter(([key]) => key.startsWith("attention:")))) === canonicalJson(input.additionalTargetSnapshots)
         );
         const equivalent = existing.title === input.title && existing.body === input.body &&
-          canonicalJson(existing.options) === canonicalJson(input.options) && canonicalJson(existing.inputs ?? null) === canonicalJson(input.inputs ?? null) &&
+          canonicalJson(existing.options) === canonicalJson(input.options) &&
+          // Compare against what the insert actually stores, not what the
+          // caller passed: inputs are replaced by the template, so comparing
+          // the raw request would make every idempotent retry look changed.
+          canonicalJson(existing.inputs ?? null) === canonicalJson(DECISION_TEMPLATE_INPUTS) &&
           archiveEquivalent;
         if (!equivalent) throw conflict("Decision idempotency key already used with a different payload");
         return existing;
       }
+    }
+    // A recommendation is only credible if the proposer cannot attribute it to
+    // someone else, so the only id accepted here is the proposing agent's own.
+    const forgedRecommendation = input.options.find(
+      (option) => option.recommendedByAgentId && option.recommendedByAgentId !== input.agentId,
+    );
+    if (forgedRecommendation) {
+      throw unprocessable("recommendedByAgentId must be the proposing agent", {
+        code: "recommendation_agent_mismatch",
+        optionId: forgedRecommendation.id,
+      });
     }
     const open = await dbOrTx.select({ value: count() }).from(decisions).where(and(eq(decisions.companyId, input.companyId), eq(decisions.originAgentId, input.agentId), eq(decisions.status, "open")));
     const cap = Number(process.env.PAPERCLIP_DECISIONS_OPEN_CAP ?? 50);
@@ -230,7 +252,7 @@ export function decisionService(db: Db, options: DecisionServiceOptions) {
     const id = randomUUID();
     const [created] = await dbOrTx.insert(decisions).values({ id, companyId: input.companyId, bundleId: input.bundleId ?? null,
       originAgentId: input.agentId, originIssueId: provenance.issueId, originRunId: input.runId, ruleKey: input.ruleKey ?? null,
-      title: input.title, body: input.body, options: input.options, inputs: input.inputs ?? null, expiresAt,
+      title: input.title, body: input.body, options: input.options, inputs: DECISION_TEMPLATE_INPUTS, expiresAt,
       idempotencyKey: input.idempotencyKey ?? null, signedSpec: signDecisionSpec(spec({ id, options: input.options, targetSnapshots })),
       targetSnapshots, continuationPolicy: input.continuationPolicy ?? "none", metadata: input.metadata ?? {},
       resolverPolicy: input.resolverPolicy ?? "board" }).onConflictDoNothing().returning();
@@ -252,7 +274,7 @@ export function decisionService(db: Db, options: DecisionServiceOptions) {
     if (ids.length) await dbOrTx.insert(decisionTargetIssues).values(ids.map((issueId) => ({ decisionId: id, issueId, companyId: input.companyId })));
     await logActivity(dbOrTx, { companyId: input.companyId, actorType: "agent", actorId: input.agentId, agentId: input.agentId,
       runId: input.runId, action: "decision.created", entityType: "decision", entityId: id,
-      details: { originIssueId: provenance.issueId, originAgentId: input.agentId, originResponsibleUserId: provenance.run.responsibleUserId } });
+      details: { originIssueId: provenance.issueId, originAgentId: input.agentId, originResponsibleUserId: provenance.run?.responsibleUserId ?? null } });
     return created;
   }
 
@@ -268,11 +290,14 @@ export function decisionService(db: Db, options: DecisionServiceOptions) {
     return { ...decision, executions };
   }
 
-  async function list(companyId: string, filter: { status?: string; bundleId?: string; targetIssueId?: string; originAgentId?: string; limit?: number } = {}) {
+  async function list(companyId: string, filter: { status?: string; bundleId?: string; targetIssueId?: string; originIssueId?: string; originAgentId?: string; limit?: number } = {}) {
     const conditions = [eq(decisions.companyId, companyId)];
     if (filter.status) conditions.push(eq(decisions.status, filter.status));
     if (filter.bundleId) conditions.push(eq(decisions.bundleId, filter.bundleId));
     if (filter.originAgentId) conditions.push(eq(decisions.originAgentId, filter.originAgentId));
+    // Origin, not target: "which decisions were raised while working this
+    // issue", which is what an issue's own decision tab shows.
+    if (filter.originIssueId) conditions.push(eq(decisions.originIssueId, filter.originIssueId));
     if (filter.targetIssueId) {
       const links = await db.select({ id: decisionTargetIssues.decisionId }).from(decisionTargetIssues).where(and(eq(decisionTargetIssues.companyId, companyId), eq(decisionTargetIssues.issueId, filter.targetIssueId)));
       if (!links.length) return [];
@@ -459,7 +484,10 @@ export function decisionService(db: Db, options: DecisionServiceOptions) {
         // The proposer signed these effects and opted into agent resolution
         // (resolverPolicy "agents"), so a peer-agent resolver may land them;
         // the origin-side access checks above still apply either way.
-        const agentResolverAllowed = decision.resolverPolicy === "agents" && decidedByAgentId != null;
+        // Agents may now decide regardless of resolverPolicy (user 2026-08-27),
+        // so an agent-signed verdict clears the resolver check on its own —
+        // the origin-side access checks above still gate every effect.
+        const agentResolverAllowed = decidedByAgentId != null;
         if (agentResolverAllowed) {
           userAccess = { allowed: true, reason: "allow_agent_resolver" };
         } else if (effect.type === "assign_issue" || (effect.type === "create_issue" && (effect.draft.assigneeAgentId || effect.draft.assigneeUserId))) {
@@ -559,7 +587,9 @@ export function decisionService(db: Db, options: DecisionServiceOptions) {
   async function runEffects(decision: typeof decisions.$inferSelect, userActor: AuthorizationActor) {
     const option = decision.options.find((item) => item.id === decision.chosenOptionId);
     if (!option || (!decision.decidedByUserId && !decision.decidedByAgentId)) throw unprocessable("Stored decision outcome is invalid");
-    const run = await db.select({ responsibleUserId: heartbeatRuns.responsibleUserId }).from(heartbeatRuns).where(eq(heartbeatRuns.id, decision.originRunId)).then((rows) => rows[0] ?? null);
+    const run = decision.originRunId
+      ? await db.select({ responsibleUserId: heartbeatRuns.responsibleUserId }).from(heartbeatRuns).where(eq(heartbeatRuns.id, decision.originRunId)).then((rows) => rows[0] ?? null)
+      : null;
     const metadata = decision.metadata as Record<string, unknown>;
     if (metadata.kind === "attention_archive_proposal") {
       // Archive proposals resolve on the board side only; an agent resolver
@@ -693,7 +723,9 @@ export function decisionService(db: Db, options: DecisionServiceOptions) {
         ...(input.dismissed ? { dismissed: true, dismissReason: input.dismissReason ?? null } : {}) } })
       .where(and(eq(decisions.id, current.id), eq(decisions.status, "open"))).returning();
     if (!claimed) throw conflict("decision_already_resolved", { code: "decision_already_resolved" });
-    const run = await db.select({ responsibleUserId: heartbeatRuns.responsibleUserId }).from(heartbeatRuns).where(eq(heartbeatRuns.id, claimed.originRunId)).then((rows) => rows[0] ?? null);
+    const run = claimed.originRunId
+      ? await db.select({ responsibleUserId: heartbeatRuns.responsibleUserId }).from(heartbeatRuns).where(eq(heartbeatRuns.id, claimed.originRunId)).then((rows) => rows[0] ?? null)
+      : null;
     const agentResolver = input.decidedByAgentId
       ? { actorType: "agent" as const, actorId: input.decidedByAgentId, agentId: input.decidedByAgentId, runId: input.decidedByRunId ?? claimed.originRunId }
       : { actorType: "system" as const, actorId: "decision-executor", agentId: claimed.originAgentId, runId: claimed.originRunId };
@@ -719,11 +751,41 @@ export function decisionService(db: Db, options: DecisionServiceOptions) {
     return (await get(id))!;
   }
 
+  async function remove(id: string, actor: { actorType: "agent" | "user"; actorId: string; runId?: string | null }) {
+    const current = await get(id);
+    if (!current) throw notFound("Decision not found");
+    // Deleting erases the record entirely (cancel/dismiss keep it in the
+    // list). Board may delete anything; an agent only its own non-open
+    // decisions — an open question must not silently vanish, cancel it first.
+    if (actor.actorType === "agent") {
+      if (actor.actorId !== current.originAgentId) throw forbidden("Only the origin agent may delete");
+      if (current.status === "open") throw conflict("decision_still_open", { code: "decision_still_open" });
+    }
+    await db.delete(decisionRetention).where(and(
+      eq(decisionRetention.companyId, current.companyId),
+      eq(decisionRetention.sourceKind, "decision"),
+      eq(decisionRetention.sourceId, id),
+    ));
+    await db.delete(decisions).where(eq(decisions.id, id));
+    await logActivity(db, { companyId: current.companyId, actorType: actor.actorType, actorId: actor.actorId, runId: actor.runId,
+      action: "decision.deleted", entityType: "decision", entityId: id,
+      details: { title: current.title, status: current.status, originAgentId: current.originAgentId } });
+    return { id, deleted: true as const };
+  }
+
   async function dismiss(id: string, userId: string, userActor: AuthorizationActor, reason?: string | null) {
     const current = await get(id); if (!current) throw notFound("Decision not found");
     if (!verifyDecisionSpec(spec({ id: current.id, options: current.options, targetSnapshots: current.targetSnapshots as Record<string, Snapshot> }), current.signedSpec)) throw forbidden("Decision signature verification failed");
     const empty = current.options.find((option) => option.effects.length === 0);
-    if (empty) return decide({ id, optionId: empty.id, decidedByUserId: userId, userActor, dismissed: true, dismissReason: reason });
+    // A dismissal already carries its own reason, so asking again for the
+    // template's rationale would demand the same sentence twice. Feed the
+    // dismissal reason in as the rationale instead.
+    if (empty) {
+      return decide({
+        id, optionId: empty.id, decidedByUserId: userId, userActor, dismissed: true, dismissReason: reason,
+        inputValues: { rationale: reason?.trim() || "驳回，未给出理由" },
+      });
+    }
     const [updated] = await db.update(decisions).set({ status: "decided", executionStatus: "succeeded", chosenOptionId: "dismissed", decidedByUserId: userId,
       decidedAt: new Date(), updatedAt: new Date(), metadata: { ...current.metadata, dismissed: true, dismissReason: reason ?? null,
         ...(current.continuationPolicy === "wake_origin_agent" ? { continuationPending: true } : {}) } }).where(and(eq(decisions.id, id), eq(decisions.status, "open"))).returning();
@@ -807,5 +869,5 @@ export function decisionService(db: Db, options: DecisionServiceOptions) {
     return { expired, resumed };
   }
 
-  return { create, createBundle, get, list, stats, outcome, decide, cancel, dismiss, sweepExpired };
+  return { create, createBundle, get, list, stats, outcome, decide, cancel, dismiss, remove, sweepExpired };
 }

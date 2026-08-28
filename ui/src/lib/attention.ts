@@ -9,6 +9,7 @@ import type {
   AttentionSourceKind,
   AttentionWorkspaceRef,
 } from "@paperclipai/shared";
+import { t } from "../i18n";
 
 export type AttentionListOptions = AttentionFeedQuery;
 
@@ -200,11 +201,20 @@ function countNoun(count: number, singular: string): string {
 export function attentionDetailLine(item: AttentionItem): string | null {
   const detail = item.detail;
   if (!detail) return null;
+  // Review-queue items carry the issue title as their whole excerpt, so the
+  // row printed the same sentence twice (headline + "“headline”") and read as
+  // a decision with no body. A detail that only repeats the title is not a
+  // detail — honour the contract in the doc comment above and return null.
+  const normalize = (value: string | null | undefined) =>
+    (value ?? "").replace(/\s+/g, " ").replace(/[“”"]/g, "").trim();
+  const titleNorm = normalize(item.subject?.title ?? null);
+  const repeatsTitle = (value: string | null | undefined) =>
+    titleNorm.length > 0 && normalize(value) === titleNorm;
   switch (detail.kind) {
     case "plan_approval":
       return detail.planTitle?.trim() || quote(detail.summaryExcerpt);
     case "approval":
-      return quote(detail.summaryExcerpt);
+      return repeatsTitle(detail.summaryExcerpt) ? null : quote(detail.summaryExcerpt);
     case "confirmation":
       return quote(detail.promptExcerpt);
     case "checkbox_confirmation": {
@@ -241,7 +251,7 @@ export function attentionDetailLine(item: AttentionItem): string | null {
     case "budget":
       return `${Math.round(detail.observedPercent)}% of budget used ($${detail.amountObserved} / $${detail.amountLimit})`;
     case "generic":
-      return quote(detail.summaryExcerpt);
+      return repeatsTitle(detail.summaryExcerpt) ? null : quote(detail.summaryExcerpt);
     default:
       return null;
   }
@@ -417,12 +427,17 @@ export const DECIDE_BY_OPTIONS: ReadonlyArray<[DecideByPreset, string]> = [
   ["whenever", "Whenever"],
 ];
 
+/** Localized labels for the segmented control; keys stay the English source. */
+export function decideByOptions(): ReadonlyArray<[DecideByPreset, string]> {
+  return DECIDE_BY_OPTIONS.map(([value, label]) => [value, t(label)] as [DecideByPreset, string]);
+}
+
 /** Human label for any stored `decideBy` value (preset or `YYYY-MM-DD`). */
 export function decideByLabel(decideBy: string | null): string {
-  if (!decideBy) return "Not set";
-  if (decideBy === "today") return "Today";
-  if (decideBy === "this_week") return "This week";
-  if (decideBy === "whenever") return "Whenever";
+  if (!decideBy) return t("Not set");
+  if (decideBy === "today") return t("Today");
+  if (decideBy === "this_week") return t("This week");
+  if (decideBy === "whenever") return t("Whenever");
   if (/^\d{4}-\d{2}-\d{2}$/.test(decideBy)) {
     const parsed = new Date(`${decideBy}T00:00:00.000Z`);
     return Number.isFinite(parsed.getTime())

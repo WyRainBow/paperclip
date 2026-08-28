@@ -1,3 +1,4 @@
+import { agentCustomIcon } from "./AgentIconPicker";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   WORKSPACE_BRANCH_ROUTINE_VARIABLE,
@@ -372,7 +373,7 @@ export function RoutineRunVariablesDialog({
                   option ? (
                     currentAssignee ? (
                       <>
-                        <AgentIcon icon={currentAssignee.icon} className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                        <AgentIcon customIconUrl={agentCustomIcon(currentAssignee)} icon={currentAssignee.icon} className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                         <span className="truncate">{option.label}</span>
                       </>
                     ) : (
@@ -387,7 +388,7 @@ export function RoutineRunVariablesDialog({
                   const assignee = agents.find((agent) => agent.id === option.id);
                   return (
                     <>
-                      {assignee ? <AgentIcon icon={assignee.icon} className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> : null}
+                      {assignee ? <AgentIcon customIconUrl={agentCustomIcon(assignee)} icon={assignee.icon} className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> : null}
                       <span className="truncate">{option.label}</span>
                     </>
                   );

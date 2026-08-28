@@ -6,7 +6,7 @@ import { validateLocaleMessages } from "./locale-validation";
 
 describe("locale validation", () => {
   it("resolves English messages with key and default fallbacks", () => {
-    expect(t("app.noCompanies.title")).toBe(en.app.noCompanies.title);
+    expect(t("Create your first company")).toBe(en["Create your first company"]);
     expect(t("app.missing", { defaultValue: "Fallback" })).toBe("Fallback");
     expect(t("app.missing")).toBe("app.missing");
   });
@@ -18,21 +18,16 @@ describe("locale validation", () => {
     }
   });
 
-  it("rejects missing and extra nested keys", () => {
+  it("rejects missing and extra keys", () => {
     expect(
       validateLocaleMessages({
-        app: {
-          noCompanies: {
-            title: en.app.noCompanies.title,
-            description: en.app.noCompanies.description,
-            unexpected: "Unexpected",
-          },
-        },
+        "Create your first company": en["Create your first company"],
+        unexpected: "Unexpected",
       }),
     ).toEqual(
       expect.arrayContaining([
-        "app.noCompanies.newCompany is missing",
-        "app.noCompanies.unexpected is not defined in English",
+        expect.stringContaining("is missing"),
+        "unexpected is not defined in English",
       ]),
     );
   });
@@ -40,14 +35,9 @@ describe("locale validation", () => {
   it("rejects non-string leaves", () => {
     expect(
       validateLocaleMessages({
-        app: {
-          noCompanies: {
-            ...en.app.noCompanies,
-            title: ["Create your first company"],
-          },
-        },
+        "Create your first company": ["Create your first company"],
       }),
-    ).toEqual(expect.arrayContaining(["app.noCompanies.title must be a string"]));
+    ).toEqual(expect.arrayContaining(["Create your first company must be a string"]));
   });
 
   it("requires interpolation placeholders to match English", () => {
@@ -99,4 +89,41 @@ describe("locale validation", () => {
       "message is too long: 200 characters exceeds 133",
     ]);
   });
+});
+
+// The app validates every shipped locale at module load and throws on the first
+// mismatch, which blanks the whole UI before React mounts. Four such white
+// screens shipped from editing zh-CN without adding the key to en.json, so pin
+// the invariant here where it fails as a red test instead of a blank page.
+describe("shipped locale catalog", () => {
+  const catalog = import.meta.glob("./locales/*.json", { eager: true, import: "default" }) as Record<
+    string,
+    Record<string, unknown>
+  >;
+
+  function localeName(path: string) {
+    return path.match(/\/([A-Za-z0-9_-]+)\.json$/)?.[1] ?? path;
+  }
+
+  const english = Object.entries(catalog).find(([path]) => localeName(path) === "en")?.[1];
+
+  it("ships an English catalog", () => {
+    expect(english).toBeTruthy();
+  });
+
+  it.each(
+    Object.entries(catalog)
+      .map(([path, messages]) => [localeName(path), messages] as const)
+      .filter(([locale]) => locale !== "en"),
+  )("%s has exactly the English key set", (_locale, messages) => {
+    const englishKeys = Object.keys(english ?? {}).sort();
+    expect(Object.keys(messages).sort()).toEqual(englishKeys);
+  });
+
+  it.each(Object.entries(catalog).map(([path, messages]) => [localeName(path), messages] as const))(
+    "%s passes the runtime validator",
+    (_locale, messages) => {
+      expect(validateLocaleMessages(messages, english)).toEqual([]);
+    },
+  );
 });

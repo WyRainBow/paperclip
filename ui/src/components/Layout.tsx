@@ -210,7 +210,10 @@ export function Layout() {
   // is active, but does NOT mutate the persisted preference. Clearing the force
   // on cleanup restores the user's expanded/collapsed choice when navigating
   // off the takeover route (PAP-10694).
-  const forceRailCollapsed = hasSecondarySidebar || isSkillsRoute;
+  // The Skills Store keeps the main nav pinned (MUL-16 §7): its category rail
+  // is page content, not a takeover, so only prop-level secondary sidebars
+  // force the rail.
+  const forceRailCollapsed = hasSecondarySidebar;
   useLayoutEffect(() => {
     setForceCollapsed(forceRailCollapsed);
     return () => setForceCollapsed(false);

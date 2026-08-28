@@ -815,7 +815,7 @@ describeEmbeddedPostgres("issue blocker attention", () => {
     const recoveryId = await insertIssue({
       companyId,
       identifier: "BID-3",
-      title: "Recovery issue",
+      title: "恢复卡",
       status: "todo",
       assigneeAgentId: agentId,
       originKind: "harness_liveness_escalation",

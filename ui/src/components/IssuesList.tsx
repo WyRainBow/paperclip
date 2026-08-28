@@ -51,12 +51,16 @@ import { collectSubtreeLiveCounts } from "../lib/liveIssueIds";
 import {
   InboxIssueMetaLeading,
   InboxIssueTrailingColumns,
+  InboxIssueTrailingColumnsHeader,
   IssueColumnPicker,
   issueActivityText,
   issueTrailingColumns,
 } from "./IssueColumns";
+import { agentCustomIcon } from "./AgentIconPicker";
 import { StatusIcon } from "./StatusIcon";
 import { EmptyState } from "./EmptyState";
+import { useTranslation } from "@/i18n";
+import { issueStatusLabel } from "../lib/issue-labels";
 import { Identity } from "./Identity";
 import { IssueGroupHeader } from "./IssueGroupHeader";
 import { IssueFiltersPopover } from "./IssueFiltersPopover";
@@ -122,15 +126,6 @@ function findIssuesScrollContainer(element: HTMLElement | null): HTMLElement | n
   return null;
 }
 const boardIssueStatuses = ISSUE_STATUSES;
-const issueStatusLabels: Record<IssueStatus, string> = {
-  backlog: "Backlog",
-  todo: "Todo",
-  in_progress: "In progress",
-  in_review: "In review",
-  done: "Done",
-  blocked: "Blocked",
-  cancelled: "Cancelled",
-};
 const progressSegmentClasses: Record<IssueStatus, string> = {
   backlog: "bg-muted-foreground/40",
   todo: "bg-blue-500",
@@ -451,6 +446,9 @@ function shouldSuppressSinglePreviousSiblingBlockerChip(
 interface Agent {
   id: string;
   name: string;
+  /** Provider logo lives on metadata.customIcon (see agentCustomIcon). */
+  icon?: string | null;
+  metadata?: Record<string, unknown> | null;
 }
 
 type CreatorOption = {
@@ -505,6 +503,7 @@ function IssueSearchInput({
   value: string;
   onDebouncedChange?: (search: string) => void;
 }) {
+  const { t } = useTranslation();
   const [draftValue, setDraftValue] = useState(value);
   const lastCommittedValueRef = useRef(value);
 
@@ -551,9 +550,9 @@ function IssueSearchInput({
             e.currentTarget.blur();
           }
         }}
-        placeholder="Search tasks..."
+        placeholder={t("Search tasks...")}
         className="pl-7 text-xs sm:text-sm"
-        aria-label="Search tasks"
+        aria-label={t("Search tasks")}
         data-page-search-target="true"
       />
     </div>
@@ -569,6 +568,7 @@ function SubIssueProgressSummaryStrip({
   issueLinkState?: unknown;
   parentIssueIdForCostSummary?: string;
 }) {
+  const { t } = useTranslation();
   const target = summary.target;
   const targetIssue = target?.issue ?? null;
   const targetPathId = targetIssue?.identifier ?? targetIssue?.id ?? "";
@@ -638,7 +638,7 @@ function SubIssueProgressSummaryStrip({
                 key={status}
                 className={cn("h-full", progressSegmentClasses[status])}
                 style={{ width: `${(count / summary.totalCount) * 100}%` }}
-                title={`${issueStatusLabels[status]}: ${count}`}
+                title={`${issueStatusLabel(status)}: ${count}`}
                 aria-hidden="true"
               />
             ))}
@@ -649,7 +649,7 @@ function SubIssueProgressSummaryStrip({
           {target && targetIssue ? (
             <>
               <div className="text-xs font-medium text-muted-foreground">
-                {target.kind === "next" ? "Next up" : "Waiting on blockers"}
+                {target.kind === "next" ? t("Next up") : t("Waiting on blockers")}
               </div>
               <Link
                 to={createIssueDetailPath(targetPathId)}
@@ -708,6 +708,7 @@ export function IssuesList({
   onSearchChange,
   onUpdateIssue,
 }: IssuesListProps) {
+  const { t } = useTranslation();
   const rootRef = useRef<HTMLDivElement | null>(null);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -879,6 +880,14 @@ export function IssuesList({
   const agentName = useCallback((id: string | null) => {
     if (!id || !agents) return null;
     return agents.find((a) => a.id === id)?.name ?? null;
+  }, [agents]);
+
+  // Agents carry their provider logo on metadata.customIcon; the list rows only
+  // had names, so every agent fell back to two-letter initials and Claude,
+  // Codex and GLM were indistinguishable at a glance.
+  const agentIconUrl = useCallback((id: string | null) => {
+    if (!id || !agents) return null;
+    return agentCustomIcon(agents.find((a) => a.id === id) ?? null);
   }, [agents]);
 
   const companyUserLabelMap = useMemo(
@@ -1682,12 +1691,12 @@ export function IssuesList({
 
         <div className="flex items-center gap-0.5 sm:gap-1 shrink-0">
           {/* View mode toggle */}
-          <div className="flex items-center border border-border rounded-md overflow-hidden mr-1" role="group" aria-label="View mode">
+          <div className="flex items-center border border-border rounded-md overflow-hidden mr-1" role="group" aria-label={t("View mode")}>
             <button
               className={`flex h-8 w-8 items-center justify-center transition-colors ${viewState.viewMode === "list" ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground"}`}
               onClick={() => updateView({ viewMode: "list" })}
-              title="List view"
-              aria-label="List view"
+              title={t("List view")}
+              aria-label={t("List view")}
               aria-pressed={viewState.viewMode === "list"}
             >
               <List className="h-3.5 w-3.5" />
@@ -1695,8 +1704,8 @@ export function IssuesList({
             <button
               className={`flex h-8 w-8 items-center justify-center transition-colors ${viewState.viewMode === "board" ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground"}`}
               onClick={() => updateView({ viewMode: "board" })}
-              title="Board view"
-              aria-label="Board view"
+              title={t("Board view")}
+              aria-label={t("Board view")}
               aria-pressed={viewState.viewMode === "board"}
             >
               <SquareKanban className="h-3.5 w-3.5" />
@@ -1710,7 +1719,7 @@ export function IssuesList({
               size="icon"
               className={cn("hidden h-8 w-8 shrink-0 sm:inline-flex", viewState.nestingEnabled && "bg-accent")}
               onClick={() => updateView({ nestingEnabled: !viewState.nestingEnabled })}
-              title={viewState.nestingEnabled ? "Disable parent-child nesting" : "Enable parent-child nesting"}
+              title={viewState.nestingEnabled ? t("Disable parent-child nesting") : t("Enable parent-child nesting")}
             >
               <ListTree className="h-3.5 w-3.5" />
             </Button>
@@ -1724,7 +1733,7 @@ export function IssuesList({
                 size="icon"
                 className={cn("h-8 w-8 shrink-0", boardCompactCards && "bg-accent")}
                 onClick={() => updateView({ boardCardDensity: boardCompactCards ? "comfortable" : "compact" })}
-                title={boardCompactCards ? "Use comfortable cards" : "Use compact cards"}
+                title={boardCompactCards ? t("Use comfortable cards") : t("Use compact cards")}
               >
                 <ChevronsDownUp className="h-3.5 w-3.5" />
               </Button>
@@ -1734,7 +1743,7 @@ export function IssuesList({
                 size="icon"
                 className={cn("h-8 w-8 shrink-0", boardCollapsedStatuses.length > 0 && "bg-accent")}
                 onClick={() => updateView({ boardColdLaneMode: boardCollapsedStatuses.length > 0 ? "expanded" : "collapsed" })}
-                title={boardCollapsedStatuses.length > 0 ? "Expand cold lanes" : "Collapse cold lanes"}
+                title={boardCollapsedStatuses.length > 0 ? t("Expand cold lanes") : t("Collapse cold lanes")}
               >
                 <PanelTopClose className="h-3.5 w-3.5" />
               </Button>
@@ -1748,7 +1757,7 @@ export function IssuesList({
                       "h-8 shrink-0 gap-1.5 px-2",
                       viewState.boardColumnPageSize !== KANBAN_COLUMN_DEFAULT_PAGE_SIZE && "bg-accent",
                     )}
-                    title="Cards per column"
+                    title={t("Cards per column")}
                   >
                     <ListCollapse className="h-3.5 w-3.5" />
                     <span className="min-w-4 text-xs tabular-nums">{viewState.boardColumnPageSize}</span>
@@ -1768,7 +1777,7 @@ export function IssuesList({
                         )}
                         onClick={() => updateView({ boardColumnPageSize: pageSize })}
                       >
-                        <span>{pageSize} per column</span>
+                        <span>{t("{{count}} per column", { count: pageSize })}</span>
                         {viewState.boardColumnPageSize === pageSize && <Check className="h-3.5 w-3.5" />}
                       </button>
                     ))}
@@ -1786,7 +1795,7 @@ export function IssuesList({
                   boardColumnPageSize: KANBAN_COLUMN_DEFAULT_PAGE_SIZE,
                 })}
                 disabled={!boardDensityCustomized}
-                title="Reset board density"
+                title={t("Reset board density")}
               >
                 <RotateCcw className="h-3.5 w-3.5" />
               </Button>
@@ -1798,7 +1807,7 @@ export function IssuesList({
             visibleColumnSet={visibleIssueColumnSet}
             onToggleColumn={toggleIssueColumn}
             onResetColumns={() => setIssueColumns(DEFAULT_INBOX_ISSUE_COLUMNS)}
-            title="Choose which task columns stay visible"
+            title={t("Choose which task columns stay visible")}
             iconOnly
           />
 
@@ -1822,7 +1831,7 @@ export function IssuesList({
           {viewState.viewMode === "list" && (
             <Popover>
               <PopoverTrigger asChild>
-                <Button variant="outline" size="icon" className="h-8 w-8 shrink-0" title="Sort">
+                <Button variant="outline" size="icon" className="h-8 w-8 shrink-0" title={t("Sort")}>
                   <ArrowUpDown className="h-3.5 w-3.5" />
                 </Button>
               </PopoverTrigger>
@@ -1852,7 +1861,7 @@ export function IssuesList({
                         }
                       }}
                     >
-                      <span>{label}</span>
+                      <span>{t(label)}</span>
                       {viewState.sortField === field && (
                         <span className="text-xs text-muted-foreground">
                           {viewState.sortDir === "asc" ? "\u2191" : "\u2193"}
@@ -1869,7 +1878,7 @@ export function IssuesList({
           {viewState.viewMode === "list" && (
             <Popover>
               <PopoverTrigger asChild>
-                <Button variant="outline" size="icon" className="h-8 w-8 shrink-0" title="Group">
+                <Button variant="outline" size="icon" className="h-8 w-8 shrink-0" title={t("Group")}>
                   <Layers className="h-3.5 w-3.5" />
                 </Button>
               </PopoverTrigger>
@@ -1894,7 +1903,7 @@ export function IssuesList({
                       }`}
                       onClick={() => updateView({ groupBy: value })}
                     >
-                      <span>{label}</span>
+                      <span>{t(label)}</span>
                       {viewState.groupBy === value && <Check className="h-3.5 w-3.5" />}
                     </button>
                   ))}
@@ -1920,7 +1929,7 @@ export function IssuesList({
       {!isLoading && !externalObjectFilterLoading && filtered.length === 0 && viewState.viewMode === "list" && (
         <EmptyState
           icon={CircleDot}
-          message="No tasks match the current filters or search."
+          message={t("No tasks match the current filters or search.")}
           action={createActionLabel}
           onAction={() => openCreateIssueDialog()}
         />
@@ -1939,6 +1948,7 @@ export function IssuesList({
         />
       ) : (
         <>
+          <InboxIssueTrailingColumnsHeader columns={visibleTrailingIssueColumns} className="pb-1" />
           {groupedContent.map((group) => {
           if (remainingRowsToRender <= 0) return null;
           return (
@@ -2202,9 +2212,11 @@ export function IssuesList({
                               })}
                               onFilterWorkspace={filterToWorkspace}
                               assigneeName={agentName(issue.assigneeAgentId)}
+                              assigneeAgentIconUrl={agentIconUrl(issue.assigneeAgentId)}
                               assigneeUserName={assigneeUserLabel}
                               assigneeUserAvatarUrl={assigneeUserProfile?.image ?? null}
                               creatorAgentName={agentName(issue.createdByAgentId)}
+                              creatorAgentIconUrl={agentIconUrl(issue.createdByAgentId)}
                               creatorUserName={originatingUserId ? (companyUserProfileMap.get(originatingUserId)?.label ?? null) : null}
                               creatorUserAvatarUrl={originatingUserId ? (companyUserProfileMap.get(originatingUserId)?.image ?? null) : null}
                               viaAgentName={originatingViaAgentId ? agentName(originatingViaAgentId) : null}

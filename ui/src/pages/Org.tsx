@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "@/lib/router";
 import { useQuery } from "@tanstack/react-query";
 import { agentsApi, type OrgNode } from "../api/agents";
@@ -11,20 +11,24 @@ import { PageSkeleton } from "../components/PageSkeleton";
 import { ChevronRight, GitBranch } from "lucide-react";
 import { cn } from "../lib/utils";
 import { agentStatusDot, agentStatusDotDefault } from "../lib/status-colors";
+import { AgentIcon, agentCustomIcon } from "../components/AgentIconPicker";
+import type { Agent } from "@paperclipai/shared";
 
 function OrgTree({
   nodes,
   depth = 0,
   hrefFn,
+  agentMap,
 }: {
   nodes: OrgNode[];
   depth?: number;
   hrefFn: (id: string) => string;
+  agentMap: Map<string, Agent>;
 }) {
   return (
     <div>
       {nodes.map((node) => (
-        <OrgTreeNode key={node.id} node={node} depth={depth} hrefFn={hrefFn} />
+        <OrgTreeNode key={node.id} node={node} depth={depth} hrefFn={hrefFn} agentMap={agentMap} />
       ))}
     </div>
   );
@@ -34,13 +38,18 @@ function OrgTreeNode({
   node,
   depth,
   hrefFn,
+  agentMap,
 }: {
   node: OrgNode;
   depth: number;
   hrefFn: (id: string) => string;
+  agentMap: Map<string, Agent>;
 }) {
   const [expanded, setExpanded] = useState(true);
   const hasChildren = node.reports.length > 0;
+  // The org endpoint returns id/name/role only, so the provider logo has to be
+  // joined in from the agents list — without it every row is a bare status dot.
+  const agent = agentMap.get(node.id) ?? null;
 
   return (
     <div>
@@ -73,12 +82,17 @@ function OrgTreeNode({
             agentStatusDot[node.status] ?? agentStatusDotDefault,
           )}
         />
+        <AgentIcon
+          icon={agent?.icon}
+          customIconUrl={agentCustomIcon(agent)}
+          className="h-4 w-4 shrink-0 text-muted-foreground"
+        />
         <span className="font-medium flex-1">{node.name}</span>
         <span className="text-xs text-muted-foreground">{node.role}</span>
         <StatusBadge status={node.status} />
       </Link>
       {hasChildren && expanded && (
-        <OrgTree nodes={node.reports} depth={depth + 1} hrefFn={hrefFn} />
+        <OrgTree nodes={node.reports} depth={depth + 1} hrefFn={hrefFn} agentMap={agentMap} />
       )}
     </div>
   );
@@ -97,6 +111,17 @@ export function Org() {
     queryFn: () => agentsApi.org(selectedCompanyId!),
     enabled: !!selectedCompanyId,
   });
+
+  const agentsQuery = useQuery({
+    queryKey: ["agents", selectedCompanyId, "with-terminated"],
+    queryFn: () => agentsApi.list(selectedCompanyId!, { includeTerminated: true }),
+    enabled: !!selectedCompanyId,
+  });
+  const agentMap = useMemo(() => {
+    const map = new Map<string, Agent>();
+    for (const agent of agentsQuery.data ?? []) map.set(agent.id, agent);
+    return map;
+  }, [agentsQuery.data]);
 
   if (!selectedCompanyId) {
     return <EmptyState icon={GitBranch} message="Select a company to view org chart." />;
@@ -119,7 +144,7 @@ export function Org() {
 
       {data && data.length > 0 && (
         <div className="border border-border py-1">
-          <OrgTree nodes={data} hrefFn={(id) => `/agents/${id}`} />
+          <OrgTree nodes={data} hrefFn={(id) => `/agents/${id}`} agentMap={agentMap} />
         </div>
       )}
     </div>

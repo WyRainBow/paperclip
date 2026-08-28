@@ -2,6 +2,7 @@ import { startTransition, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearchParams } from "@/lib/router";
 import { ArrowUpDown, Check, ChevronDown, ChevronRight, Layers, Plus, Repeat } from "lucide-react";
+import { useTranslation } from "../i18n";
 import { routinesApi } from "../api/routines";
 import { foldersApi } from "../api/folders";
 import { agentsApi } from "../api/agents";
@@ -73,7 +74,7 @@ const concurrencyPolicyDescriptions: Record<string, string> = {
   skip_if_active: "Drop new trigger occurrences while a run is still active.",
 };
 const catchUpPolicyDescriptions: Record<string, string> = {
-  skip_missed: "Ignore windows that were missed while the scheduler or routine was paused.",
+  skip_missed: "Ignore windows that were missed while the scheduler or routine was 已暂停.",
   enqueue_missed_with_cap: "Catch up missed schedule windows after recovery; sub-hourly schedules are combined into one catch-up run, slower schedules replay each missed window up to a cap.",
 };
 
@@ -192,7 +193,7 @@ export function buildRoutineGroups(
       })
       .map((key) => ({
         key,
-        label: key === "__unfiled" ? "Unfiled" : (folderById.get(key)?.name ?? "Unknown folder"),
+        label: key === "__unfiled" ? "未分类" : (folderById.get(key)?.name ?? "Unknown folder"),
         items: groups[key]!,
       }));
   }
@@ -317,6 +318,7 @@ function RoutineSectionHeader({
 }
 
 export function Routines() {
+  const { t } = useTranslation();
   const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const queryClient = useQueryClient();
@@ -368,7 +370,7 @@ export function Routines() {
   const folderSelection = normalizeFolderSelection(searchParams.get("folder"));
 
   useEffect(() => {
-    setBreadcrumbs([{ label: "Routines" }]);
+    setBreadcrumbs([{ label: "自动化" }]);
   }, [setBreadcrumbs]);
 
   useEffect(() => {
@@ -527,7 +529,7 @@ export function Routines() {
         queryClient.invalidateQueries({ queryKey: queryKeys.routines.list(selectedCompanyId!) }),
         queryClient.invalidateQueries({ queryKey: queryKeys.folders.list(selectedCompanyId!, "routine") }),
       ]);
-      pushToast({ title: "Folder deleted", body: "Items moved to Unfiled.", tone: "success" });
+      pushToast({ title: "Folder deleted", body: "Items moved to 未分类.", tone: "success" });
     },
     onError: (mutationError) => {
       pushToast({
@@ -808,15 +810,15 @@ export function Routines() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div className="space-y-1">
           <h1 className="text-2xl font-semibold tracking-tight">
-            Routines
+            {t("Automations")}
           </h1>
           <p className="text-sm text-muted-foreground">
-            Recurring work definitions that materialize into auditable execution tasks.
+            自动化工作定义，将其转化为可审核的执行任务。
           </p>
         </div>
         <Button onClick={openCreateRoutine}>
           <Plus className="mr-2 h-4 w-4" />
-          Create routine
+          新建自动化
         </Button>
       </div>
 
@@ -826,30 +828,32 @@ export function Routines() {
           value={activeTab}
           onValueChange={handleTabChange}
           items={[
-            { value: "routines", label: "Routines" },
-            { value: "runs", label: "Recent Runs" },
+            { value: "routines", label: "自动化" },
+            { value: "runs", label: t("Recent Runs") },
           ]}
         />
         <TabsContent value="routines" className="space-y-4">
           <div className="flex items-center justify-between gap-3">
             <p className="text-sm text-muted-foreground">
-              {visibleRoutines.length} routine{visibleRoutines.length === 1 ? "" : "s"}
+              {visibleRoutines.length === 1
+                ? t("{{count}} automation", { count: visibleRoutines.length })
+                : t("{{count}} automations", { count: visibleRoutines.length })}
             </p>
             <div className="flex items-center gap-1">
               <Popover>
                 <PopoverTrigger asChild>
-                  <Button variant="ghost" size="sm" className="text-xs" title="Sort">
+                  <Button variant="ghost" size="sm" className="text-xs" title={t("Sort")}>
                     <ArrowUpDown className="h-3.5 w-3.5 sm:h-3 sm:w-3 sm:mr-1" />
-                    <span className="hidden sm:inline">Sort</span>
+                    <span className="hidden sm:inline">{t("Sort")}</span>
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent align="end" className="w-44 p-0">
                   <div className="p-2 space-y-0.5">
                     {([
-                      ["updated", "Updated"],
-                      ["created", "Created"],
-                      ["lastRun", "Last run"],
-                      ["title", "Title"],
+                      ["updated", t("Updated")],
+                      ["created", t("Created")],
+                      ["lastRun", t("Last run")],
+                      ["title", t("Title")],
                     ] as const).map(([field, label]) => (
                       <button
                         key={field}
@@ -869,7 +873,7 @@ export function Routines() {
                         <span>{label}</span>
                         {routineViewState.sortField === field ? (
                           <span className="text-xs text-muted-foreground">
-                            {routineViewState.sortDir === "asc" ? "Asc" : "Desc"}
+                            {routineViewState.sortDir === "asc" ? t("Asc") : t("Desc")}
                           </span>
                         ) : null}
                       </button>
@@ -879,18 +883,18 @@ export function Routines() {
               </Popover>
               <Popover>
                 <PopoverTrigger asChild>
-                  <Button variant="ghost" size="sm" className="text-xs" title="Group">
+                  <Button variant="ghost" size="sm" className="text-xs" title={t("Group")}>
                     <Layers className="h-3.5 w-3.5 sm:h-3 sm:w-3 sm:mr-1" />
-                    <span className="hidden sm:inline">Group</span>
+                    <span className="hidden sm:inline">{t("Group")}</span>
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent align="end" className="w-44 p-0">
                   <div className="p-2 space-y-0.5">
                     {([
-                      ["folder", "Folder"],
-                      ["project", "Project"],
-                      ["assignee", "Agent"],
-                      ["none", "None"],
+                      ["folder", t("Folder")],
+                      ["project", t("Project")],
+                      ["assignee", t("Agent")],
+                      ["none", t("None")],
                     ] as const).map(([value, label]) => (
                       <button
                         key={value}
@@ -911,7 +915,7 @@ export function Routines() {
               {routineViewState.groupBy === "folder" && !hasRoutineFolders ? (
                 <Button variant="outline" size="sm" onClick={() => openCreateFolder()}>
                   <Plus className="mr-2 h-3.5 w-3.5" />
-                  New folder
+                  新建文件夹
                 </Button>
               ) : null}
               {showFolderRail ? (
@@ -1117,7 +1121,7 @@ export function Routines() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="__unfiled">Unfiled</SelectItem>
+                      <SelectItem value="__unfiled">未分类</SelectItem>
                       {(routineFolders?.folders ?? []).map((folder) => (
                         <SelectItem key={folder.id} value={folder.id}>
                           {folder.name}
@@ -1199,7 +1203,7 @@ export function Routines() {
 
           <div className="shrink-0 flex flex-col gap-3 border-t border-border/60 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="text-sm text-muted-foreground">
-              After creation, Paperclip takes you straight to trigger setup. Draft routines stay paused until you add a default agent.
+              After creation, Paperclip takes you straight to trigger setup. Draft routines stay 已暂停 until you add a default agent.
             </div>
             <div className="flex flex-col gap-2 sm:items-end">
               <Button
@@ -1237,7 +1241,7 @@ export function Routines() {
               result={railFolderResult}
               selection={folderSelection}
               allLabel="All routines"
-              itemLabelPlural="routines"
+              itemLabelPlural={t("automations")}
               loading={foldersLoading}
               onSelect={setFolderSelection}
               onCreate={() => openCreateFolder()}
@@ -1255,7 +1259,7 @@ export function Routines() {
               {folderSelection === "all" ? <FolderIconHeader label="All routines" count={sortedRoutines.length} /> : (
                 <div className="flex min-w-0 items-center gap-2 text-sm">
                   <FolderSwatch color={activeFolder?.color} />
-                  <span className="truncate font-medium">{folderSelection === "unfiled" ? "Unfiled" : activeFolder?.name ?? "Folder"}</span>
+                  <span className="truncate font-medium">{folderSelection === "unfiled" ? "未分类" : activeFolder?.name ?? "Folder"}</span>
                   <span className="text-muted-foreground">{sortedRoutines.length} routine{sortedRoutines.length === 1 ? "" : "s"}</span>
                 </div>
               )}
@@ -1264,7 +1268,7 @@ export function Routines() {
           {routineViewState.groupBy === "folder" && !hasRoutineFolders && !foldersLoading && visibleRoutines.length > 0 ? (
             <AllUnfiledBanner
               storageKey={`paperclip:routines-folder-nudge:${selectedCompanyId ?? "none"}`}
-              itemLabelPlural="routines"
+              itemLabelPlural={t("automations")}
               onCreateFolder={() => openCreateFolder()}
             />
           ) : null}
@@ -1361,7 +1365,7 @@ export function Routines() {
                                   title: "Routine moved",
                                   body: folderId
                                     ? `Moved "${routine.title}" to ${routineFolders?.folders.find((folder) => folder.id === folderId)?.name ?? "folder"}.`
-                                    : `Moved "${routine.title}" to Unfiled.`,
+                                    : `Moved "${routine.title}" to 未分类.`,
                                   tone: "success",
                                   action: {
                                     label: "Undo",
@@ -1398,7 +1402,7 @@ export function Routines() {
       <DeleteFolderDialog
         open={deleteFolderTarget !== null}
         folder={deleteFolderTarget}
-        itemLabelPlural="routines"
+        itemLabelPlural={t("automations")}
         pending={deleteFolder.isPending}
         onOpenChange={(open) => {
           if (!open) setDeleteFolderTarget(null);
@@ -1413,7 +1417,7 @@ export function Routines() {
         result={railFolderResult}
         selection={folderSelection}
         allLabel="All routines"
-        itemLabelPlural="Routines"
+        itemLabelPlural={t("Automations")}
         onSelect={setFolderSelection}
         onCreate={() => openCreateFolder()}
       />
