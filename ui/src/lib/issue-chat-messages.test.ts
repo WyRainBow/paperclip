@@ -362,6 +362,28 @@ describe("buildIssueChatMessages", () => {
     });
   });
 
+  it("keeps progress notes out of the chat thread — they belong to the Progress tab (MUL-119)", () => {
+    const messages = buildIssueChatMessages({
+      comments: [
+        createComment({
+          id: "comment-progress",
+          authorAgentId: "agent-1",
+          authorUserId: null,
+          body: "接卡：MUL-113 → in_progress",
+          presentation: { kind: "progress_note", tone: "info", detailsDefaultOpen: false },
+        }),
+        createComment({ id: "comment-plain", authorUserId: "user-1", body: "Hello" }),
+      ],
+      timelineEvents: [],
+      linkedRuns: [],
+      liveRuns: [],
+      currentUserId: "user-1",
+    });
+
+    expect(messages.map((message) => message.id)).not.toContain("comment-progress");
+    expect(messages.map((message) => message.id)).toContain("comment-plain");
+  });
+
   it("flags an operator-interrupted historical run so the timeline can read 'interrupted'", () => {
     const messages = buildIssueChatMessages({
       comments: [],

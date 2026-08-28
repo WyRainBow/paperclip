@@ -5,7 +5,7 @@ import {
   type RunTranscriptSource,
 } from "@/components/transcript/useLiveRunTranscripts";
 import { TaskChatLiveTail } from "@/components/task-chat/TaskChatLiveTail";
-import { commentsToTaskChatItems } from "@/components/task-chat/task-chat-adapter";
+import { commentsToTaskChatItems, isTaskChatRenderableComment } from "@/components/task-chat/task-chat-adapter";
 import {
   assembleThreadItems,
   attachSettledTurns,
@@ -277,9 +277,11 @@ export function TaskChatThread(props: TaskChatThreadProps) {
   // land where they happened in the conversation.
   const orderedEntries = useMemo(() => {
     const entries: { ms: number; order: number; id: string; item: TaskChatItem }[] = [];
-    // commentsToTaskChatItems skips deleted comments — mirror its filter so the
-    // two lists stay index-aligned.
-    const visibleComments = comments.filter((comment) => !comment.deletedAt);
+    // Index-align with commentItems by filtering through the very predicate the
+    // adapter used. Restating the rule here is what broke MUL-120: the adapter
+    // also drops progress notes, so a hand-written "not deleted" filter left the
+    // two lists different lengths and every bubble took a neighbour's sort key.
+    const visibleComments = comments.filter(isTaskChatRenderableComment);
     visibleComments.forEach((comment, index) => {
       const item = commentItems[index];
       if (!item) return;

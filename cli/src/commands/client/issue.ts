@@ -713,8 +713,10 @@ export function registerIssueCommands(program: Command): void {
       .command("qa")
       .description("File a Q&A pair as a discussion thread (two linked comments, bubble-rendered)")
       .argument("<issueId>", "Issue ID or identifier")
-      .requiredOption("--question <text>", "The question (left bubble)")
-      .requiredOption("--answer <text>", "The answer (right bubble)")
+      // Sides follow the review roles, not question/answer (MUL-51): the side
+      // that commissioned the review sits right, the responding agent left.
+      .requiredOption("--question <text>", "The question — the side that commissioned the review (right bubble)")
+      .requiredOption("--answer <text>", "The answer — the responding agent (left bubble)")
       .option("--label <text>", "Optional label for the thread")
       .option("--answer-agent <name>", "Agent name/id that gave the answer (attribution when filing on behalf)")
       .option("--question-agent <name>", "Agent name/id that asked — who commissioned this review. Defaults to $PAPERCLIP_AGENT_ID")

@@ -45,16 +45,28 @@ export function formatTaskChatTimestamp(value: unknown): string | undefined {
   return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
 
+/**
+ * Whether a comment becomes a chat item at all. Deleted comments are gone, and
+ * progress notes live in the Progress tab only (user 2026-08-26).
+ *
+ * Exported because callers that pair items back to their source comments must
+ * filter with the *same* predicate. Re-stating it by hand is what broke the
+ * thread's chronology in MUL-120: the shorter item list was indexed against a
+ * longer comment list, so every bubble inherited a neighbour's sort key.
+ */
+export function isTaskChatRenderableComment(comment: IssueChatComment): boolean {
+  if (comment.deletedAt) return false;
+  const presentation = comment.presentation as { kind?: string } | null | undefined;
+  return presentation?.kind !== "progress_note";
+}
+
 export function commentsToTaskChatItems(
   comments: IssueChatComment[],
   ctx: TaskChatAdapterContext = {},
 ): TaskChatItem[] {
   const items: TaskChatItem[] = [];
   for (const comment of comments) {
-    if (comment.deletedAt) continue;
-    // progress_note lives in the Progress tab only, not in chat (user 2026-08-26)
-    const presentation = comment.presentation as { kind?: string } | null | undefined;
-    if (presentation?.kind === "progress_note") continue;
+    if (!isTaskChatRenderableComment(comment)) continue;
     const kind = authorKind(comment);
     let authorName: string | undefined;
     let agentIcon: string | null | undefined;
