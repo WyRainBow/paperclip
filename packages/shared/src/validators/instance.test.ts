@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   instanceExperimentalSettingsSchema,
+  instanceGeneralSettingsSchema,
   patchInstanceExperimentalSettingsSchema,
 } from "./instance.js";
 
@@ -9,6 +10,16 @@ describe("instance experimental settings validators", () => {
     const settings = instanceExperimentalSettingsSchema.parse({});
 
     expect(settings.enableServerInfoDebugView).toBe(false);
+  });
+
+  it("carries the adjudication mode: absent means auto, manual is an explicit opt-in (MUL-131)", () => {
+    const settings = instanceGeneralSettingsSchema.parse({});
+    expect(settings.adjudicationMode).toBeUndefined();
+
+    const manual = instanceGeneralSettingsSchema.parse({ adjudicationMode: "manual" });
+    expect(manual.adjudicationMode).toBe("manual");
+
+    expect(() => instanceGeneralSettingsSchema.parse({ adjudicationMode: "boss" })).toThrow();
   });
 
   it("defaults the classic task interface ON — it is the product default now (MUL-122)", () => {

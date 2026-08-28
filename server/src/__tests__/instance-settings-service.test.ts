@@ -3,10 +3,17 @@ import type { InstanceExperimentalSettings } from "@paperclipai/shared";
 import {
   applyExperimentalSettingsPatch,
   normalizeExperimentalSettings,
-  resolveWorktreeRunExecutionActivationState,
-} from "../services/instance-settings.js";
+  resolveWorktreeRunExecutionActivationState, normalizeGeneralSettings } from "../services/instance-settings.js";
 
 describe("instance settings service", () => {
+  it("keeps the adjudication mode across a read — a stored manual survives normalize (MUL-131)", () => {
+    expect(normalizeGeneralSettings({}).adjudicationMode).toBeUndefined();
+    expect(normalizeGeneralSettings({ adjudicationMode: "manual" }).adjudicationMode).toBe("manual");
+    // agentOutputLanguage had the same silent-drop hole; pin it too.
+    expect(normalizeGeneralSettings({ agentOutputLanguage: "zh-CN" }).agentOutputLanguage).toBe("zh-CN");
+  });
+
+
   it("ignores retired experimental flags without resetting current settings", () => {
     expect(normalizeExperimentalSettings({
       enableEnvironments: true,

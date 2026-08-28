@@ -193,7 +193,7 @@ export async function resolveWorktreeRunExecutionActivationState(options: {
   }
 }
 
-function normalizeGeneralSettings(raw: unknown): InstanceGeneralSettings {
+export function normalizeGeneralSettings(raw: unknown): InstanceGeneralSettings {
   const parsed = instanceGeneralSettingsStorageSchema.safeParse(raw ?? {});
   if (parsed.success) {
     return {
@@ -204,6 +204,10 @@ function normalizeGeneralSettings(raw: unknown): InstanceGeneralSettings {
       backupRetention: parsed.data.backupRetention ?? DEFAULT_BACKUP_RETENTION,
       // Absent => unrestricted; only carry through an explicit policy.
       ...(parsed.data.executionMode ? { executionMode: parsed.data.executionMode } : {}),
+      // These two were parsed but silently dropped before MUL-131, so a stored
+      // value never survived a read. agentOutputLanguage had the same hole.
+      ...(parsed.data.agentOutputLanguage ? { agentOutputLanguage: parsed.data.agentOutputLanguage } : {}),
+      ...(parsed.data.adjudicationMode ? { adjudicationMode: parsed.data.adjudicationMode } : {}),
     };
   }
   return {
