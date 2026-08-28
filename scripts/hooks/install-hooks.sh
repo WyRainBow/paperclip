@@ -14,9 +14,10 @@ COMMIT_CMD="${HOOKS_DIR}/commit-progress.sh"
 SYNC_CMD="${HOOKS_DIR}/personal-file-sync.sh"
 SKILLS_PULL_CMD="${HOOKS_DIR}/skills-pull.sh"
 SKILLS_INJECT_CMD="node ${HOOKS_DIR}/skills-inject.mjs"
+FRICTION_CMD="${HOOKS_DIR}/friction-scan.sh"
 
 export HOOKS_DIR MARKER ACTION SESSION_CMD BRANCH_CMD COMMIT_CMD SYNC_CMD
-export SKILLS_PULL_CMD SKILLS_INJECT_CMD
+export SKILLS_PULL_CMD SKILLS_INJECT_CMD FRICTION_CMD
 
 python3 <<'PYEOF'
 import json, os, sys
@@ -29,6 +30,7 @@ COMMIT_CMD = os.environ["COMMIT_CMD"]
 SYNC_CMD = os.environ["SYNC_CMD"]
 SKILLS_PULL_CMD = os.environ["SKILLS_PULL_CMD"]
 SKILLS_INJECT_CMD = os.environ["SKILLS_INJECT_CMD"]
+FRICTION_CMD = os.environ["FRICTION_CMD"]
 
 def clean(arr):
     return [g for g in arr if not any(MARKER in str(x.get("command","")) for x in (g.get("hooks",[]) if isinstance(g, dict) else []))]
@@ -80,6 +82,11 @@ def install(path, fmt, label):
     h["PostToolUse"] = clean(h.get("PostToolUse", []))
     h["PostToolUse"].append(mk(COMMIT_CMD, matcher="Bash" if fmt == "claude" else None))
     h["PostToolUse"].append(mk(SYNC_CMD, matcher="Write|Edit" if fmt == "claude" else None))
+
+    # Stop — friction scan (MUL-139): one nudge per session toward
+    # `workspace remember` when the transcript was painful enough.
+    h["Stop"] = clean(h.get("Stop", []))
+    h["Stop"].append(mk(FRICTION_CMD))
 
     json.dump(d, open(path, "w"), indent=2, ensure_ascii=False)
     open(path, "a").write("\n")
