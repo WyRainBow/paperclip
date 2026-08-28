@@ -194,6 +194,7 @@ import {
 import { decisionTrainingService } from "../services/decision-training.js";
 import { feedbackService } from "../services/feedback.js";
 import { recordRetroGate } from "../services/retro-gate.js";
+import { missingIssueClosePrerequisites } from "../services/issue-prerequisites.js";
 import { instanceSettingsService } from "../services/instance-settings.js";
 import {
   ISSUE_BLOCKER_DIAGNOSTICS_MAX_BLOCKERS,
@@ -9436,6 +9437,19 @@ export function issueRoutes(
       onBehalfOfUserId: _requestedOnBehalfOfUserId,
       ...updateFields
     } = req.body;
+    // 正文必填 (MUL-137): the description may change but never disappear —
+    // a blank body turns the card back into the title-only shell the review
+    // inbox cannot audit.
+    if (
+      updateFields.description !== undefined
+      && !(typeof updateFields.description === "string" && updateFields.description.trim().length > 0)
+    ) {
+      res.status(422).json({
+        error: "正文必填：description 不能置空——改写正文用 issue update <卡> --description「> 一句话摘要…」（MUL-137）",
+        details: { code: "issue_description_required", issueId: existing.id },
+      });
+      return;
+    }
     if (updateFields.drivingSession !== undefined) {
       updateFields.drivingSessionAt = new Date();
     }
@@ -9814,6 +9828,28 @@ export function issueRoutes(
           ...existingExecutionState,
           reviewRequest,
         };
+      }
+    }
+
+    // 收卡门禁 (MUL-137, 老板令): a card entering in_review or done must
+    // carry its three pieces — body, requirements, tech-proposal, and a
+    // linked decision. The MUL-37 convention, enforced. Checked before the
+    // adjudication-mode gate because missing pieces are the caller's to fix
+    // regardless of who holds the verdict.
+    if (
+      existing.status !== updateFields.status
+      && (updateFields.status === "in_review" || updateFields.status === "done")
+    ) {
+      const missingPrerequisites = await missingIssueClosePrerequisites(db, existing.companyId, existing);
+      if (missingPrerequisites.length > 0) {
+        res.status(422).json({
+          error: [
+            `收卡门禁：这张卡还缺 ${missingPrerequisites.length} 样东西，补齐再推 ${updateFields.status}——`,
+            ...missingPrerequisites.map((line) => `· ${line}`),
+          ].join("\n"),
+          details: { code: "issue_prerequisites_missing", issueId: existing.id, missing: missingPrerequisites },
+        });
+        return;
       }
     }
 

@@ -7060,7 +7060,25 @@ export function issueService(db: Db) {
       });
     },
 
-    create: async (companyId: string, data: IssueCreateInput) => {
+    create: async (
+      companyId: string,
+      data: IssueCreateInput,
+      options?: { allowBlankDescription?: boolean },
+    ) => {
+      // 正文必填 (MUL-137, 老板令 2026-08-28): a card without a body is
+      // unauditable — the review inbox shows a title shell and nobody can
+      // reconstruct what was asked. Enforced here, at the single creation
+      // chokepoint, so every caller (route, board chat, internal services)
+      // gets the same rule. Restoring historical data (an import that did not
+      // author the card) may pass allowBlankDescription.
+      if (
+        options?.allowBlankDescription !== true
+        && !(typeof data.description === "string" && data.description.trim().length > 0)
+      ) {
+        throw unprocessable(
+          "正文必填：issue 必须带 description——开头一行 `> 一句话摘要`，厚内容走 requirements / tech-proposal 文档（MUL-37 / MUL-137）",
+        );
+      }
       const {
         labelIds: inputLabelIds,
         blockedByIssueIds,
