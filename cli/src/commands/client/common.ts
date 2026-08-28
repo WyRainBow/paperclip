@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { execSync } from "node:child_process";
 import pc from "picocolors";
 import type { Command } from "commander";
 import { getStoredBoardCredential, loginBoardCli } from "../../client/board-auth.js";
@@ -181,17 +182,83 @@ export function inferContentTypeFromPath(filePath: string): string | undefined {
  * pass it to hook subprocesses, so both silently ran as local-board. These
  * signatures come from the app itself rather than from user config, so there is
  * nothing to configure per machine and nothing to drift.
+ *
+ * Two defects found live (2026-08-28): CODEX_SANDBOX only exists inside Codex's
+ * sandboxed Bash (workspace-write/full-access sessions export CODEX_THREAD_ID
+ * instead), and inherited signatures impersonate — a codex exec spawned from a
+ * ZCode shell inherits ZCODE_BASE_URL and silently signs as zcode-terminal.
+ * Resolution: env signatures are a fast path only when exactly one hits; zero
+ * or multiple hits fall through to the process ancestry chain, which names the
+ * innermost recognizable host and is immune to environment inheritance.
  */
 const TERMINAL_SIGNATURES: Array<{ slug: string; envVars: string[] }> = [
   { slug: "claude-terminal", envVars: ["CLAUDECODE", "CLAUDE_CODE_SESSION_ID", "CLAUDE_PROJECT_DIR"] },
-  { slug: "codex-terminal", envVars: ["CODEX_SANDBOX"] },
+  { slug: "codex-terminal", envVars: ["CODEX_SANDBOX", "CODEX_THREAD_ID"] },
   { slug: "zcode-terminal", envVars: ["ZCODE_BASE_URL"] },
 ];
 
-/** The terminal we appear to be running inside, or null in a plain shell. */
+/** Ancestry matchers: the closest recognizable ancestor is the real host. */
+const TERMINAL_ANCESTRY: Array<{ slug: string; pattern: RegExp }> = [
+  { slug: "codex-terminal", pattern: /(^|\/)(codex|codex-darwin-arm64)(\s|$)/ },
+  { slug: "claude-terminal", pattern: /(^|\/| )claude(\s|$)/ },
+  { slug: "zcode-terminal", pattern: /(^|\/)(zcode-cli|zcode-host[-\w]*|ZCode)(\s|$)/ },
+];
+
+/**
+ * Walks the parent-process chain and returns the slug of the closest ancestor
+ * that looks like a terminal host. The process tree cannot be inherited the
+ * way environment variables can, so a codex spawned from a ZCode shell still
+ * resolves as codex-terminal. Returns null in a plain shell.
+ */
+function detectTerminalByAncestry(): string | null {
+  let pid = process.pid;
+  for (let depth = 0; depth < 12; depth += 1) {
+    let ppid: number;
+    let command: string;
+    try {
+      const ps = execSync(`ps -o ppid=,command= -p ${pid}`, { encoding: "utf8", timeout: 2000 });
+      const line = ps.split("\n").find((l) => l.trim().length > 0);
+      if (!line) return null;
+      const parsed = line.trim().match(/^(\d+)\s+(.*)$/);
+      if (!parsed) return null;
+      ppid = Number(parsed[1]);
+      command = parsed[2];
+    } catch {
+      return null;
+    }
+    if (!Number.isFinite(ppid) || ppid <= 1) return null;
+    for (const matcher of TERMINAL_ANCESTRY) {
+      if (matcher.pattern.test(command)) return matcher.slug;
+    }
+    pid = ppid;
+  }
+  return null;
+}
+
+/**
+ * The terminal we appear to be running inside, or null in a plain shell.
+ *
+ * Ancestry is the primary judge (immune to environment inheritance); env
+ * signatures are the fallback for when the chain cannot be walked. A fallback
+ * that hits multiple signatures is an error, never a guess: impersonation is
+ * the one failure this resolver must never produce (same invariant as a
+ * missing key file — fail loudly).
+ */
 export function detectTerminalSlug(): string | null {
-  for (const signature of TERMINAL_SIGNATURES) {
-    if (signature.envVars.some((name) => (process.env[name] ?? "").trim() !== "")) return signature.slug;
+  // Escape hatch for tests and any context that must run unauthenticated:
+  // the process tree is real and cannot be cleaned from inside, so an explicit
+  // opt-out is the only way to run hostless from inside a terminal.
+  if (process.env.PAPERCLIP_NO_TERMINAL_DISCOVERY === "1") return null;
+  const byAncestry = detectTerminalByAncestry();
+  if (byAncestry) return byAncestry;
+  const hits = TERMINAL_SIGNATURES.filter((signature) =>
+    signature.envVars.some((name) => (process.env[name] ?? "").trim() !== ""),
+  );
+  if (hits.length === 1) return hits[0].slug;
+  if (hits.length > 1) {
+    throw new Error(
+      `cannot determine host terminal: signatures for ${hits.map((h) => h.slug).join(" and ")} both present and ancestry was inconclusive — set PAPERCLIP_API_KEY_FILE explicitly`,
+    );
   }
   return null;
 }

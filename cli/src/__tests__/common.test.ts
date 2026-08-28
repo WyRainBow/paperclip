@@ -21,6 +21,10 @@ describe("resolveCommandContext", () => {
     delete process.env.PAPERCLIP_COMPANY_ID;
     delete process.env.PAPERCLIP_AUTH_STORE;
     delete process.env.PAPERCLIP_SERVER_PORT;
+    // Tests run inside real terminal hosts (vitest under zcode/claude/...), and
+    // terminal-key discovery would otherwise sign every resolution with the
+    // host's own key — these tests assert explicit-config resolution instead.
+    process.env.PAPERCLIP_NO_TERMINAL_DISCOVERY = "1";
   });
 
   afterEach(() => {
