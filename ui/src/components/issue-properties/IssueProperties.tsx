@@ -2244,11 +2244,17 @@ export function IssueProperties({
             <span className="text-sm text-muted-foreground">{t("Unclaimed")}</span>
           )}
         </PropertyRow>
-        {issue.workingBranch ? (
-          <PropertyRow label="分支">
+        {/* A default field, not a conditional one: a card with no branch should
+            say so. Hiding the row made "never registered" and "you are looking
+            at the wrong section" look identical. Empty state matches the
+            Driving row above it. */}
+        <PropertyRow label="分支">
+          {issue.workingBranch ? (
             <span className="font-mono text-xs" title={issue.workingBranch}>{issue.workingBranch}</span>
-          </PropertyRow>
-        ) : null}
+          ) : (
+            <span className="text-sm text-muted-foreground">未登记</span>
+          )}
+        </PropertyRow>
       </PropertySection>
 
       {/* Pull request — display-only, from work products already stored on the
