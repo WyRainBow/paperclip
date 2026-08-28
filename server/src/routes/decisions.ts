@@ -10,6 +10,7 @@ import {
   type AttentionArchiveTargetSnapshot,
   type AttentionItem,
   type CreateDecisionArchiveProposalInput,
+  missingDecisionBodySections,
 } from "@paperclipai/shared";
 import { validate } from "../middleware/validate.js";
 import { decisionService, type DecisionServiceOptions } from "../services/decisions.js";
@@ -19,6 +20,39 @@ import { authorizationDeniedDetails, authorizationService } from "../services/au
 import { canReadDecisionSource } from "../services/decision-queues.js";
 import { hashAttentionArchiveManifest } from "../services/decision-retention.js";
 import { forbidden, unprocessable } from "../errors.js";
+
+/**
+ * 决策卡必填字段 (MUL-86, 老板令 2026-08-28): body must carry the three
+ * template sections, and exactly one option must be the recommendation with a
+ * non-empty reason. The CLI has enforced the same shape since MUL-49's
+ * 收口; this is the server half so API-created decisions (agent proposals,
+ * board backfills) cannot bypass it. Internal system proposals (attention
+ * archive) file through svc.create directly and stay outside this gate.
+ */
+function decisionRequiredFieldError(body: { body: string; options: Array<{ recommendationReason?: string | null }> }): { code: string; message: string } | null {
+  const missing = missingDecisionBodySections(body.body);
+  if (missing.length > 0) {
+    return {
+      code: "decision_body_template_missing",
+      message: `决策正文缺节：${missing.join("、")} —— 三段死模板（背景 / 判断标准 / 方案）缺一不可（MUL-86）`,
+    };
+  }
+  const withReason = body.options.filter((option) =>
+    typeof option.recommendationReason === "string" && option.recommendationReason.trim().length > 0);
+  if (withReason.length === 0) {
+    return {
+      code: "decision_recommendation_missing",
+      message: "决策必须带推荐：恰好一个选项要带非空 recommendationReason（CLI：--recommend + --recommend-reason）",
+    };
+  }
+  if (withReason.length > 1) {
+    return {
+      code: "decision_recommendation_ambiguous",
+      message: "只能有一个推荐选项：多个选项带了 recommendationReason",
+    };
+  }
+  return null;
+}
 
 const createSchema = z.object({
   title: z.string().trim().min(1).max(500),
@@ -167,6 +201,11 @@ export function decisionRoutes(db: Db, options: DecisionServiceOptions) {
   router.post("/companies/:companyId/decisions", validate(createSchema), async (req, res) => {
     const companyId = req.params.companyId as string; assertCompanyAccess(req, companyId);
     const { createdByAgentId, ...body } = req.body as z.infer<typeof createSchema>;
+    const requiredFieldError = decisionRequiredFieldError(body);
+    if (requiredFieldError) {
+      res.status(422).json({ error: requiredFieldError.message, details: { code: requiredFieldError.code } });
+      return;
+    }
     const agent = agentContext(req);
     if (agent) { res.status(201).json(await svc.create({ companyId, actor: req.actor, ...agent, ...body })); return; }
     if (!createdByAgentId) {
@@ -184,6 +223,13 @@ export function decisionRoutes(db: Db, options: DecisionServiceOptions) {
   router.post("/companies/:companyId/decision-bundles", validate(bundleSchema), async (req, res) => {
     const companyId = req.params.companyId as string; assertCompanyAccess(req, companyId);
     const agent = agentContext(req); if (!agent) { res.status(403).json({ error: "Agent identity required" }); return; }
+    for (const item of req.body.decisions as Array<{ title?: string; body: string; options: Array<{ recommendationReason?: string | null }> }>) {
+      const itemError = decisionRequiredFieldError(item);
+      if (itemError) {
+        res.status(422).json({ error: itemError.message, details: { code: itemError.code, bundleItemTitle: item.title ?? null } });
+        return;
+      }
+    }
     res.status(201).json(await svc.createBundle({ companyId, actor: req.actor, ...agent, ...req.body }));
   });
   // Readable by agents as well as the board: an agent picking up a task needs
