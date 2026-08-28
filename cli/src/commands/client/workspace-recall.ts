@@ -32,10 +32,10 @@ export function registerWorkspaceRecallCommands(program: Command): void {
     existing
       .command("recall")
       .description("Search Team Wiki + Team Rules within a token budget; returns snippets with reference declarations")
-      .requiredOption("-C, --company-id <id>", "Company ID")
+      .option("-C, --company-id <id>", "Company ID (falls back to PAPERCLIP_COMPANY_ID env or context profile)")
       .requiredOption("--query <query>", "What to search for")
       .option("--budget <chars>", "Character budget for results (default 2000, max 6000)")
-      .action(async (opts: { companyId: string; query: string; budget?: string; json?: boolean }) => {
+      .action(async (opts: { companyId?: string; query: string; budget?: string; json?: boolean }) => {
         try {
           const ctx = resolveCommandContext(opts, { requireCompany: true });
           const params = new URLSearchParams({ q: opts.query });
@@ -69,8 +69,8 @@ export function registerWorkspaceRecallCommands(program: Command): void {
     existing
       .command("rules")
       .description("Read Team Rules full text — no search, no budget, the complete rules")
-      .requiredOption("-C, --company-id <id>", "Company ID")
-      .action(async (opts: { companyId: string; json?: boolean }) => {
+      .option("-C, --company-id <id>", "Company ID (falls back to PAPERCLIP_COMPANY_ID env or context profile)")
+      .action(async (opts: { companyId?: string; json?: boolean }) => {
         try {
           const ctx = resolveCommandContext(opts, { requireCompany: true });
           const rows = (await ctx.api.get<Array<{
