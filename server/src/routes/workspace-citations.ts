@@ -10,6 +10,7 @@ import {
   isAssetKind,
   recordCited,
 } from "../services/asset-citations.js";
+import { experienceBoardRows } from "../services/retro-gate.js";
 
 /**
  * The write-back half of the workspace channel (MUL-133).
@@ -108,6 +109,18 @@ export function workspaceCitationsRoutes(db: Db): Router {
       assets: rows,
       deadWeightCount: rows.filter((row) => row.deadWeight).length,
     });
+  });
+
+  /**
+   * The experience board (MUL-133 需求三): one row per card that has been
+   * friction-scored, tagged retro-owed, or sedimented — the boss's
+   * "which tasks deserve a second look" surface. Read-only.
+   */
+  r.get("/companies/:companyId/workspace/experience/board", async (req: Request, res: Response) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    const rows = await experienceBoardRows(db, companyId);
+    res.json({ rows, retroOwedCount: rows.filter((row) => row.retroOwed).length });
   });
 
   return r;

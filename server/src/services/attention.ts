@@ -1693,7 +1693,7 @@ export function attentionService(db: Db, serviceOptions: AttentionServiceOptions
         // shows what the card asks for. Injected here rather than in
         // issueSummaryMap so only review items pay the payload, not every
         // issue-backed subject in the feed.
-        const reviewSubject = issueSubject(prefix, { ...issue, description: review.description });
+        const reviewSubject = issueSubject(prefix, { ...issue, description: review.description ?? undefined });
         add(createItem({
           companyId,
           sourceKind: "review",
