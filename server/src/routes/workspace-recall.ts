@@ -127,10 +127,16 @@ export function workspaceRecallRoutes(db: Db): Router {
       // worse than a context that is merely too large. Growing past the budget
       // is a real problem, so it is stated at the top where a reader cannot
       // miss it, and left to a human to fix by trimming the rules.
+      // The warning goes after the identity line, never before it: Team Rules
+      // §0 tells every session that the opening line is who it is, so anything
+      // that displaces it breaks the contract sessions are told to rely on.
       const overBudget = usedTokens > tokenBudget;
-      const text = overBudget
-        ? `⚠ Team Rules 与资产目录合计 ${usedTokens} token，已超出注入预算 ${tokenBudget} token。内容仍然完整，但每个会话都在付这份开销，该精简了。\n\n${mapText}`
-        : mapText;
+      let text = mapText;
+      if (overBudget) {
+        const warning = `⚠ Team Rules 与资产目录合计 ${usedTokens} token，已超出注入预算 ${tokenBudget} token。内容仍然完整，但每个会话都在付这份开销，该精简了。`;
+        const [identityLine, ...rest] = mapText.split("\n");
+        text = [identityLine, "", warning, ...rest].join("\n");
+      }
       res.json({ mode: "directory", text, budgetTokens: tokenBudget, usedTokens, usedChars: text.length, overBudget });
       return;
     }
