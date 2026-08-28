@@ -9,6 +9,7 @@ import { buildCliCommandLabel } from "../../client/command-label.js";
 import { readConfig } from "../../config/store.js";
 import { readContext, resolveProfile, type ClientContextProfile } from "../../client/context.js";
 import { ApiRequestError, PaperclipApiClient } from "../../client/http.js";
+import { missingDecisionBodySections } from "@paperclipai/shared";
 
 export interface BaseClientOptions {
   config?: string;
@@ -526,18 +527,13 @@ export function handleCommandError(error: unknown): never {
 
 
 /**
- * 决策正文死模板（MUL-49 收口）：背景 / 判断标准 / 方案 三节缺一不可。
- * Server-side the inputs (裁决理由) are locked; the body sections stayed
- * advisory with zero consumers — "靠自觉" was the exact failure the template
- * existed to prevent. Enforced here at the CLI layer so the generic decision
- * service stays language-neutral. Accepts markdown headings ("## 背景") and
- * plain "背景：" line starts — the shape both real backfills already used.
+ * 决策正文死模板（MUL-49 收口，MUL-86 升级为 CLI+服务端双层强制）：背景 /
+ * 判断标准 / 方案 三节缺一不可。The section matcher lives in shared
+ * (missingDecisionBodySections) so the CLI check and the server's create-route
+ * gate stay one implementation.
  */
 export function assertDecisionBodyTemplate(body: string): void {
-  const sections = ["背景", "判断标准", "方案"] as const;
-  const missing = sections.filter((section) =>
-    !new RegExp(`^#{1,6}\\s*[0-9.、]*\\s*${section}`, "m").test(body)
-    && !new RegExp(`^\\s*${section}\\s*[：:]`, "m").test(body));
+  const missing = missingDecisionBodySections(body);
   if (missing.length > 0) {
     throw new Error(
       `决策正文缺节：${missing.join("、")} —— 三段死模板（背景 / 判断标准 / 方案）缺一不可，每个方案带自己的代价`,

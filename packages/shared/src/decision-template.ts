@@ -5,11 +5,11 @@ import type { DecisionInput } from "./types/decision.js";
  *
  * The inputs are applied server-side and cannot be opted out of: "every
  * decision records why it was made" is a property of the record itself, and
- * language-neutral. The body sections are a writing convention this team holds
- * — the decision service is generic product infrastructure, so requiring
- * particular Chinese headings there would bind every future caller to one
- * team's prose. They are a client-side default instead: prefilled at proposal
- * time, freely reworded, never a reason a decision cannot be created.
+ * language-neutral. The body sections were a client-side-only convention from
+ * 2026-08-26; on 2026-08-28 the boss ordered the template locked at both the
+ * CLI and the server (MUL-86), so the sections now reject at the create
+ * routes too — a decision card without 背景/判断标准/方案 is a shell the
+ * deciding surface cannot audit.
  *
  * The proposer's pitch and the decider's rationale are two slots on purpose
  * (user 2026-08-26, overriding the earlier one-field design): the pitch rides
@@ -60,11 +60,16 @@ export const DECISION_BODY_TEMPLATE = [
 ].join("\n");
 
 /**
- * Which template sections a body is missing. Advisory only — a composer can
- * use it to nudge, but the create path does not reject on it.
+ * Which template sections a body is missing. Hard-enforced since 2026-08-28
+ * (老板令, MUL-86): the CLI and the decision create routes both reject on a
+ * non-empty result — "advisory, never a reason a decision cannot be created"
+ * is the overturned 2026-08-26 ruling. Accepts markdown headings ("## 背景")
+ * and plain "背景：" line starts — the shape both real backfills already used.
  */
 export function missingDecisionBodySections(body: string): string[] {
   return DECISION_BODY_SECTIONS.filter(
-    (section) => !new RegExp(`^#{1,6}\\s*[0-9.、]*\\s*${section}`, "m").test(body),
+    (section) =>
+      !new RegExp(`^#{1,6}\\s*[0-9.、]*\\s*${section}`, "m").test(body)
+      && !new RegExp(`^\\s*${section}\\s*[：:]`, "m").test(body),
   );
 }
