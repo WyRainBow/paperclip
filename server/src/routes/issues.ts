@@ -9829,7 +9829,7 @@ export function issueRoutes(
       if (generalSettings.adjudicationMode === "manual") {
         res.status(422).json({
           error:
-            "亲审模式：收卡的裁决权在人。把卡推到 in_review 并指派 local-board（issue update <id> --assignee-user-id local-board --status in_review），等老板在收件箱 Approve；或请老板把裁决模式切回「委托」。",
+            "亲审模式：收卡的裁决权在人。把卡推到 in_review 并指派 local-board（issue update <id> --assignee-user-id local-board --status in_review）、等老板在收件箱 Approve；或请老板把裁决模式切回「委托」。",
           details: { code: "manual_adjudication_required", issueId: existing.id },
         });
         return;

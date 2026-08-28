@@ -31,7 +31,7 @@ export const ADJUDICATION_MODES: {
   label: string;
   description: string;
 }[] = [
-  { value: "auto", label: "委托", description: "Agent 自裁收卡，决策卡留痕" },
+  { value: "auto", label: "委托", description: "Agent 自裁收卡、决策卡留痕" },
   { value: "manual", label: "亲审", description: "收卡前等老板在收件箱批" },
 ];
 
