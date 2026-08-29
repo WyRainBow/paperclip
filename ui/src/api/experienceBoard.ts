@@ -23,5 +23,5 @@ export interface ExperienceBoardResult {
 }
 
 export function experienceBoardApi(companyId: string): Promise<ExperienceBoardResult | null> {
-  return api.get<ExperienceBoardResult>(`/api/companies/${companyId}/workspace/experience/board`);
+  return api.get<ExperienceBoardResult>(`/companies/${companyId}/workspace/experience/board`);
 }

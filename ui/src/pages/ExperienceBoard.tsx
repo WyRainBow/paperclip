@@ -6,7 +6,7 @@
  */
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Gauge, NotebookPen } from "lucide-react";
+import { Gauge, NotebookPen, TriangleAlert } from "lucide-react";
 import { experienceBoardApi, type ExperienceBoardRow } from "@/api/experienceBoard";
 import { queryKeys } from "@/lib/queryKeys";
 import { useCompany } from "@/context/CompanyContext";
@@ -68,7 +68,17 @@ export function ExperienceBoard() {
         </p>
       </header>
 
-      {rows.length === 0 ? (
+      {board.isError ? (
+        <EmptyState
+          icon={TriangleAlert}
+          title="经验看板加载失败"
+          message={board.error instanceof Error ? board.error.message : "查询经验看板时出错。"}
+          description="请重试；若仍失败，检查 API 服务或网络。"
+          action="重试"
+          onAction={() => board.refetch()}
+          hideActionIcon
+        />
+      ) : rows.length === 0 ? (
         <EmptyState
           icon={NotebookPen}
           title="还没有卡被记过分"
