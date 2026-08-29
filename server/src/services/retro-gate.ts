@@ -16,6 +16,7 @@ import {
   teamRuleNoteVersions,
 } from "@paperclipai/db";
 import { logActivity } from "./activity-log.js";
+import { documentService } from "./documents.js";
 import { logger } from "../middleware/logger.js";
 
 /**
@@ -418,10 +419,77 @@ export interface RetroGateInput {
 }
 
 /**
- * Score a card at close-out and, over the provisional threshold, tag it and
- * leave one note. Never throws: the transition already succeeded, and a
- * scoring failure must not turn it into a 500 after the fact.
+ * MUL-163: draft the experience-draft for the boss directly from the
+ * friction evidence, instead of waiting for a "记" reply to wake an agent.
+ * The MUL-141 inbox reminder picks the draft up automatically once it
+ * exists. Idempotent on purpose: a card that already sedimented (an
+ * experience_remembered row names it) or already carries a draft is never
+ * drafted twice (MUL-158's no-duplicate rule).
  */
+async function autoDraftExperience(
+  db: Db,
+  input: RetroGateInput,
+  score: FrictionScore,
+): Promise<boolean> {
+  const remembered = await db
+    .select({ entityId: activityLog.entityId })
+    .from(activityLog)
+    .where(and(
+      eq(activityLog.companyId, input.companyId),
+      eq(activityLog.action, "workspace.experience_remembered"),
+      sql`${activityLog.details}->>'issueId' = ${input.issueId}`,
+    ))
+    .limit(1)
+    .then((rows) => rows.length > 0);
+  if (remembered) return false;
+
+  const existingDraft = await db
+    .select({ documentId: issueDocuments.documentId })
+    .from(issueDocuments)
+    .where(and(
+      eq(issueDocuments.companyId, input.companyId),
+      eq(issueDocuments.issueId, input.issueId),
+      eq(issueDocuments.key, "experience-draft"),
+    ))
+    .limit(1)
+    .then((rows) => rows.length > 0);
+  if (existingDraft) return false;
+
+  const evidenceLines: string[] = [];
+  for (const signal of score.signals) {
+    for (const ev of signal.evidence ?? []) {
+      const note = ev.note ? `——${ev.note}` : "";
+      evidenceLines.push(`- ${SIGNAL_LABELS[signal.key]}：${ev.actor} · ${ev.code} · ${ev.at.slice(0, 19).replace("T", " ")}${note}`);
+    }
+  }
+  const body = [
+    "# 经验草稿（自动起草 v1）",
+    "",
+    "> MUL-163 自动起草，素材来自卡上摩擦证据。老板批后由执行方跑 `workspace remember` 晋升 cases/；要改就直接改本页。",
+    "",
+    "## Situation（什么情况适用）",
+    `- 卡 ${input.identifier ?? input.issueId.slice(0, 8)} 收尾摩擦分 ${score.total}（阈 ${RETRO_OWED_SCORE_THRESHOLD}）：${score.signals.map((s) => `${SIGNAL_LABELS[s.key]}×${s.count}`).join("、")}`,
+    "",
+    "## Approach（该怎么做）",
+    "- （自动起草 v1 留白：执行方按下方证据补「下次遇到这种情况怎么做」）",
+    "",
+    "## Reflect（别踩什么）",
+    ...(evidenceLines.length > 0 ? evidenceLines : ["- （本卡证据无 note，翻卡上 friction_scored 记录补）"]),
+    "",
+    "---",
+    `- 来源：卡 ${input.identifier ?? input.issueId}；证据快照在卡上 friction_scored 活动记录`,
+  ].join("\n");
+
+  await documentService(db).upsertIssueDocument({
+    issueId: input.issueId,
+    key: "experience-draft",
+    title: "经验草稿（自动起草）",
+    format: "markdown",
+    body,
+  });
+  return true;
+}
+
 export async function recordRetroGate(db: Db, input: RetroGateInput): Promise<FrictionScore | null> {
   try {
     const score = await computeFrictionScore(db, input.companyId, input.issueId);
@@ -457,6 +525,11 @@ export async function recordRetroGate(db: Db, input: RetroGateInput): Promise<Fr
       .map((signal) => `${SIGNAL_LABELS[signal.key]} ×${signal.count}`);
     problems.push(...await downVoteReasonLines(db, input.companyId, input.issueId));
 
+    const drafted = await autoDraftExperience(db, input, score).catch((err) => {
+      logger.warn({ err, issueId: input.issueId }, "auto experience draft failed (gate continues)");
+      return false;
+    });
+
     // Who worked this card — the question names them so the "记" reply has a
     // standing addressee. The agent is woken by the boss's reply (comment
     // wakeup on its card) and drafts from the facts already on the card.
@@ -475,6 +548,22 @@ export async function recordRetroGate(db: Db, input: RetroGateInput): Promise<Fr
       ? `@${worked.name} 待命：老板回「记」≠直接落库——先把三段草稿写成卡上文档（键 experience-draft，素材用卡上的事实和差评理由），@老板过目；老板回「批」才跑 \`workspace remember\` 落 cases/ 并贴回链接，回的是修改意见就改完再等批。`
       : "回「记」后由执行 Agent 先出 experience-draft 草稿贴卡等批，老板批了才落 cases/。";
 
+    const questionBlock = drafted
+      ? [
+          "**已自动起草经验草稿**（卡上文档 experience-draft，素材来自摩擦证据；收件箱有待批提醒）：",
+          "- 你回「**批**」：执行方跑 `workspace remember` 正式落团队 Wiki 的 cases/，下次干活就能被搜到",
+          "- 要改就直接改草稿页，或回要说改哪句",
+          "- 回「**跳过**」：不沉淀，直接收卡",
+        ]
+      : [
+          "**要不要把这次的教训记成一条经验 wiki？**（草稿制：先出草稿你过目，批了才入库）",
+          "- 回「**记**」：Agent 起草三段（什么情况适用 / 该怎么做 / 别踩什么）贴到卡上等你过目",
+          "- 你回「**批**」：才正式写进团队 Wiki 的 cases/，下次干活就能被搜到；要改就直接说改哪句",
+          "- 回「**跳过**」：不记，直接收卡",
+          "",
+          standbyLine,
+        ];
+
     await db.insert(issueComments).values({
       companyId: input.companyId,
       issueId: input.issueId,
@@ -483,12 +572,7 @@ export async function recordRetroGate(db: Db, input: RetroGateInput): Promise<Fr
         `这张卡走得磕绊（摩擦分 ${score.total}，阈 ${RETRO_OWED_SCORE_THRESHOLD}），这次遇到的问题是：`,
         ...problems.map((line) => `- ${line}`),
         "",
-        "**要不要把这次的教训记成一条经验 wiki？**（草稿制：先出草稿你过目，批了才入库）",
-        "- 回「**记**」：Agent 起草三段（什么情况适用 / 该怎么做 / 别踩什么）贴到卡上等你过目",
-        "- 你回「**批**」：才正式写进团队 Wiki 的 cases/，下次干活就能被搜到；要改就直接说改哪句",
-        "- 回「**跳过**」：不记，直接收卡",
-        "",
-        standbyLine,
+        ...questionBlock,
         "",
         "（分数只说明走得磕绊，不说明一定值得沉淀——决定权在你。卡已打 `retro-owed` 标签备查。）",
       ].join("\n"),

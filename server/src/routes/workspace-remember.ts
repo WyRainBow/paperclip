@@ -1,9 +1,9 @@
 import { and, eq, sql } from "drizzle-orm";
 import { Router, type Request, type Response } from "express";
 import type { Db } from "@paperclipai/db";
-import { issues, teamWikiPages, teamWikiPageVersions } from "@paperclipai/db";
+import { issues, teamWikiPages, teamWikiPageVersions, issueDocuments, issueComments } from "@paperclipai/db";
 import { assertBoardOrAgent, assertCompanyAccess, getActorInfo } from "./authz.js";
-import { badRequest, notFound } from "../errors.js";
+import { badRequest, notFound, unprocessable } from "../errors.js";
 import { logActivity } from "../services/activity-log.js";
 
 /**
@@ -114,6 +114,38 @@ export function workspaceRememberRoutes(db: Db): Router {
         .limit(1);
       if (!issue) throw notFound(`Issue ${body.issueId} not found in this company`);
       issueId = issue.id;
+
+      // MUL-158 hard gate: an unapproved experience-draft must not reach
+      // cases/ directly. Approval trail = a user comment containing 批 and
+      // not 跳过/不批 on this card (the request_confirmation flow lands as
+      // such a comment; a bare 「批」 reply does too).
+      const [draftRow] = await db
+        .select({ documentId: issueDocuments.documentId })
+        .from(issueDocuments)
+        .where(and(
+          eq(issueDocuments.companyId, companyId),
+          eq(issueDocuments.issueId, issueId),
+          eq(issueDocuments.key, "experience-draft"),
+        ))
+        .limit(1);
+      if (draftRow) {
+        const approvals = await db
+          .select({ id: issueComments.id })
+          .from(issueComments)
+          .where(and(
+            eq(issueComments.companyId, companyId),
+            eq(issueComments.issueId, issueId),
+            eq(issueComments.authorType, "user"),
+            sql`${issueComments.body} like '%批%'`,
+            sql`(${issueComments.body} not like '%跳过%' and ${issueComments.body} not like '%不批%')`,
+          ))
+          .limit(1);
+        if (!approvals.length) {
+          throw unprocessable(
+            "这张卡有 experience-draft 草稿但未见批准留痕（老板回「批」或走确认卡）——未获批准的草稿不能直接 remember（MUL-158）",
+          );
+        }
+      }
     }
 
     let supersedesPath: string | null = null;
