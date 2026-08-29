@@ -17,6 +17,7 @@ const AGENT_BRAND_COLORS: Record<string, string> = {
 };
 import { agentsApi } from "@/api/agents";
 import type { Agent } from "@paperclipai/shared";
+import { MarkdownBody } from "@/components/MarkdownBody";
 import { useMemo } from "react";
 
 /**
@@ -217,10 +218,17 @@ export function IssueDiscussionPanel({ issueId, issueIdentifier }: { issueId: st
                       <span className="font-mono text-muted-foreground/80">
                         · {model}{effort ? ` ${effort}` : ""}
                       </span>
-                    ) : null}
+                    ) : (
+                      // Every bubble names its model+effort (MUL-149). Bubbles
+                      // filed before the CLI made them required show the gap
+                      // instead of silently looking complete.
+                      <span className="font-mono text-muted-foreground/50">
+                        · 模型未记录
+                      </span>
+                    )}
                     <span>· {chineseTimestamp(msg.createdAt)}</span>
                   </p>
-                  <p className="whitespace-pre-wrap">{msg.body}</p>
+                  <MarkdownBody softBreaks className="min-w-0">{msg.body}</MarkdownBody>
                   {msg.presentation?.docKey ? (
                     <a
                       href={`${createIssueDetailPath(issueIdentifier ?? issueId)}${buildDocumentAnnotationHash({ documentKey: msg.presentation.docKey, threadId: null, commentId: null })}`}

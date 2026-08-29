@@ -735,13 +735,16 @@ export function registerIssueCommands(program: Command): void {
       .option("--answer-file <path>", "Read the full answer from a file — pair with --answer-doc-key so the bubble keeps only --answer")
       .option("--answer-doc-key <key>", "File the full answer as an issue document under this key (e.g. review-r1); the bubble then holds only the verdict line plus a link")
       .option("--answer-doc-title <title>", "Title for the answer document")
-      .option("--answer-model <model>", "Model that produced the answer (e.g. gpt-5.6-sol) — structured, not label text")
+      // Model+effort are mandatory metadata on every QA bubble (MUL-149): a
+      // review's weight depends on which model produced it at what effort, and
+      // a bubble without them silently looks as authoritative as one with them.
+      .requiredOption("--answer-model <model>", "Model that produced the answer (e.g. gpt-5.6-sol) — structured, not label text")
       // Which model asked shapes the answer as much as which model answered, and
       // Team Rules already require the model in the archive label — the CLI just
       // had no slot for the asking half (MUL-123).
-      .option("--question-model <model>", "Model that asked (e.g. claude-opus-5) — structured, not label text")
-      .option("--question-effort <effort>", "Reasoning effort of the question (e.g. high)")
-      .option("--answer-effort <effort>", "Reasoning effort of the answer (e.g. high)")
+      .requiredOption("--question-model <model>", "Model that asked (e.g. claude-opus-5) — structured, not label text")
+      .requiredOption("--question-effort <effort>", "Reasoning effort of the question (e.g. high/medium/low)")
+      .requiredOption("--answer-effort <effort>", "Reasoning effort of the answer (e.g. high/medium/low)")
       .action(async (issueId: string, opts: IssueQaOptions) => {
         try {
           const ctx = resolveCommandContext(opts);
