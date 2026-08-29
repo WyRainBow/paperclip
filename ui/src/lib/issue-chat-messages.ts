@@ -1099,10 +1099,13 @@ export function buildIssueChatMessages(args: {
 
   for (const comment of sortByCreated(comments)) {
     // Progress notes live in the Progress tab only, never in chat (MUL-119).
+    // Discussion QA threads live in the Discussion tab only (MUL-148) — the
+    // chat tab is the wake-up surface, review bubbles would drown it.
     // Same filter the chat-style adapter applies (task-chat-adapter.ts); the
     // classic thread was missing it, so every note rendered twice — once as an
     // ordinary agent bubble here, once in the ledger.
     if (comment.presentation?.kind === "progress_note") continue;
+    if (comment.presentation?.kind === "discussion_qa") continue;
     orderedMessages.push({
       createdAtMs: toTimestamp(comment.createdAt),
       order: 1,

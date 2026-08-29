@@ -46,8 +46,9 @@ export function formatTaskChatTimestamp(value: unknown): string | undefined {
 }
 
 /**
- * Whether a comment becomes a chat item at all. Deleted comments are gone, and
- * progress notes live in the Progress tab only (user 2026-08-26).
+ * Whether a comment becomes a chat item at all. Deleted comments are gone,
+ * progress notes live in the Progress tab only, and discussion QA threads
+ * live in the Discussion tab only (four-surface split, user 2026-08-26/28).
  *
  * Exported because callers that pair items back to their source comments must
  * filter with the *same* predicate. Re-stating it by hand is what broke the
@@ -57,7 +58,9 @@ export function formatTaskChatTimestamp(value: unknown): string | undefined {
 export function isTaskChatRenderableComment(comment: IssueChatComment): boolean {
   if (comment.deletedAt) return false;
   const presentation = comment.presentation as { kind?: string } | null | undefined;
-  return presentation?.kind !== "progress_note";
+  if (presentation?.kind === "progress_note") return false;
+  if (presentation?.kind === "discussion_qa") return false;
+  return true;
 }
 
 export function commentsToTaskChatItems(

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { IssueChatComment } from "@/lib/issue-chat-messages";
-import { commentsToTaskChatItems } from "./task-chat-adapter";
+import { commentsToTaskChatItems, isTaskChatRenderableComment } from "./task-chat-adapter";
 
 describe("commentsToTaskChatItems", () => {
   it("classifies a recovered local-board comment as an agent bubble", () => {
@@ -99,5 +99,38 @@ describe("commentsToTaskChatItems", () => {
     expect(agent.metadata).toBeUndefined();
     expect(agent.runAgentId).toBeUndefined();
     expect(agent.createdAtIso).toBeUndefined();
+  });
+
+  it("keeps discussion QA and progress-note comments out of chat — they belong to their own tabs (MUL-148)", () => {
+    const qaThread = {
+      id: "c-qa",
+      body: "评审请求（Zcode 出题）：软提醒要不要聚合去重？",
+      authorType: "agent",
+      authorAgentId: "agent-1",
+      presentation: { kind: "discussion_qa", threadId: "thread-1", role: "question" },
+      createdAt: "2026-08-28T09:00:00.000Z",
+    } as unknown as IssueChatComment;
+    const progress = {
+      id: "c-progress",
+      body: "接卡：MUL-148 → in_progress",
+      authorType: "agent",
+      authorAgentId: "agent-1",
+      presentation: { kind: "progress_note", tone: "info" },
+      createdAt: "2026-08-28T09:01:00.000Z",
+    } as unknown as IssueChatComment;
+    const wakeUp = {
+      id: "c-plain",
+      body: "决策「软提醒噪音控制」：采纳「保持现状」",
+      authorType: "agent",
+      authorAgentId: "agent-1",
+      presentation: null,
+      createdAt: "2026-08-28T09:02:00.000Z",
+    } as unknown as IssueChatComment;
+
+    expect(isTaskChatRenderableComment(qaThread)).toBe(false);
+    expect(isTaskChatRenderableComment(progress)).toBe(false);
+    expect(isTaskChatRenderableComment(wakeUp)).toBe(true);
+    const items = commentsToTaskChatItems([qaThread, progress, wakeUp]);
+    expect(items.map((item) => (item.kind === "message" ? item.id : null))).toEqual(["c-plain"]);
   });
 });

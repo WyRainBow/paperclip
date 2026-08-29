@@ -384,6 +384,36 @@ describe("buildIssueChatMessages", () => {
     expect(messages.map((message) => message.id)).toContain("comment-plain");
   });
 
+  it("keeps discussion QA threads out of the chat thread — they belong to the Discussion tab (MUL-148)", () => {
+    const messages = buildIssueChatMessages({
+      comments: [
+        createComment({
+          id: "comment-qa-question",
+          authorAgentId: "agent-1",
+          authorUserId: null,
+          body: "评审请求（Zcode 出题）：软提醒要不要聚合去重？",
+          presentation: { kind: "discussion_qa", threadId: "thread-1", role: "question" },
+        }),
+        createComment({
+          id: "comment-qa-answer",
+          authorAgentId: "agent-2",
+          authorUserId: null,
+          body: "**判定：不算太吵，但应保留可见性。**",
+          presentation: { kind: "discussion_qa", threadId: "thread-1", role: "answer" },
+        }),
+        createComment({ id: "comment-effect", authorAgentId: "agent-1", authorUserId: null, body: "决策「软提醒噪音控制」：采纳「保持现状」" }),
+      ],
+      timelineEvents: [],
+      linkedRuns: [],
+      liveRuns: [],
+      currentUserId: "user-1",
+    });
+
+    expect(messages.map((message) => message.id)).not.toContain("comment-qa-question");
+    expect(messages.map((message) => message.id)).not.toContain("comment-qa-answer");
+    expect(messages.map((message) => message.id)).toContain("comment-effect");
+  });
+
   it("flags an operator-interrupted historical run so the timeline can read 'interrupted'", () => {
     const messages = buildIssueChatMessages({
       comments: [],
