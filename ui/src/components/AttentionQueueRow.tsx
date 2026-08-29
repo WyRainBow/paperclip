@@ -405,6 +405,19 @@ export const AttentionQueueRow = memo(function AttentionQueueRow({
                 {subjectDescription(item)}
               </p>
             )}
+            {subjectDraft(item) !== null && (
+              <div className="rounded-md border border-border bg-muted/30 p-3">
+                <p className="mb-1 text-xs font-medium text-foreground">
+                  经验草稿（回「批」落库 / 提修改 / 回「跳过」）
+                </p>
+                <p
+                  className="whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground line-clamp-[14]"
+                  data-attention-subject-draft
+                >
+                  {subjectDraft(item)}
+                </p>
+              </div>
+            )}
             {triageEnabled && <DecisionTriageStrip item={item} companyId={companyId} agents={agents} />}
             {inline && (
               <InlineResolver
@@ -774,6 +787,12 @@ function reappearLabel(snoozedUntil: string): string {
  */
 function subjectDescription(item: AttentionItem): string | null {
   const raw = item.subject.metadata?.description;
+  return typeof raw === "string" && raw.trim().length > 0 ? raw.trim() : null;
+}
+
+/** The pending experience draft, when the feed carried it (MUL-141). */
+function subjectDraft(item: AttentionItem): string | null {
+  const raw = item.subject.metadata?.draft;
   return typeof raw === "string" && raw.trim().length > 0 ? raw.trim() : null;
 }
 

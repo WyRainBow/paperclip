@@ -279,6 +279,15 @@ async function sourceIssueId(
         .then((rows) => rows[0] ?? null);
       return { exists: Boolean(row), issueId: null };
     }
+    // A pending experience draft lives on an issue document (MUL-141); the
+    // sourceId is the issue id itself, same convention as the review rows.
+    case "experience_draft": {
+      const row = await db.select({ id: issues.id })
+        .from(issues)
+        .where(and(eq(issues.companyId, companyId), eq(issues.id, sourceId)))
+        .then((rows) => rows[0] ?? null);
+      return { exists: Boolean(row), issueId: row?.id ?? null };
+    }
   }
 }
 
