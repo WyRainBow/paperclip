@@ -176,6 +176,7 @@ import {
 } from "../lib/inbox";
 import { useDismissedInboxAlerts, useInboxDismissals, useReadInboxItems } from "../hooks/useInboxBadge";
 import { useInboxSortAttention } from "../hooks/useInboxSortAttention";
+import { InboxMattersTab } from "../components/InboxMattersTab";
 import {
   captureInboxOrderPin,
   reconcileInboxOrderPin,
@@ -719,15 +720,16 @@ export function Inbox() {
   const { readItems, markRead: markItemRead, markUnread: markItemUnread } = useReadInboxItems();
   const { allCategoryFilter, allApprovalFilter, issueFilters } = filterPreferences;
 
-  const pathSegment = location.pathname.split("/").pop() ?? "mine";
+  const pathSegment = location.pathname.split("/").pop() ?? "matters";
   const tab: InboxTab =
-    pathSegment === "mine"
+    pathSegment === "matters"
+    || pathSegment === "mine"
     || pathSegment === "recent"
     || pathSegment === "all"
     || pathSegment === "unread"
     || pathSegment === "blocked"
       ? pathSegment
-      : "mine";
+      : "matters";
   const canArchiveFromTab = isMineInboxTab(tab);
   const issueLinkState = useMemo(
     () =>
@@ -2260,6 +2262,42 @@ export function Inbox() {
   const canMarkAllRead = unreadIssueIds.length > 0;
   const activeIssueFilterCount = countActiveIssueFilters(issueFilters, true);
   const showGeneralIssueToolbarControls = tab !== "blocked";
+  // The 事项 tab early-returns (MUL-157): the list-style tabs and their
+  // toolbars stay byte-identical below — this view answers "what exactly is
+  // waiting" with the matter line and in-place resolvers.
+  if (tab === "matters") {
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h1 className="text-lg font-semibold text-foreground">Inbox</h1>
+          <p className="text-xs text-muted-foreground">每条带具体信息，展开就地处理</p>
+        </div>
+        <Tabs value={tab} onValueChange={(value) => navigate(`/inbox/${value}`)}>
+          <PageTabBar
+            items={[
+              {
+                value: "matters",
+                label: "事项",
+              },
+              {
+                value: "mine",
+                label: "Mine",
+              },
+              {
+                value: "recent",
+                label: "Recent",
+              },
+              { value: "unread", label: "Unread" },
+              { value: "blocked", label: "Blocked" },
+              { value: "all", label: "All" },
+            ]}
+          />
+        </Tabs>
+        <InboxMattersTab />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="space-y-2">
@@ -2296,6 +2334,10 @@ export function Inbox() {
         <Tabs value={tab} onValueChange={(value) => navigate(`/inbox/${value}`)}>
           <PageTabBar
             items={[
+              {
+                value: "matters",
+                label: "事项",
+              },
               {
                 value: "mine",
                 label: "Mine",

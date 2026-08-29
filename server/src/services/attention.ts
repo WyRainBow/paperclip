@@ -226,6 +226,39 @@ function stripMarkdown(value: string) {
     .trim();
 }
 
+/** One-line recommendation for the inbox 事项 tab (MUL-157): "推荐：X——理由". */
+function decisionRecommendationLine(options: Array<{ label: string; recommendedByAgentId?: string | null; recommendationReason?: string | null }>): string | null {
+  const rec = options.find((option) => option.recommendedByAgentId);
+  if (!rec) return null;
+  const reason = rec.recommendationReason?.trim();
+  return reason ? `推荐：${rec.label}——${reason}` : `推荐：${rec.label}`;
+}
+
+/** Structured digest of an ask_user_questions payload for the 事项 tab (MUL-157). */
+function askUserQuestionsDigest(payload: { title?: string | null; questions?: Array<{ id: string; question?: string | null; options?: Array<{ id: string; label: string }> }> }): {
+  title: string | null;
+  questions: Array<{ id: string; question: string | null; options: Array<{ id: string; label: string }> }>;
+} {
+  return {
+    title: payload.title ?? null,
+    questions: (payload.questions ?? []).map((question) => ({
+      id: question.id,
+      question: question.question ?? null,
+      options: (question.options ?? []).map((option) => ({ id: option.id, label: option.label })),
+    })),
+  };
+}
+
+/** First question + option labels, one line, for the inbox 事项 tab (MUL-157). */
+function askUserQuestionsLine(payload: { questions?: Array<{ question?: string | null; options?: Array<{ label: string }> }> } | null | undefined): string | null {
+  const first = payload?.questions?.[0];
+  if (!first) return null;
+  const question = first.question?.trim();
+  if (!question) return null;
+  const labels = (first.options ?? []).map((option) => option.label).filter(Boolean);
+  return labels.length > 0 ? `${question}（${labels.join(" / ")}）` : question;
+}
+
 function excerpt(value: unknown, maxLength = DETAIL_EXCERPT_LENGTH) {
   if (typeof value !== "string") return null;
   const cleaned = stripMarkdown(value);
@@ -1256,6 +1289,13 @@ export function attentionService(db: Db, serviceOptions: AttentionServiceOptions
               createdByAgentId: interaction.createdByAgentId,
               isPlanTarget,
               targetDocumentKey: isPlanTarget ? "plan" : null,
+              // Matter-line data for the inbox 事项 tab (MUL-157): the
+              // question text and options travel with the item so the row
+              // shows what was actually asked and can answer in place.
+              infoLine: askUserQuestionsLine(payload),
+              payload: interaction.kind === "ask_user_questions"
+                ? askUserQuestionsDigest(payload as unknown as { title?: string | null; questions?: Array<{ id: string; question?: string | null; options?: Array<{ id: string; label: string }> }> })
+                : null,
             },
           },
           whyNow: `${interactionLabel(interaction.kind)} on an issue thread.`,
@@ -1285,6 +1325,7 @@ export function attentionService(db: Db, serviceOptions: AttentionServiceOptions
         ruleKey: decisions.ruleKey,
         title: decisions.title,
         body: decisions.body,
+        options: decisions.options,
         status: decisions.status,
         expiresAt: decisions.expiresAt,
         originIssueId: decisions.originIssueId,
@@ -1314,8 +1355,20 @@ export function attentionService(db: Db, serviceOptions: AttentionServiceOptions
           sourceKind: "decision",
           subject: { kind: "decision", id: decision.id, companyId, title: decision.title, identifier: null, status: decision.status,
             href: `/${prefix}/decisions?decisionId=${decision.id}`,
-            metadata: { originIssueId: decision.originIssueId, originAgentId: decision.originAgentId, bundleId: decision.bundleId,
-              bundleTitle: decision.bundleId ? bundleTitleMap.get(decision.bundleId) ?? null : null } },
+            metadata: {
+              originIssueId: decision.originIssueId, originAgentId: decision.originAgentId, bundleId: decision.bundleId,
+              bundleTitle: decision.bundleId ? bundleTitleMap.get(decision.bundleId) ?? null : null,
+              // Matter-line data for the inbox 事项 tab (MUL-157): the
+              // recommendation and the full option list travel with the item
+              // so the row can read "推荐：X——理由" and expand to decide in place.
+              infoLine: decisionRecommendationLine(decision.options ?? []),
+              options: (decision.options ?? []).map((option) => ({
+                id: option.id,
+                label: option.label,
+                recommended: Boolean(option.recommendedByAgentId),
+                recommendationReason: option.recommendationReason ?? null,
+              })),
+            } },
           whyNow: "An agent decision is waiting for a board response.",
           decisionVerbs: decisionVerbs({ id: "decide", label: "Review", description: "Review and choose an option." }),
           inlineResolvable: true,

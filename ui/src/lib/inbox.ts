@@ -27,7 +27,7 @@ export const INBOX_GROUP_BY_KEY = "paperclip:inbox:group-by";
 export const INBOX_FILTER_PREFERENCES_KEY_PREFIX = "paperclip:inbox:filters";
 export const INBOX_COLLAPSED_GROUPS_KEY_PREFIX = "paperclip:inbox:collapsed-groups";
 export const INBOX_COLLAPSED_PARENTS_KEY_PREFIX = "paperclip:inbox:collapsed-parents";
-export type InboxTab = "mine" | "recent" | "unread" | "blocked" | "all";
+export type InboxTab = "matters" | "mine" | "recent" | "unread" | "blocked" | "all";
 export type InboxCategoryFilter =
   | "everything"
   | "issues_i_touched"
@@ -679,16 +679,18 @@ export function loadLastInboxTab(): InboxTab {
   try {
     const raw = localStorage.getItem(INBOX_LAST_TAB_KEY);
     if (
-      raw === "all"
+      raw === "matters"
+      || raw === "all"
       || raw === "unread"
       || raw === "recent"
       || raw === "mine"
       || raw === "blocked"
     ) return raw;
     if (raw === "new") return "mine";
-    return "mine";
+    // First visit lands on the matter-line view (MUL-157).
+    return "matters";
   } catch {
-    return "mine";
+    return "matters";
   }
 }
 

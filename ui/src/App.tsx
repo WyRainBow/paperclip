@@ -330,6 +330,7 @@ function boardRoutes() {
       <Route path="decisions" element={<WhatNeedsMe />} />
       <Route path="decisions/queues/:key" element={<DecisionQueuePage />} />
       <Route path="inbox" element={<InboxRootRedirect />} />
+      <Route path="inbox/matters" element={<Inbox />} />
       <Route path="inbox/mine" element={<Inbox />} />
       <Route path="inbox/recent" element={<Inbox />} />
       <Route path="inbox/unread" element={<Inbox />} />
