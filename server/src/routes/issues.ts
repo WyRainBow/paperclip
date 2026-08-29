@@ -193,7 +193,7 @@ import {
 } from "../services/execution-workspaces.js";
 import { decisionTrainingService } from "../services/decision-training.js";
 import { feedbackService } from "../services/feedback.js";
-import { recordRetroGate } from "../services/retro-gate.js";
+import { noteUnregisteredBranch, recordRetroGate } from "../services/retro-gate.js";
 import { missingIssueClosePrerequisites } from "../services/issue-prerequisites.js";
 import { instanceSettingsService } from "../services/instance-settings.js";
 import {
@@ -10141,6 +10141,15 @@ export function issueRoutes(
         issueId: issue.id,
         identifier: issue.identifier ?? null,
         enteredStatus: issue.status,
+        workingBranch: (issue.workingBranch as string | null) ?? null,
+      });
+      // Soft, deduplicated: research cards have no branch, so this reminds
+      // instead of blocking (MUL-144).
+      await noteUnregisteredBranch(db, {
+        companyId: issue.companyId,
+        issueId: issue.id,
+        identifier: issue.identifier ?? null,
+        workingBranch: (issue.workingBranch as string | null) ?? null,
       });
     }
 
