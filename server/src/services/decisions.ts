@@ -516,7 +516,14 @@ export function decisionService(db: Db, options: DecisionServiceOptions) {
         const values = decision.inputValues ?? {};
         let result: Record<string, unknown>;
         if (effect.type === "comment_on_issue") {
-          const comment = await svc.addComment(target.id, interpolate(effect.bodyMarkdown, values), resolverCommentActor, undefined, tx);
+          const body = interpolate(effect.bodyMarkdown, values);
+          // The decision verdict comment is platform-generated bookkeeping, not
+          // the deciding agent's own words — mark it so the UI can wear the
+          // system face instead of the agent's (MUL-153).
+          const isDecisionVerdict = /^决策「.+」：/.test(body);
+          const comment = await svc.addComment(target.id, body, resolverCommentActor, isDecisionVerdict
+            ? { presentation: { kind: "decision_effect", tone: "info", detailsDefaultOpen: false } }
+            : undefined, tx);
           result = { commentId: comment.id };
         } else if (effect.type === "update_issue_status") {
           const updated = await svc.update(

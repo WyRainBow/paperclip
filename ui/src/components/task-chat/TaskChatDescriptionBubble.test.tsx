@@ -88,13 +88,16 @@ describe("TaskChatDescriptionBubble (PAP-375)", () => {
     expect(body?.querySelector("strong")?.textContent).toBe("Friday");
   });
 
-  it("renders an agent-created task as the agent-side bubble with the avatar author header", () => {
+  it("renders an agent-created task as the agent-side bubble with the system-face author header (MUL-153)", () => {
     render(makeBrief({ author: "agent", authorName: "CEO" }));
     const bubble = container.querySelector('[data-testid="task-chat-description-bubble"]');
     expect(bubble?.getAttribute("data-author")).toBe("agent");
     expect(bubble?.className).toContain("items-start");
-    expect(bubble?.querySelector('[data-testid="task-chat-agent-avatar"]')).not.toBeNull();
-    expect(bubble?.textContent).toContain("CEO");
+    // Mechanism-filed description: the system glyph + 系统通知 tag, the agent
+    // kept as attribution text — no agent avatar header anymore.
+    expect(bubble?.querySelector('[data-testid="system-actor-avatar"]')).not.toBeNull();
+    expect(bubble?.querySelector('[data-testid="system-notice-tag"]')).not.toBeNull();
+    expect(bubble?.textContent).toContain("由 CEO 创建");
     expect(bubble?.querySelector(".bg-\\(--bubble-agent\\)")).not.toBeNull();
     expect(bubble?.querySelector(".bg-\\(--liveness-blue\\)")).toBeNull();
   });

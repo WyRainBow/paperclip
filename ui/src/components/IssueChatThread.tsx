@@ -118,6 +118,7 @@ import { InlineEntitySelector, type InlineEntityOption } from "./InlineEntitySel
 import { IssueThreadInteractionCard } from "./IssueThreadInteractionCard";
 import { AgentIcon, agentCustomIcon } from "./AgentIconPicker";
 import { SystemActorAvatar, SystemNoticeTag } from "./SystemActorAvatar";
+import { isDecisionEffectComment } from "@/lib/decision-effect";
 import {
   AssigneeChip,
   ComposerHandoffPreviewRow,
@@ -1852,7 +1853,17 @@ function IssueChatAssistantMessage({
   const isGenuineComment =
     kind === "comment" && !!commentId && !isRunning && (hasCommentText || deleted);
 
-  const agentAvatar = (
+  // A mechanism-filed decision verdict wears the system face with the agent
+  // kept as attribution text (MUL-153) — it was never the agent's own words.
+  const isDecisionEffect = kind === "comment"
+    && isDecisionEffectComment({ body: message.content.find((p) => p.type === "text")?.text ?? "", presentation: null });
+  const agentAvatar = isDecisionEffect ? (
+    <span className="flex shrink-0 items-center gap-1.5">
+      <SystemActorAvatar size="sm" />
+      <SystemNoticeTag />
+      <span className="text-sm font-semibold text-foreground">由 {authorName} 裁决</span>
+    </span>
+  ) : (
     <Avatar size="sm" className="shrink-0">
       {agentCustomIconUrl ? <AvatarImage src={agentCustomIconUrl} alt="" /> : agentIcon ? (
         <AvatarFallback><AgentIcon icon={agentIcon} className="h-3.5 w-3.5" /></AvatarFallback>

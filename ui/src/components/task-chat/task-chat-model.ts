@@ -80,12 +80,17 @@ export interface TaskChatMessageItem {
    * official logos never reached the chat bubbles (MUL-152).
    */
   agentCustomIconUrl?: string | null;
-  /**
-   * Responsible user's display name, set only when this agent comment is a
+  /** Responsible user's display name, set only when this agent comment is a
    * cross-issue write (the author is not the assignee). Renders as a
    * "for {user}" chip beside the author name (the open cross-task write design (attribution)).
    */
   onBehalfOfUserName?: string;
+  /**
+   * Mechanism-filed decision verdict (MUL-153): the decide flow wrote this on
+   * the agent's behalf. The bubble wears the system face; the author name
+   * stays as attribution text.
+   */
+  isDecisionEffect?: boolean;
   /**
    * Agent text streamed inside a run turn (interstitial updates between tool
    * calls). Ephemeral in the redesigned view (PAP-361): while streaming it

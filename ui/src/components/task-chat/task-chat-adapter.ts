@@ -11,6 +11,7 @@ import type { Agent } from "@paperclipai/shared";
 import type { IssueChatComment } from "@/lib/issue-chat-messages";
 import { resolveCommentAttribution } from "@/lib/comment-attribution";
 import { agentCustomIcon } from "@/components/AgentIconPicker";
+import { isDecisionEffectComment } from "@/lib/decision-effect";
 import type { TaskChatAuthorKind, TaskChatItem } from "./task-chat-model";
 
 export interface TaskChatAdapterContext {
@@ -119,6 +120,7 @@ export function commentsToTaskChatItems(
       queueTargetRunId: queued ? comment.queueTargetRunId ?? null : null,
       agentIcon,
       agentCustomIconUrl,
+      isDecisionEffect: kind === "agent" ? isDecisionEffectComment(comment) : undefined,
       onBehalfOfUserName,
       // System notices carry their structured hints through to the render
       // layer (PAP-443); other authors keep the item lean.
