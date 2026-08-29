@@ -198,11 +198,17 @@ const TERMINAL_SIGNATURES: Array<{ slug: string; envVars: string[] }> = [
   { slug: "zcode-terminal", envVars: ["ZCODE_BASE_URL"] },
 ];
 
-/** Ancestry matchers: the closest recognizable ancestor is the real host. */
+/** Ancestry matchers: the closest recognizable ancestor is the real host.
+ * Patterns must anchor the terminal name at a command boundary (^ or /), never
+ * a bare space: a tool call whose own command text merely mentions the word
+ * "claude" runs under `/bin/zsh -c '<text>'`, and that zsh is the CLI's direct
+ * parent — a space-anchored pattern matched it and the call authenticated as
+ * the wrong terminal (2026-08-29, Team Rules rev=46/47 misattributed). */
 const TERMINAL_ANCESTRY: Array<{ slug: string; pattern: RegExp }> = [
   { slug: "codex-terminal", pattern: /(^|\/)(codex|codex-darwin-arm64)(\s|$)/ },
-  { slug: "claude-terminal", pattern: /(^|\/| )claude(\s|$)/ },
+  { slug: "claude-terminal", pattern: /(^|\/)claude(\s|$)/ },
   { slug: "zcode-terminal", pattern: /(^|\/)(zcode-cli|zcode-host[-\w]*|ZCode)(\s|$)/ },
+  { slug: "qoder", pattern: /(^|\/)Qoder(\s|$)/ },
 ];
 
 /**
@@ -228,6 +234,14 @@ function detectTerminalByAncestry(): string | null {
       return null;
     }
     if (!Number.isFinite(ppid) || ppid <= 1) return null;
+    // A shell wrapper carrying `-c` text is a command carrier, never a host:
+    // its command line quotes whatever the tool call mentioned (including
+    // other terminals' names and paths), so matching it impersonates hosts.
+    // Real hosts are standalone binaries further up the chain.
+    if (/\/(ba|z|da|k)?sh(\s|$)/.test(command.split(" ")[0]) && /(^|\s)-c(\s|$)/.test(command)) {
+      pid = ppid;
+      continue;
+    }
     for (const matcher of TERMINAL_ANCESTRY) {
       if (matcher.pattern.test(command)) return matcher.slug;
     }
