@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, notInArray, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import {
+  activityLog,
   agents,
   approvals,
   assets,
@@ -98,6 +99,7 @@ const SOURCE_RANK: Record<AttentionSourceKind, number> = {
   decision: 6,
   issue_thread_interaction: 7,
   review: 8,
+  experience_draft: 8,
   productivity_review: 9,
   join_request: 10,
 };
@@ -1729,6 +1731,73 @@ export function attentionService(db: Db, serviceOptions: AttentionServiceOptions
           relatedIssue: null,
           ...issueContext(issue),
           detail: genericDetail(review.title, issueImages(reviewImageMap, review.id)),
+        }));
+      }
+
+      // 经验草稿待批 (MUL-138 草稿制的收件箱提醒, MUL-141): a card carrying
+      // an experience-draft the boss has not approved yet surfaces here, so a
+      // draft never waits in silence on the card. Exit when the agent files
+      // the experience (the experience_remembered activity names the issue),
+      // or the draft/card goes away.
+      const rememberedDraftIssueRows = await db
+        .select({ issueId: sql<string | null>`${activityLog.details}->>'issueId'` })
+        .from(activityLog)
+        .where(and(
+          eq(activityLog.companyId, companyId),
+          eq(activityLog.action, "workspace.experience_remembered"),
+        ));
+      const rememberedIssueIds = new Set(
+        rememberedDraftIssueRows
+          .map((row) => row.issueId)
+          .filter((value): value is string => Boolean(value)),
+      );
+      const draftDocRows = await db
+        .select({
+          issueId: issueDocuments.issueId,
+          title: documents.title,
+          body: documents.latestBody,
+        })
+        .from(issueDocuments)
+        .innerJoin(documents, eq(issueDocuments.documentId, documents.id))
+        .where(and(
+          eq(issueDocuments.companyId, companyId),
+          eq(issueDocuments.key, "experience-draft"),
+        ));
+      const draftByIssue = new Map(draftDocRows.map((row) => [row.issueId, row]));
+      const draftIssueSummaryMap = await issueSummaryMap(db, companyId, [...draftByIssue.keys()]);
+      for (const [draftIssueId, draftRow] of draftByIssue) {
+        if (rememberedIssueIds.has(draftIssueId)) continue;
+        const issue = draftIssueSummaryMap.get(draftIssueId);
+        if (!issue || issue.status === "cancelled") continue;
+        const baseSubject = issueSubject(prefix, issue);
+        add(createItem({
+          companyId,
+          sourceKind: "experience_draft",
+          subject: {
+            ...baseSubject,
+            metadata: {
+              ...baseSubject.metadata,
+              draftTitle: draftRow.title,
+              // The deciding surface reads the draft itself, not just the
+              // card title — same principle as the review body (MUL-137).
+              draft: (draftRow.body ?? "").slice(0, 3000),
+            },
+          },
+          whyNow: "经验草稿已贴到卡上等你批：回「批」落库 / 直接提修改意见 / 回「跳过」不记。",
+          decisionVerbs: decisionVerbs(
+            { id: "open_draft", label: "Open draft", description: "打开卡读全文并批复（批 / 改 / 跳过）" },
+          ),
+          inlineResolvable: false,
+          entryRule: "issue has an experience-draft document and no workspace.experience_remembered activity naming it.",
+          exitRule: "The experience is filed (experience_remembered), or the draft document or the card is removed.",
+          dedupKey: `experience-draft:${draftIssueId}`,
+          severity: "medium",
+          activityAt: toIso(issue.updatedAt),
+          createdAt: toIso(issue.updatedAt),
+          updatedAt: toIso(issue.updatedAt),
+          relatedIssue: null,
+          ...issueContext(issue),
+          detail: genericDetail(issue.title, []),
         }));
       }
 
