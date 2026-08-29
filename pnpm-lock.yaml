@@ -88,6 +88,9 @@ importers:
       '@paperclipai/adapter-pi-local':
         specifier: workspace:*
         version: link:../packages/adapters/pi-local
+      '@paperclipai/adapter-qoder-local':
+        specifier: workspace:*
+        version: link:../packages/adapters/qoder-local
       '@paperclipai/adapter-utils':
         specifier: workspace:*
         version: link:../packages/adapter-utils
@@ -355,6 +358,22 @@ importers:
         version: 5.9.3
 
   packages/adapters/pi-local:
+    dependencies:
+      '@paperclipai/adapter-utils':
+        specifier: workspace:*
+        version: link:../../adapter-utils
+      picocolors:
+        specifier: ^1.1.1
+        version: 1.1.1
+    devDependencies:
+      '@types/node':
+        specifier: ^24.0.0
+        version: 24.13.3
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+
+  packages/adapters/qoder-local:
     dependencies:
       '@paperclipai/adapter-utils':
         specifier: workspace:*
@@ -829,6 +848,9 @@ importers:
       '@paperclipai/adapter-pi-local':
         specifier: workspace:*
         version: link:../packages/adapters/pi-local
+      '@paperclipai/adapter-qoder-local':
+        specifier: workspace:*
+        version: link:../packages/adapters/qoder-local
       '@paperclipai/adapter-utils':
         specifier: workspace:*
         version: link:../packages/adapter-utils
@@ -1004,6 +1026,9 @@ importers:
       '@paperclipai/adapter-pi-local':
         specifier: workspace:*
         version: link:../packages/adapters/pi-local
+      '@paperclipai/adapter-qoder-local':
+        specifier: workspace:*
+        version: link:../packages/adapters/qoder-local
       '@paperclipai/adapter-utils':
         specifier: workspace:*
         version: link:../packages/adapter-utils

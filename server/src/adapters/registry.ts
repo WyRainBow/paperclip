@@ -100,6 +100,17 @@ import {
   models as kimiModels,
 } from "@paperclipai/adapter-kimi-local";
 import {
+  execute as qoderExecute,
+  listQoderSkills,
+  syncQoderSkills,
+  testEnvironment as qoderTestEnvironment,
+  sessionCodec as qoderSessionCodec,
+} from "@paperclipai/adapter-qoder-local/server";
+import {
+  agentConfigurationDoc as qoderAgentConfigurationDoc,
+  models as qoderModels,
+} from "@paperclipai/adapter-qoder-local";
+import {
   createHermesGatewayServerAdapter,
   createHermesLocalServerAdapter,
 } from "@paperclipai/hermes-paperclip-adapter";
@@ -448,6 +459,21 @@ const kimiLocalAdapter: ServerAdapterModule = {
   agentConfigurationDoc: kimiAgentConfigurationDoc,
 };
 
+const qoderLocalAdapter: ServerAdapterModule = {
+  type: "qoder_local",
+  execute: qoderExecute,
+  testEnvironment: qoderTestEnvironment,
+  listSkills: listQoderSkills,
+  syncSkills: syncQoderSkills,
+  sessionCodec: qoderSessionCodec,
+  sessionManagement: getAdapterSessionManagement("qoder_local") ?? undefined,
+  models: qoderModels,
+  supportsLocalAgentJwt: true,
+  supportsInstructionsBundle: true,
+  instructionsPathKey: "instructionsFilePath",
+  agentConfigurationDoc: qoderAgentConfigurationDoc,
+};
+
 const hermesGatewayAdapter = createHermesGatewayServerAdapter();
 
 const hermesLocalAdapter = createHermesLocalServerAdapter();
@@ -525,6 +551,7 @@ function registerBuiltInAdapters() {
     geminiLocalAdapter,
     grokLocalAdapter,
     kimiLocalAdapter,
+    qoderLocalAdapter,
     hermesGatewayAdapter,
     hermesLocalAdapter,
     openclawGatewayAdapter,

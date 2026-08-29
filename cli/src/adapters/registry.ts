@@ -6,6 +6,7 @@ import { printCursorCloudEvent } from "@paperclipai/adapter-cursor-cloud/cli";
 import { printGeminiStreamEvent } from "@paperclipai/adapter-gemini-local/cli";
 import { printGrokStreamEvent } from "@paperclipai/adapter-grok-local/cli";
 import { printKimiStreamEvent } from "@paperclipai/adapter-kimi-local/cli";
+import { printQoderStreamEvent } from "@paperclipai/adapter-qoder-local/cli";
 import { formatStdoutEvent as printHermesGatewayStreamEvent } from "@paperclipai/hermes-paperclip-adapter/gateway/cli";
 import { printHermesStreamEvent } from "@paperclipai/hermes-paperclip-adapter/cli";
 import { printOpenCodeStreamEvent } from "@paperclipai/adapter-opencode-local/cli";
@@ -59,6 +60,11 @@ const kimiLocalCLIAdapter: CLIAdapterModule = {
   formatStdoutEvent: printKimiStreamEvent,
 };
 
+const qoderLocalCLIAdapter: CLIAdapterModule = {
+  type: "qoder_local",
+  formatStdoutEvent: printQoderStreamEvent,
+};
+
 const hermesGatewayCLIAdapter: CLIAdapterModule = {
   type: "hermes_gateway",
   formatStdoutEvent: printHermesGatewayStreamEvent,
@@ -85,6 +91,7 @@ const adaptersByType = new Map<string, CLIAdapterModule>(
     geminiLocalCLIAdapter,
     grokLocalCLIAdapter,
     kimiLocalCLIAdapter,
+    qoderLocalCLIAdapter,
     hermesGatewayCLIAdapter,
     hermesLocalCLIAdapter,
     openclawGatewayCLIAdapter,
