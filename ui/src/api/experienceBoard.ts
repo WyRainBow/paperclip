@@ -4,13 +4,21 @@
  */
 import { api } from "./client";
 
+export interface FrictionEvidence {
+  actor: string;
+  at: string;
+  stage: string;
+  code: string;
+  note?: string;
+}
+
 export interface ExperienceBoardRow {
   issueId: string;
   identifier: string | null;
   title: string;
   status: string;
   frictionTotal: number;
-  frictionSignals: Array<{ key: string; count: number; points: number }>;
+  frictionSignals: Array<{ key: string; count: number; points: number; evidence?: FrictionEvidence[] }>;
   retroOwed: boolean;
   sediment: { path: string; at: string } | null;
   lastScoredAt: string | null;

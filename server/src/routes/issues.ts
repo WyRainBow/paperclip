@@ -10077,7 +10077,7 @@ export function issueRoutes(
           authorizationReason: issueMutationAuthorizationReason,
           changes,
           ...(reviewInteractionId ? { reviewInteractionId } : {}),
-          ...(commentBody ? { source: "comment" } : {}),
+          ...(commentBody ? { source: "comment", commentExcerpt: commentBody.slice(0, 140) } : {}),
           ...(resumeRequested === true ? { resumeIntent: true, followUpRequested: true } : {}),
           ...(interruptedRunId ? { interruptedRunId } : {}),
           _previous: Object.keys(changes).length > 0 ? previous : undefined,
@@ -10385,7 +10385,7 @@ export function issueRoutes(
         authorizationReason: issueMutationAuthorizationReason,
         changes: issueChanges,
         ...(reviewInteractionId ? { reviewInteractionId } : {}),
-        ...(commentBody ? { source: "comment" } : {}),
+        ...(commentBody ? { source: "comment", commentExcerpt: commentBody.slice(0, 140) } : {}),
         ...(resumeRequested === true ? { resumeIntent: true, followUpRequested: true } : {}),
         ...(reopened ? { reopened: true, reopenedFrom: reopenFromStatus } : {}),
         ...(scheduledRetrySupersededByComment

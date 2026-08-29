@@ -39,10 +39,20 @@ import { logger } from "../middleware/logger.js";
  * automatic case writing, the retro skill and the human decide the rest.
  */
 
+/** One answerable failure fact: who, when, where in the flow, what code/reason. */
+export interface FrictionEvidence {
+  actor: string;
+  at: string;
+  stage: string;
+  code: string;
+  note?: string;
+}
+
 export interface FrictionSignal {
   key: "rollback" | "blocked" | "review_rounds" | "recovery" | "down_votes" | "watchdog";
   count: number;
   points: number;
+  evidence?: Array<FrictionEvidence>;
 }
 
 export interface FrictionScore {
@@ -73,20 +83,44 @@ export const RETRO_OWED_SCORE_THRESHOLD = 20;
 
 export const RETRO_OWED_LABEL = "retro-owed";
 
+interface StatusTransitionRow {
+  actorType: string;
+  actorId: string | null;
+  agentId: string | null;
+  at: string;
+  from: string;
+  to: string;
+  note?: string;
+}
+
+function actorLabel(actorType: string, actorId: string | null, agentId: string | null): string {
+  if (actorType === "agent") return agentId ? `agent:${agentId}` : "agent";
+  if (actorType === "user") return actorId ? `user:${actorId}` : "user";
+  return actorType;
+}
+
 /**
- * Count `issue.updated` activity rows whose details describe a given status
- * transition. The update path logs `details.status` (the new value) and
- * `details._previous.status` (the old value) for every status change. Pass
- * `"*"` for either side to leave that side unconstrained.
+ * Fetch `issue.updated` activity rows whose details describe a given status
+ * transition, keeping actor and timing so each friction signal can answer
+ * "who failed, when, moving what to what" (MUL-167). The update path logs
+ * `details.status` (new), `details._previous.status` (old), and — for rows
+ * written since MUL-167 — `details.commentExcerpt` when the transition came
+ * with a comment. Pass `"*"` for either side to leave it unconstrained.
  */
-async function countStatusTransitions(
+async function fetchStatusTransitions(
   db: Db,
   issueId: string,
   from: string | "*",
   to: string | "*",
-): Promise<number> {
+): Promise<StatusTransitionRow[]> {
   const rows = await db
-    .select({ count: sql<number>`count(*)::int` })
+    .select({
+      actorType: activityLog.actorType,
+      actorId: activityLog.actorId,
+      agentId: activityLog.agentId,
+      createdAt: activityLog.createdAt,
+      details: activityLog.details,
+    })
     .from(activityLog)
     .where(and(
       eq(activityLog.entityType, "issue"),
@@ -98,23 +132,52 @@ async function countStatusTransitions(
       from === "*"
         ? sql`true`
         : sql`coalesce(${activityLog.details}->'_previous'->>'status', '') = ${from}`,
-    ));
-  return Number(rows[0]?.count ?? 0);
+    ))
+    .orderBy(desc(activityLog.createdAt))
+    .limit(10);
+  return rows.map((row) => {
+    const details = (row.details ?? {}) as Record<string, unknown>;
+    const note = typeof details.commentExcerpt === "string" && details.commentExcerpt.trim()
+      ? details.commentExcerpt.trim()
+      : undefined;
+    return {
+      actorType: row.actorType,
+      actorId: row.actorId,
+      agentId: row.agentId,
+      at: row.createdAt.toISOString(),
+      from: String((details as { _previous?: { status?: unknown } })._previous?.status ?? "?"),
+      to: String(details.status ?? "?"),
+      note,
+    };
+  });
 }
+
+function transitionEvidence(rows: Array<StatusTransitionRow>): Array<FrictionEvidence> {
+  return rows.slice(0, 5).map((row) => ({
+    actor: actorLabel(row.actorType, row.actorId, row.agentId),
+    at: row.at,
+    stage: "status_transition",
+    code: `${row.from}→${row.to}`,
+    ...(row.note ? { note: row.note } : {}),
+  }));
+}
+
+const EVIDENCE_CAP = 5;
 
 export async function computeFrictionScore(db: Db, companyId: string, issueId: string): Promise<FrictionScore> {
   const [
-    reviewRollbacks,
-    blockedEntries,
-    reviewRoundDocs,
-    recoveryCount,
-    downVoteCount,
+    reviewRollbackRows,
+    blockedRows,
+    reviewRoundDocRows,
+    recoveryRows,
+    downVoteRows,
     watchdogRows,
+    reopenRows,
   ] = await Promise.all([
-    countStatusTransitions(db, issueId, "in_review", "in_progress"),
-    countStatusTransitions(db, issueId, "*", "blocked"),
+    fetchStatusTransitions(db, issueId, "in_review", "in_progress"),
+    fetchStatusTransitions(db, issueId, "*", "blocked"),
     db
-      .select({ count: sql<number>`count(*)::int` })
+      .select({ key: issueDocuments.key, updatedAt: documents.updatedAt })
       .from(issueDocuments)
       .innerJoin(documents, eq(issueDocuments.documentId, documents.id))
       .where(and(
@@ -122,39 +185,128 @@ export async function computeFrictionScore(db: Db, companyId: string, issueId: s
         eq(issueDocuments.issueId, issueId),
         sql`${issueDocuments.key} ~ '^review-r([2-9]|[1-9][0-9]+)$'`,
       ))
-      .then((rows) => Number(rows[0]?.count ?? 0)),
+      .orderBy(desc(documents.updatedAt))
+      .limit(EVIDENCE_CAP),
     db
-      .select({ count: sql<number>`count(*)::int` })
+      .select({ createdAt: issueRecoveryActions.createdAt })
       .from(issueRecoveryActions)
       .where(and(
         eq(issueRecoveryActions.companyId, companyId),
         eq(issueRecoveryActions.sourceIssueId, issueId),
       ))
-      .then((rows) => Number(rows[0]?.count ?? 0)),
+      .orderBy(desc(issueRecoveryActions.createdAt))
+      .limit(EVIDENCE_CAP),
     db
-      .select({ count: sql<number>`count(*)::int` })
+      .select({ reason: feedbackVotes.reason, authorUserId: feedbackVotes.authorUserId, createdAt: feedbackVotes.createdAt })
       .from(feedbackVotes)
       .where(and(
         eq(feedbackVotes.companyId, companyId),
         eq(feedbackVotes.issueId, issueId),
         eq(feedbackVotes.vote, "down"),
       ))
-      .then((rows) => Number(rows[0]?.count ?? 0)),
+      .orderBy(desc(feedbackVotes.createdAt))
+      .limit(EVIDENCE_CAP),
     db
-      .select({ triggerCount: issueWatchdogs.triggerCount })
+      .select({ triggerCount: issueWatchdogs.triggerCount, lastTriggeredAt: issueWatchdogs.lastTriggeredAt, watchdogAgentId: issueWatchdogs.watchdogAgentId })
       .from(issueWatchdogs)
       .where(and(
         eq(issueWatchdogs.companyId, companyId),
         eq(issueWatchdogs.issueId, issueId),
       ))
       .then((rows) => rows[0] ?? null),
+    // Done reopens: previous status was `done`, destination varies.
+    fetchStatusTransitionsDoneReopens(db, issueId),
   ]);
 
-  // Done reopens: transitions whose previous status was `done` and whose new
-  // status is anything else. Computed directly here because the destination
-  // varies.
-  const reopenRows = await db
-    .select({ count: sql<number>`count(*)::int` })
+  const rollbackCount = reviewRollbackRows.length + reopenRows.length;
+  const watchdogTriggered = (watchdogRows?.triggerCount ?? 0) > 0;
+
+  const signals: Array<FrictionSignal> = [];
+  if (rollbackCount > 0) {
+    signals.push({
+      key: "rollback",
+      count: rollbackCount,
+      points: rollbackCount * FRICTION_WEIGHTS.rollback,
+      evidence: transitionEvidence([...reviewRollbackRows, ...reopenRows]),
+    });
+  }
+  if (blockedRows.length > 0) {
+    signals.push({
+      key: "blocked",
+      count: blockedRows.length,
+      points: blockedRows.length * FRICTION_WEIGHTS.blocked,
+      evidence: transitionEvidence(blockedRows),
+    });
+  }
+  if (reviewRoundDocRows.length > 0) {
+    signals.push({
+      key: "review_rounds",
+      count: reviewRoundDocRows.length,
+      points: FRICTION_WEIGHTS.review_rounds,
+      evidence: reviewRoundDocRows.map((row) => ({
+        actor: "system",
+        at: row.updatedAt.toISOString(),
+        stage: "review_round",
+        code: row.key,
+      })),
+    });
+  }
+  if (recoveryRows.length > 0) {
+    signals.push({
+      key: "recovery",
+      count: recoveryRows.length,
+      points: FRICTION_WEIGHTS.recovery,
+      evidence: recoveryRows.map((row) => ({
+        actor: "system",
+        at: row.createdAt.toISOString(),
+        stage: "recovery",
+        code: "recovery_action",
+      })),
+    });
+  }
+  if (downVoteRows.length > 0) {
+    signals.push({
+      key: "down_votes",
+      count: downVoteRows.length,
+      points: downVoteRows.length * FRICTION_WEIGHTS.perDownVote,
+      evidence: downVoteRows.map((row) => ({
+        actor: `user:${row.authorUserId}`,
+        at: row.createdAt.toISOString(),
+        stage: "feedback",
+        code: "down_vote",
+        ...(row.reason?.trim() ? { note: row.reason.trim().slice(0, 140) } : {}),
+      })),
+    });
+  }
+  if (watchdogTriggered) {
+    signals.push({
+      key: "watchdog",
+      count: 1,
+      points: FRICTION_WEIGHTS.watchdog,
+      evidence: [{
+        actor: `agent:${watchdogRows!.watchdogAgentId}`,
+        at: (watchdogRows!.lastTriggeredAt ?? new Date(0)).toISOString(),
+        stage: "watchdog",
+        code: `trigger×${watchdogRows!.triggerCount}`,
+      }],
+    });
+  }
+
+  return {
+    total: signals.reduce((sum, signal) => sum + signal.points, 0),
+    signals,
+  };
+}
+
+async function fetchStatusTransitionsDoneReopens(db: Db, issueId: string): Promise<StatusTransitionRow[]> {
+  const rows = await db
+    .select({
+      actorType: activityLog.actorType,
+      actorId: activityLog.actorId,
+      agentId: activityLog.agentId,
+      createdAt: activityLog.createdAt,
+      details: activityLog.details,
+    })
     .from(activityLog)
     .where(and(
       eq(activityLog.entityType, "issue"),
@@ -162,36 +314,24 @@ export async function computeFrictionScore(db: Db, companyId: string, issueId: s
       eq(activityLog.action, "issue.updated"),
       sql`${activityLog.details}->'_previous'->>'status' = 'done'`,
       sql`coalesce(${activityLog.details}->>'status', '') <> 'done'`,
-    ));
-  const doneReopenCount = Number(reopenRows[0]?.count ?? 0);
-
-  const rollbackCount = reviewRollbacks + doneReopenCount;
-  const watchdogTriggered = (watchdogRows?.triggerCount ?? 0) > 0;
-
-  const signals: Array<FrictionSignal> = [];
-  if (rollbackCount > 0) {
-    signals.push({ key: "rollback", count: rollbackCount, points: rollbackCount * FRICTION_WEIGHTS.rollback });
-  }
-  if (blockedEntries > 0) {
-    signals.push({ key: "blocked", count: blockedEntries, points: blockedEntries * FRICTION_WEIGHTS.blocked });
-  }
-  if (reviewRoundDocs > 0) {
-    signals.push({ key: "review_rounds", count: reviewRoundDocs, points: FRICTION_WEIGHTS.review_rounds });
-  }
-  if (recoveryCount > 0) {
-    signals.push({ key: "recovery", count: recoveryCount, points: FRICTION_WEIGHTS.recovery });
-  }
-  if (downVoteCount > 0) {
-    signals.push({ key: "down_votes", count: downVoteCount, points: downVoteCount * FRICTION_WEIGHTS.perDownVote });
-  }
-  if (watchdogTriggered) {
-    signals.push({ key: "watchdog", count: 1, points: FRICTION_WEIGHTS.watchdog });
-  }
-
-  return {
-    total: signals.reduce((sum, signal) => sum + signal.points, 0),
-    signals,
-  };
+    ))
+    .orderBy(desc(activityLog.createdAt))
+    .limit(10);
+  return rows.map((row) => {
+    const details = (row.details ?? {}) as Record<string, unknown>;
+    const note = typeof details.commentExcerpt === "string" && details.commentExcerpt.trim()
+      ? details.commentExcerpt.trim()
+      : undefined;
+    return {
+      actorType: row.actorType,
+      actorId: row.actorId,
+      agentId: row.agentId,
+      at: row.createdAt.toISOString(),
+      from: "done",
+      to: String(details.status ?? "?"),
+      note,
+    };
+  });
 }
 
 const SIGNAL_LABELS: Record<FrictionSignal["key"], string> = {

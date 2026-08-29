@@ -116,11 +116,28 @@ function BoardRow({ row }: { row: ExperienceBoardRow }) {
         )}
       </div>
       {row.frictionSignals.length > 0 ? (
-        <p className="text-xs text-muted-foreground">
-          {row.frictionSignals
-            .map((signal) => `${SIGNAL_LABELS[signal.key] ?? signal.key} ×${signal.count}（+${signal.points}）`)
-            .join(" · ")}
-        </p>
+        <div className="flex flex-col gap-1">
+          {row.frictionSignals.map((signal) => (
+            <div key={signal.key} className="flex flex-col gap-0.5">
+              <p className="text-xs text-muted-foreground">
+                {SIGNAL_LABELS[signal.key] ?? signal.key} ×{signal.count}（+${signal.points}）
+              </p>
+              {signal.evidence?.length ? (
+                <ul className="ml-3 flex flex-col gap-0.5">
+                  {signal.evidence.map((ev, index) => (
+                    <li
+                      key={`${signal.key}-${index}`}
+                      className="text-(length:--text-micro) leading-relaxed text-muted-foreground/80"
+                    >
+                      {ev.actor} · {ev.stage} · {ev.code} · {ev.at.slice(0, 19).replace("T", " ")}
+                      {ev.note ? ` · ${ev.note}` : ""}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+          ))}
+        </div>
       ) : null}
     </div>
   );
