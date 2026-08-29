@@ -2734,7 +2734,9 @@ export function IssueProperties({
           // inside its slot instead of clipping or running under the window
           // controls (MUL-164).
           ? "min-w-0 w-full! h-fit! flex-wrap items-stretch justify-start gap-1 p-0"
-          : "w-full justify-start gap-1"
+          // The inline (classic interface) strip gets the same narrow-pane
+          // treatment: wrap instead of clipping (MUL-164 rework).
+          : "w-full h-fit flex-wrap justify-start gap-1"
       }
     >
       <TabsTrigger value="properties" className={paneTabTriggerClass}>
