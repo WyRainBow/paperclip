@@ -44,6 +44,7 @@ import { useCompany } from "../context/CompanyContext";
 import { useTranslation } from "../i18n";
 import { useSidebar } from "../context/SidebarContext";
 import { attentionApi } from "../api/attention";
+import { experienceBoardApi } from "../api/experienceBoard";
 import { heartbeatsApi } from "../api/heartbeats";
 import { instanceSettingsApi } from "../api/instanceSettings";
 import { queryKeys } from "../lib/queryKeys";
@@ -111,6 +112,13 @@ export function Sidebar() {
     refetchInterval: 60_000,
   });
   const attentionCount = attentionBadgeCount(attentionFeed);
+  const { data: experienceBoard } = useQuery({
+    queryKey: queryKeys.experienceBoard(selectedCompanyId ?? "none"),
+    queryFn: () => experienceBoardApi(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+    refetchInterval: 60_000,
+  });
+  const retroOwedCount = experienceBoard?.retroOwedCount ?? 0;
   const showCases = experimentalSettings?.enableCases === true;
   // Streamlined left navigation (top-level Projects link + starred children) is
   // now the standard product sidebar (PAP-12472). The former experimental
@@ -302,7 +310,7 @@ export function Sidebar() {
           <SidebarNavItem to="/org" label={t("Org")} icon={Network} />
           {showApps ? <SidebarNavItem to="/apps" label={t("Apps")} icon={AppWindow} /> : null}
           <SidebarNavItem to="/timeline" label={t("Timeline")} icon={GanttChartSquare} />
-          <SidebarNavItem to="/experience-board" label={t("经验看板")} icon={Gauge} />
+          <SidebarNavItem to="/experience-board" label={t("经验看板")} icon={Gauge} badge={retroOwedCount} />
           <SidebarNavItem to="/costs" label={t("Costs")} icon={DollarSign} />
           {/* One entry — /audit merged into the rich Activity feed (PAP-16302). */}
           <SidebarNavItem to="/activity" label={t("Activity")} icon={History} />
