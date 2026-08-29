@@ -6,7 +6,7 @@ import { InlineEditor } from "@/components/InlineEditor";
 import { MarkdownBody, type MarkdownExternalReferenceMap } from "@/components/MarkdownBody";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { AgentIcon } from "@/components/AgentIconPicker";
-import { SystemActorAvatar, SystemNoticeTag } from "@/components/SystemActorAvatar";
+import { SystemNoticeTag } from "@/components/SystemActorAvatar";
 import type { MentionOption } from "@/components/MarkdownEditor";
 import { formatTaskChatTimestamp } from "./task-chat-adapter";
 
@@ -119,12 +119,23 @@ export function TaskChatDescriptionBubble({ brief }: TaskChatDescriptionBubblePr
     >
       {!isHuman && brief.authorName ? (
         <span className="flex items-center gap-2 px-1">
-          {/* The description itself was filed by the create command on the
-              agent's behalf — mechanism-generated, so it wears the system
-              face with the creator kept as text (MUL-153). */}
-          <SystemActorAvatar size="sm" />
+          <Avatar size="sm" className="shrink-0" data-testid="task-chat-agent-avatar">
+            {brief.agentCustomIconUrl ? (
+              <AvatarFallback>
+                <AgentIcon icon={brief.agentIcon} customIconUrl={brief.agentCustomIconUrl} className="h-4 w-4" />
+              </AvatarFallback>
+            ) : brief.agentIcon ? (
+              <AvatarFallback>
+                <AgentIcon icon={brief.agentIcon} className="h-3.5 w-3.5" />
+              </AvatarFallback>
+            ) : (
+              <AvatarFallback>{initialsForName(brief.authorName)}</AvatarFallback>
+            )}
+          </Avatar>
+          <span className="text-sm font-semibold text-foreground">{brief.authorName}</span>
+          {/* Filed by the create command on the agent's behalf — the tag
+              marks it, the agent's own face stays (MUL-153). */}
           <SystemNoticeTag />
-          <span className="text-sm font-semibold text-foreground">由 {brief.authorName} 创建</span>
         </span>
       ) : null}
       <div

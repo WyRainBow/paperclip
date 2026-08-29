@@ -93,11 +93,11 @@ describe("TaskChatDescriptionBubble (PAP-375)", () => {
     const bubble = container.querySelector('[data-testid="task-chat-description-bubble"]');
     expect(bubble?.getAttribute("data-author")).toBe("agent");
     expect(bubble?.className).toContain("items-start");
-    // Mechanism-filed description: the system glyph + 系统通知 tag, the agent
-    // kept as attribution text — no agent avatar header anymore.
-    expect(bubble?.querySelector('[data-testid="system-actor-avatar"]')).not.toBeNull();
+    // Mechanism-filed description keeps the agent's own face and name, with
+    // the 系统通知 tag marking it (MUL-153, user's call: logo stays).
+    expect(bubble?.querySelector('[data-testid="task-chat-agent-avatar"]')).not.toBeNull();
     expect(bubble?.querySelector('[data-testid="system-notice-tag"]')).not.toBeNull();
-    expect(bubble?.textContent).toContain("由 CEO 创建");
+    expect(bubble?.textContent).toContain("CEO");
     expect(bubble?.querySelector(".bg-\\(--bubble-agent\\)")).not.toBeNull();
     expect(bubble?.querySelector(".bg-\\(--liveness-blue\\)")).toBeNull();
   });

@@ -1857,16 +1857,10 @@ function IssueChatAssistantMessage({
   // kept as attribution text (MUL-153) — it was never the agent's own words.
   const isDecisionEffect = kind === "comment"
     && isDecisionEffectComment({ body: message.content.find((p) => p.type === "text")?.text ?? "", presentation: null });
-  const agentAvatar = isDecisionEffect ? (
-    <span className="flex shrink-0 items-center gap-1.5">
-      <SystemActorAvatar size="sm" />
-      <SystemNoticeTag />
-      <span className="text-sm font-semibold text-foreground">由 {authorName} 裁决</span>
-    </span>
-  ) : (
+  const agentAvatar = (
     <Avatar size="sm" className="shrink-0">
       {agentCustomIconUrl ? <AvatarImage src={agentCustomIconUrl} alt="" /> : agentIcon ? (
-        <AvatarFallback><AgentIcon icon={agentIcon} className="h-3.5 w-3.5" /></AvatarFallback>
+        <AvatarFallback><AgentIcon icon={agentIcon} customIconUrl={agentCustomIconUrl} className="h-3.5 w-3.5" /></AvatarFallback>
       ) : (
         <AvatarFallback>{initialsForName(authorName)}</AvatarFallback>
       )}
@@ -1985,8 +1979,8 @@ function IssueChatAssistantMessage({
           {/* Icon + name together in a header ABOVE the bubble (PAP-95 rev 7). */}
           <div className="mb-1 flex items-center gap-1.5 px-1">
             <span className="flex size-5 shrink-0 items-center justify-center text-muted-foreground">
-              {agentIcon ? (
-                <AgentIcon icon={agentIcon} className="h-4 w-4" />
+              {agentCustomIconUrl || agentIcon ? (
+                <AgentIcon icon={agentIcon} customIconUrl={agentCustomIconUrl} className="h-4 w-4" />
               ) : (
                 <Avatar size="sm" className="size-5">
                   <AvatarFallback className="text-(length:--text-nano)">{initialsForName(authorName)}</AvatarFallback>
@@ -1994,6 +1988,7 @@ function IssueChatAssistantMessage({
               )}
             </span>
             <span className="text-sm font-medium text-foreground">{authorName}</span>
+            {isDecisionEffect ? <SystemNoticeTag /> : null}
             {/* Reads as "Fable · for Dotta" beside the author name (the open cross-task write design (attribution)). */}
             {attribution ? (
               <CommentAttributionChip agentName={authorName} userName={attribution.userName} />
@@ -2103,7 +2098,7 @@ function IssueChatAssistantMessage({
                     <div className="flex min-w-0 items-center gap-2.5">
                       <span className="inline-flex items-center gap-2 text-sm font-medium text-foreground/80">
                         {agentIcon ? (
-                          <AgentIcon icon={agentIcon} className="h-4 w-4 shrink-0" />
+                          <AgentIcon icon={agentIcon} customIconUrl={agentCustomIconUrl} className="h-4 w-4 shrink-0" />
                         ) : (
                           <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" />
                         )}

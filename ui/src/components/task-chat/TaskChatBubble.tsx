@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
-import { SystemActorAvatar, SystemNoticeTag } from "@/components/SystemActorAvatar";
+import { SystemNoticeTag } from "@/components/SystemActorAvatar";
 import { MarkdownBody } from "@/components/MarkdownBody";
 import { ImageGalleryModal, type GalleryMediaItem } from "@/components/ImageGalleryModal";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -99,16 +99,6 @@ export function TaskChatBubble({ item, queuedAction, attachedTurn, actions }: Ta
     <div className={cn("tc-enter-bubble flex w-full flex-col gap-1", isHuman ? "items-end" : "items-start")}>
       {!isHuman && item.authorName ? (
         <span className="flex items-center gap-2 px-1">
-          {item.isDecisionEffect ? (
-            // Mechanism-filed verdict: the system face, agent kept as text
-            // (MUL-153).
-            <>
-              <SystemActorAvatar size="sm" />
-              <SystemNoticeTag />
-              <span className="text-sm font-semibold text-foreground">由 {item.authorName} 裁决</span>
-            </>
-          ) : (
-            <>
           <Avatar size="sm" className="shrink-0" data-testid="task-chat-agent-avatar">
             {item.agentCustomIconUrl ? (
               <AvatarFallback>
@@ -123,8 +113,7 @@ export function TaskChatBubble({ item, queuedAction, attachedTurn, actions }: Ta
             )}
           </Avatar>
           <span className="text-sm font-semibold text-foreground">{item.authorName}</span>
-            </>
-          )}
+          {item.isDecisionEffect ? <SystemNoticeTag /> : null}
           {item.onBehalfOfUserName ? (
             <CommentAttributionChip
               agentName={item.authorName}
