@@ -17,9 +17,9 @@ import type { Agent } from "@paperclipai/shared";
  * clear → back to initials.
  */
 const OFFICIAL_PRESETS: Array<{ key: string; label: string; url: string; icon: string }> = [
-  { key: "anthropic", label: "Claude", url: "/brands/anthropic.svg", icon: "sparkles" },
+  { key: "claude", label: "Claude", url: "/brands/claude-starburst.png", icon: "sparkles" },
   { key: "openai", label: "Codex", url: "/brands/openai.svg", icon: "terminal" },
-  { key: "zai", label: "Zcode", url: "/brands/zai.svg", icon: "zap" },
+  { key: "zcode", label: "Zcode", url: "/brands/zcode-mark.jpeg", icon: "zap" },
 ];
 
 export function AgentLogos() {
