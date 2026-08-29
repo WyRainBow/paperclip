@@ -2733,7 +2733,7 @@ export function IssueProperties({
           // than four labels need, so the strip wraps onto a second line
           // inside its slot instead of clipping or running under the window
           // controls (MUL-164).
-          ? "min-w-0 flex-wrap items-stretch justify-start gap-1 p-0 group-data-[orientation=horizontal]/tabs:h-full"
+          ? "min-w-0 w-full! h-fit! flex-wrap items-stretch justify-start gap-1 p-0"
           : "w-full justify-start gap-1"
       }
     >
