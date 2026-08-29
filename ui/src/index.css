@@ -277,8 +277,10 @@
   /* Redesigned chat-shell column cap (phase 2c): one token caps the page
      wrapper, thread body, and pinned composer so they widen in lockstep.
      Widened 60rem → 80rem (user 2026-08-27): document cards carry tables and
-     long spec bodies, and 60rem wrapped them harder than the content needed. */
-  --tc-shell-max-w: 80rem;
+     long spec bodies, and 60rem wrapped them harder than the content needed.
+     Widened 80rem → 88rem (user 2026-08-29, MUL-162): align the body column
+     with the Multica reference — fuller column,重心左移，两侧留白更小。 */
+  --tc-shell-max-w: 88rem;
 
   /* Documents alone opt out of the classic 3xl content column (user
      2026-08-27): their header packs key, revision, docID, author, and

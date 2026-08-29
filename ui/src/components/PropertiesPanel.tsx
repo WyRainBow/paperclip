@@ -38,6 +38,12 @@ export function PropertiesPanel() {
     persistPaneWidth(classicWidthRef.current);
   }, []);
 
+  useEffect(() => {
+    const onResize = () => setClassicWidth((current) => clampPaneWidth(current));
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
   if (!panelContent) return null;
 
   if (classicTaskInterfaceEnabled) {
@@ -219,6 +225,21 @@ function ResizablePropertiesPanel({
       finishRestore();
     }
   }, [panelVisible, finishRestore]);
+
+  // A width persisted on a large monitor must not squeeze or cover the main
+  // column after the window shrinks: re-clamp on resize, and collapse when
+  // the remaining space falls below the usable minimum (MUL-162).
+  useEffect(() => {
+    const onResize = () => {
+      if (window.innerWidth - RESERVED_LAYOUT_WIDTH < MIN_PANE_WIDTH) {
+        setPanelVisible(false);
+        return;
+      }
+      setWidth((current) => clampPaneWidth(current));
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [setPanelVisible]);
 
   useEffect(
     () => () => {

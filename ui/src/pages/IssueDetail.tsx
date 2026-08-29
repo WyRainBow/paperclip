@@ -4708,26 +4708,6 @@ export function IssueDetail() {
             >
               {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
             </Button>
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              className={cn(
-                "shrink-0 transition-opacity duration-200",
-                panelVisible && !suppressPanelForFirstTask
-                  ? "opacity-0 pointer-events-none w-0 overflow-hidden"
-                  : "opacity-100",
-              )}
-              onClick={() => {
-                if (suppressPanelForFirstTask && issue?.id) {
-                  setFirstTaskPanelOverrideIssueId(issue.id);
-                }
-                setPanelVisible(true);
-              }}
-              title="Show properties"
-            >
-              <SlidersHorizontal className="h-4 w-4" />
-            </Button>
-
             <Popover open={moreOpen} onOpenChange={setMoreOpen}>
               <PopoverTrigger asChild>
                 <Button
@@ -4847,6 +4827,26 @@ export function IssueDetail() {
               </button>
             </PopoverContent>
             </Popover>
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              className={cn(
+                "shrink-0",
+                panelVisible && !suppressPanelForFirstTask && "bg-accent text-accent-foreground",
+              )}
+              aria-pressed={panelVisible && !suppressPanelForFirstTask}
+              onClick={() => {
+                const open = panelVisible && !suppressPanelForFirstTask;
+                if (!open && suppressPanelForFirstTask && issue?.id) {
+                  setFirstTaskPanelOverrideIssueId(issue.id);
+                }
+                setPanelVisible(!open);
+              }}
+              title={panelVisible && !suppressPanelForFirstTask ? "Hide properties" : "Show properties"}
+              aria-label={panelVisible && !suppressPanelForFirstTask ? "Hide properties" : "Show properties"}
+            >
+              <SlidersHorizontal className="h-4 w-4" />
+            </Button>
           </div>
         </div>
 
