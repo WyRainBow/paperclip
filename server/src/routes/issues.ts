@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { Router, type Request, type Response } from "express";
 import multer from "multer";
 import { z } from "zod";
-import { and, asc, desc, eq, inArray, isNull, notInArray } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, inArray, isNull, notInArray, or } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import {
   activityLog,
@@ -5946,6 +5946,70 @@ export function issueRoutes(
     }
     const result = await getSearchService().search(companyId, query);
     res.json(result);
+  });
+
+  /**
+   * Similar-issue candidates for the create flow (MUL-154): tokenizes the
+   * incoming title, matches tokens against active issue titles in SQL, and
+   * scores overlap server-side so the CLI no longer pulls the whole issue
+   * list into memory on every create. `exact` marks a normalized full-title
+   * match (what the CLI hard-blocks on); everything else is advisory only.
+   */
+  router.get("/companies/:companyId/issues/similar", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    const title = typeof req.query.title === "string" ? req.query.title.trim() : "";
+    if (!title) throw badRequest("title is required");
+    const rawLimit = typeof req.query.limit === "string" ? req.query.limit : "8";
+    const limit = Math.min(Math.max(parseInt(rawLimit, 10) || 8, 1), 20);
+
+    // Tokens: contiguous CJK runs (≥2 chars) and latin/alnum words (≥2 chars).
+    // The same normalization shapes the overlap score, so "Logo 统一" vs
+    // "logo统一!" still sees logo+统一 as full overlap.
+    const tokens = [...title.matchAll(/[\u4e00-\u9fff]{2,}|[A-Za-z0-9][A-Za-z0-9_-]{1,}/g)]
+      .map((m) => m[0].toLowerCase());
+    if (tokens.length === 0) {
+      res.json({ issues: [], tokens: [] });
+      return;
+    }
+    const tokenOr = or(...tokens.map((token) => ilike(issueRows.title, `%${token}%`)));
+    const rows = await db
+      .select({ id: issueRows.id, identifier: issueRows.identifier, title: issueRows.title, status: issueRows.status, parentId: issueRows.parentId })
+      .from(issueRows)
+      .where(and(
+        eq(issueRows.companyId, companyId),
+        isNull(issueRows.hiddenAt),
+        notInArray(issueRows.status, ["done", "cancelled"]),
+        tokenOr,
+      ))
+      .orderBy(desc(issueRows.updatedAt))
+      .limit(200);
+
+    const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
+    const strip = (s: string) => norm(s).replace(/[^\p{L}\p{N}]/gu, "");
+    const newNorm = norm(title);
+    const newStrip = strip(title);
+    const tokenSet = new Set(tokens);
+    const scored = rows
+      .map((row) => {
+        const lower = (row.title ?? "").toLowerCase();
+        const overlap = [...tokenSet].filter((token) => lower.includes(token)).length;
+        return {
+          id: row.id,
+          identifier: row.identifier,
+          title: row.title,
+          status: row.status,
+          parentId: row.parentId,
+          overlap,
+          score: Math.round((overlap / tokenSet.size) * 100) / 100,
+          exact: norm(row.title ?? "") === newNorm
+            || (newStrip.length >= 4 && strip(row.title ?? "") === newStrip),
+        };
+      })
+      .filter((row) => row.exact || row.overlap >= 2 || row.score >= 0.5)
+      .sort((a, b) => (b.exact ? 1 : 0) - (a.exact ? 1 : 0) || b.score - a.score)
+      .slice(0, limit);
+    res.json({ issues: scored, tokens });
   });
 
   router.get("/companies/:companyId/issues", async (req, res) => {

@@ -482,22 +482,29 @@ export function registerIssueCommands(program: Command): void {
               );
             }
           }
+          // Duplicate guard + similar-issue advisory, both answered by one
+          // lightweight server call (MUL-154): the old flow pulled the whole
+          // issue list into memory on every create.
           if (!opts.allowDuplicate) {
-            const rows =
-              (await ctx.api.get<Issue[]>(apiPath`/api/companies/${ctx.companyId}/issues`)) ?? [];
-            const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
-            const strip = (s: string) => norm(s).replace(/[^\p{L}\p{N}]/gu, "");
-            const newNorm = norm(opts.title);
-            const newStrip = strip(opts.title);
-            const hits = rows.filter((row) => {
-              if (row.status === "done" || row.status === "cancelled" || row.hiddenAt) return false;
-              const title = row.title ?? "";
-              return norm(title) === newNorm || (newStrip.length >= 4 && strip(title) === newStrip);
-            });
-            if (hits.length > 0) {
-              const list = hits.map((h) => `${h.identifier} [${h.status}] ${h.title}`).join("\n  ");
+            const similarParams = new URLSearchParams({ title: opts.title });
+            const similar =
+              (await ctx.api.get<{ issues: Array<{ identifier: string; title: string; status: string; score: number; exact: boolean }> }>(
+                `${apiPath`/api/companies/${ctx.companyId}/issues/similar`}?${similarParams.toString()}`,
+              )) ?? { issues: [] };
+            const exact = similar.issues.filter((row) => row.exact);
+            if (exact.length > 0) {
+              const list = exact.map((h) => `${h.identifier} [${h.status}] ${h.title}`).join("\n  ");
               throw new Error(
                 `an active issue with this title already exists:\n  ${list}\npass --allow-duplicate to create it anyway`,
+              );
+            }
+            const near = similar.issues.filter((row) => !row.exact);
+            if (near.length > 0) {
+              // stderr so JSON consumers piping stdout stay clean — the
+              // advisory is for the human typing the command.
+              const list = near.map((h) => `  ${h.identifier} [${h.status}] ${h.title}`).join("\n");
+              console.error(
+                `related active issues (consider --parent-id <id> to file as a sub-task, or ignore):\n${list}\n`,
               );
             }
           }
