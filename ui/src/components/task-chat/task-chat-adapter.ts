@@ -10,6 +10,7 @@
 import type { Agent } from "@paperclipai/shared";
 import type { IssueChatComment } from "@/lib/issue-chat-messages";
 import { resolveCommentAttribution } from "@/lib/comment-attribution";
+import { agentCustomIcon } from "@/components/AgentIconPicker";
 import type { TaskChatAuthorKind, TaskChatItem } from "./task-chat-model";
 
 export interface TaskChatAdapterContext {
@@ -73,11 +74,17 @@ export function commentsToTaskChatItems(
     const kind = authorKind(comment);
     let authorName: string | undefined;
     let agentIcon: string | null | undefined;
+    let agentCustomIconUrl: string | null | undefined;
     let onBehalfOfUserName: string | undefined;
     if (kind === "agent") {
       const agentId = effectiveAgentId(comment);
-      authorName = (agentId && ctx.agentMap?.get(agentId)?.name) || "Agent";
-      agentIcon = agentId ? ctx.agentMap?.get(agentId)?.icon : undefined;
+      const agent = agentId ? ctx.agentMap?.get(agentId) : undefined;
+      authorName = agent?.name || "Agent";
+      agentIcon = agent?.icon;
+      // The official brand mark (metadata.customIcon) wins over the lucide
+      // name — without threading it through, chat bubbles kept showing the
+      // initials fallback while every other surface showed the logo (MUL-152).
+      agentCustomIconUrl = agentCustomIcon(agent);
       onBehalfOfUserName = resolveCommentAttribution({
         authorAgentId: agentId,
         onBehalfOfUserId: comment.onBehalfOfUserId ?? null,
@@ -111,6 +118,7 @@ export function commentsToTaskChatItems(
       optimistic,
       queueTargetRunId: queued ? comment.queueTargetRunId ?? null : null,
       agentIcon,
+      agentCustomIconUrl,
       onBehalfOfUserName,
       // System notices carry their structured hints through to the render
       // layer (PAP-443); other authors keep the item lean.

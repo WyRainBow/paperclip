@@ -23,6 +23,8 @@ export interface TaskChatIssueBrief {
   authorName?: string;
   /** Creating agent's assigned icon (AgentIconName) for the avatar header. */
   agentIcon?: string | null;
+  /** Creating agent's brand mark (metadata.customIcon) — wins over agentIcon (MUL-152). */
+  agentCustomIconUrl?: string | null;
   /** issue.createdAt — rendered like the other bubbles' footer timestamps. */
   createdAt?: string | Date;
   onSave: (description: string) => void | Promise<unknown>;
@@ -117,7 +119,11 @@ export function TaskChatDescriptionBubble({ brief }: TaskChatDescriptionBubblePr
       {!isHuman && brief.authorName ? (
         <span className="flex items-center gap-2 px-1">
           <Avatar size="sm" className="shrink-0" data-testid="task-chat-agent-avatar">
-            {brief.agentIcon ? (
+            {brief.agentCustomIconUrl ? (
+              <AvatarFallback>
+                <AgentIcon icon={brief.agentIcon} customIconUrl={brief.agentCustomIconUrl} className="h-4 w-4" />
+              </AvatarFallback>
+            ) : brief.agentIcon ? (
               <AvatarFallback>
                 <AgentIcon icon={brief.agentIcon} className="h-3.5 w-3.5" />
               </AvatarFallback>

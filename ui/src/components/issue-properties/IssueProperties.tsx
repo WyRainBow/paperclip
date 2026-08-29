@@ -73,7 +73,7 @@ import { IssuePropertiesArtifactsTab } from "./IssuePropertiesArtifactsTab";
 import { IssuePropertiesProgressTab, isProgressNoteComment } from "./IssuePropertiesProgressTab";
 import { useTranslation } from "@/i18n";
 import { User, ArrowUpRight, Plus, GitBranch, FolderOpen, HardDrive, Check, Clock, RotateCcw, Loader2, CheckCircle2, ArchiveRestore } from "lucide-react";
-import { AgentIcon } from "../AgentIconPicker";
+import { AgentIcon, AgentMark, agentCustomIcon } from "../AgentIconPicker";
 import { InlineEntitySelector, type InlineEntityOption } from "../InlineEntitySelector";
 import {
   AssigneeRunningBanner,
@@ -100,7 +100,6 @@ import {
   thinkingEffortValueFor,
   toDateTimeLocalValue,
 } from "./helpers";
-import { agentCustomIcon } from "@/components/AgentIconPicker";
 import { PropertyPicker } from "./property-picker";
 import { PropertyChip, PropertyRow, PropertySection, PullRequestValue, SessionIdentity } from "./primitives";
 import { issueReviewPolicyBadge } from "../../lib/review-policy";
@@ -1014,7 +1013,7 @@ export function IssueProperties({
     <span className="inline-flex min-w-0 max-w-full items-center gap-1.5 text-sm" title={issue.watchdog.instructions?.trim() || undefined}>
       {(() => {
         const agent = (agents ?? []).find((candidate) => candidate.id === issue.watchdog?.watchdogAgentId);
-        return agent ? <AgentIcon icon={agent.icon} className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> : null;
+        return agent ? <AgentMark agent={agent} className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> : null;
       })()}
       <span className="shrink-0 max-w-40 truncate">{agentName(issue.watchdog.watchdogAgentId)}</span>
       {issue.watchdog.instructions?.trim() ? (
@@ -1046,7 +1045,7 @@ export function IssueProperties({
             const agent = (agents ?? []).find((candidate) => candidate.id === option.id);
             return (
               <>
-                {agent ? <AgentIcon icon={agent.icon} className="h-3 w-3 shrink-0 text-muted-foreground" /> : null}
+                {agent ? <AgentMark agent={agent} className="h-3 w-3 shrink-0 text-muted-foreground" /> : null}
                 <span className="truncate">{option.label}</span>
               </>
             );
@@ -1055,7 +1054,7 @@ export function IssueProperties({
             const agent = (agents ?? []).find((candidate) => candidate.id === option.id);
             return (
               <>
-                {agent ? <AgentIcon icon={agent.icon} className="h-3 w-3 shrink-0 text-muted-foreground" /> : null}
+                {agent ? <AgentMark agent={agent} className="h-3 w-3 shrink-0 text-muted-foreground" /> : null}
                 <span className="truncate">{option.label}</span>
               </>
             );
@@ -1565,7 +1564,9 @@ export function IssueProperties({
   );
 
   const assigneeTrigger = assignee ? (
-    <Identity name={assignee.name} size="sm" shape="square" />
+    // Brand mark wins over initials — the sidebar assignee row was the last
+    // bare "ZC" on the page (MUL-152).
+    <Identity name={assignee.name} size="sm" shape="square" avatarUrl={agentCustomIcon(assignee)} />
   ) : assigneeUserLabel ? (
     <>
       <User className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
@@ -1645,7 +1646,7 @@ export function IssueProperties({
       }}
     >
       {option.kind === "agent" ? (
-        <AgentIcon icon={option.agent.icon} className="shrink-0 h-3 w-3 text-muted-foreground" />
+        <AgentMark agent={option.agent} className="shrink-0 h-3 w-3 text-muted-foreground" />
       ) : option.kind === "user" ? (
         <User className="h-3 w-3 shrink-0 text-muted-foreground" />
       ) : null}
@@ -1804,7 +1805,7 @@ export function IssueProperties({
                 )}
                 onClick={() => toggleExecutionParticipant(stageType, encoded)}
               >
-                <AgentIcon icon={agent.icon} className="shrink-0 h-3 w-3 text-muted-foreground" />
+                <AgentMark agent={agent} className="shrink-0 h-3 w-3 text-muted-foreground" />
                 {agent.name}
               </button>
             );
@@ -2647,7 +2648,7 @@ export function IssueProperties({
                     title={`Archived by ${archivedByName} · ${formatDateTime(issue.inboxArchivedAt)}`}
                   >
                     {archivedByAgent
-                      ? <AgentIcon icon={archivedByAgent.icon} className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                      ? <AgentMark agent={archivedByAgent} className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                       : null}
                     <span className="min-w-0 truncate">
                       {archivedByName}

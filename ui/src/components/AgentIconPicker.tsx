@@ -24,6 +24,15 @@ export function agentCustomIcon(agent: { icon?: string | null; metadata?: Record
   return typeof url === "string" ? url : null;
 }
 
+/**
+ * One-stop agent mark (MUL-152): pass the agent, get its brand logo with the
+ * lucide fallback baked in. Call sites that hand-roll icon={agent.icon} keep
+ * missing metadata.customIcon — this is the seam that ends that class of bug.
+ */
+export function AgentMark({ agent, className }: { agent?: { icon?: string | null; metadata?: Record<string, unknown> | null } | null; className?: string }) {
+  return <AgentIcon icon={agent?.icon ?? null} customIconUrl={agentCustomIcon(agent)} className={className} />;
+}
+
 export function AgentIcon({ icon, customIconUrl, className }: AgentIconProps & { customIconUrl?: string | null }) {
   if (customIconUrl) {
     return <img src={customIconUrl} alt="" className={cn("rounded-sm object-cover", className)} />;

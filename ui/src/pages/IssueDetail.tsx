@@ -121,7 +121,7 @@ import {
 import { IssueSiblingNavigation } from "../components/IssueSiblingNavigation";
 import type { MarkdownExternalReferenceMap } from "../components/MarkdownBody";
 import { IssuesList } from "../components/IssuesList";
-import { AgentIcon } from "../components/AgentIconPicker";
+import { AgentIcon , agentCustomIcon } from "../components/AgentIconPicker";
 import { IssueReferenceActivitySummary } from "../components/IssueReferenceActivitySummary";
 import { IssueFieldChangeReceipt } from "../components/IssueFieldChangeReceipt";
 import { IssueWriteDenialNotice } from "../components/IssueWriteDenialNotice";
@@ -612,6 +612,9 @@ function IssueAttributionByline({
         kind: "agent",
         id: issue.assigneeAgentId,
         name: agentMap.get(issue.assigneeAgentId)?.name ?? issue.assigneeAgentId.slice(0, 8),
+        // Brand mark (metadata.customIcon) so the header stack matches every
+        // other surface — initials here were the last bare "ZC" (MUL-152).
+        avatarUrl: agentCustomIcon(agentMap.get(issue.assigneeAgentId)),
       }
     : issue.assigneeUserId
       ? {
@@ -630,6 +633,7 @@ function IssueAttributionByline({
           kind: "agent",
           id: originatingActor.id,
           name: agentMap.get(originatingActor.id)?.name ?? originatingActor.id.slice(0, 8),
+          avatarUrl: agentCustomIcon(agentMap.get(originatingActor.id)),
         }
       : {
           kind: "user",
@@ -5283,6 +5287,9 @@ export function IssueDetail() {
                         : undefined,
                       agentIcon: issue.createdByAgentId
                         ? agentMap.get(issue.createdByAgentId)?.icon
+                        : undefined,
+                      agentCustomIconUrl: issue.createdByAgentId
+                        ? agentCustomIcon(agentMap.get(issue.createdByAgentId))
                         : undefined,
                       createdAt: issue.createdAt,
                       onSave: (description) => updateIssue.mutateAsync({ description }),

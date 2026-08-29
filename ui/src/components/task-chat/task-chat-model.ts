@@ -75,6 +75,12 @@ export interface TaskChatMessageItem {
   /** Assigned agent icon name (AgentIconName) for the avatar header. */
   agentIcon?: string | null;
   /**
+   * The agent's custom brand mark URL (agent.metadata.customIcon). Takes
+   * precedence over agentIcon in AgentIcon — without it the terminal agents'
+   * official logos never reached the chat bubbles (MUL-152).
+   */
+  agentCustomIconUrl?: string | null;
+  /**
    * Responsible user's display name, set only when this agent comment is a
    * cross-issue write (the author is not the assignee). Renders as a
    * "for {user}" chip beside the author name (the open cross-task write design (attribution)).

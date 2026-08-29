@@ -99,7 +99,11 @@ export function TaskChatBubble({ item, queuedAction, attachedTurn, actions }: Ta
       {!isHuman && item.authorName ? (
         <span className="flex items-center gap-2 px-1">
           <Avatar size="sm" className="shrink-0" data-testid="task-chat-agent-avatar">
-            {item.agentIcon ? (
+            {item.agentCustomIconUrl ? (
+              <AvatarFallback>
+                <AgentIcon icon={item.agentIcon} customIconUrl={item.agentCustomIconUrl} className="h-4 w-4" />
+              </AvatarFallback>
+            ) : item.agentIcon ? (
               <AvatarFallback>
                 <AgentIcon icon={item.agentIcon} className="h-3.5 w-3.5" />
               </AvatarFallback>

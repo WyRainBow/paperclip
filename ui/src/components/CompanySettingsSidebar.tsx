@@ -5,6 +5,7 @@ import {
   Cpu,
   Download,
   FlaskConical,
+  Image as ImageIcon,
   KeyRound,
   MailPlus,
   MonitorCog,
@@ -114,6 +115,7 @@ export function CompanySettingsSidebar() {
             badge={badges?.joinRequests ?? 0}
             end
           />
+          <SidebarNavItem to="/company/settings/logos" label={t("Logo")} icon={ImageIcon} end />
           {companySettingsPluginSlots
             .filter((slot) => slot.routePath)
             .map((slot) => (
