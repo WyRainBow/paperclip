@@ -39,6 +39,7 @@ TERMINAL_SLUG="${1:-}"
 KEY_FILE=""
 case "$TERMINAL_SLUG" in
   claude-terminal|codex-terminal|zcode-terminal) KEY_FILE="$HOME/.paperclip/keys/$TERMINAL_SLUG" ;;
+  qoder) KEY_FILE="$HOME/.paperclip/keys/qoder" ;;
 esac
 
 AUTH_HEADER=""
