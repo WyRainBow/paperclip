@@ -53,6 +53,16 @@ export function ExperienceBoard() {
   useBreadcrumbsSetter(setBreadcrumbs);
 
   if (board.isLoading) return <PageSkeleton />;
+  if (board.isError) {
+    return (
+      <div className="flex flex-col items-center gap-2 p-6 text-center">
+        <p className="text-sm text-destructive">Failed to load the experience board.</p>
+        <button className="text-sm underline" onClick={() => board.refetch()}>
+          Retry
+        </button>
+      </div>
+    );
+  }
   const rows = board.data?.rows ?? [];
 
   return (
