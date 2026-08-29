@@ -32,11 +32,11 @@ export function SystemActorAvatar({ size = "sm", className }: { size?: keyof typ
 }
 
 /**
- * Inline "系统通知" tag for system-authored rows — the visual note that this
- * row is platform bookkeeping, not anyone's message (user 2026-08-29:
- * 备注一下系统通知).
+ * Inline tag marking a row as platform-generated — "系统通知" for things the
+ * platform actively says (notices, reminders), "系统记录" for things it
+ * automatically records (status/assignee event rows). MUL-150/151.
  */
-export function SystemNoticeTag({ className }: { className?: string }) {
+export function SystemNoticeTag({ label = "系统通知", className }: { label?: string; className?: string }) {
   return (
     <span
       data-testid="system-notice-tag"
@@ -45,7 +45,7 @@ export function SystemNoticeTag({ className }: { className?: string }) {
         className,
       )}
     >
-      系统通知
+      {label}
     </span>
   );
 }

@@ -179,7 +179,7 @@ import { nextWorkMode, titleForPendingWorkMode, workModeMetaFor, workModeMetaLis
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
-import { Activity, AlertTriangle, ArrowRight, Brain, Check, ChevronDown, ClipboardList, Copy, Hammer, Loader2, MoreHorizontal, Paperclip, PauseCircle, Search, Square, ThumbsDown, ThumbsUp, Trash2 } from "lucide-react";
+import { Activity, AlertTriangle, ArrowRight, Brain, Check, ChevronDown, Copy, Hammer, Loader2, MoreHorizontal, Paperclip, PauseCircle, Search, Square, ThumbsDown, ThumbsUp, Trash2, User } from "lucide-react";
 import { IssueBlockedNotice } from "./IssueBlockedNotice";
 import { IssueAssignedBacklogNotice } from "./IssueAssignedBacklogNotice";
 import {
@@ -3043,18 +3043,13 @@ function IssueChatSystemMessage({ message }: { message: ThreadMessage }) {
   }
 
   if (custom.kind === "event" && actorName) {
-    const isAgent = actorType === "agent";
-    const isSystemActor = actorType === "system";
-    const agentIcon = isAgent && actorId ? agentMap?.get(actorId)?.icon : undefined;
+    // Every event row is a system record — the platform logged this action
+    // automatically, whoever performed it (user 2026-08-29: 状态变更是系统自动带的,
+    // 得标清楚). The row carries the system glyph + a 系统记录 tag; the actor
+    // stays visible as the name text. It never borrows the actor's avatar
+    // (MUL-150/151, after Multica's system-avatar rule).
+    const rowIcon = <SystemActorAvatar size="xs" />;
     const isCurrentUser = actorType === "user" && !!currentUserId && actorId === currentUserId;
-    // A system-authored event carries the product glyph, not the clipboard —
-    // platform bookkeeping is nobody's message (MUL-150, after Multica's
-    // actor-avatar where system rows wear the logo).
-    const rowIcon = agentIcon
-      ? <AgentIcon icon={agentIcon} className="h-3 w-3" />
-      : isSystemActor
-        ? <SystemActorAvatar size="xs" />
-        : <ClipboardList className="h-3 w-3" />;
     const handoffResolvers: HandoffChipResolvers = {
       agentMap,
       currentUserId,
@@ -3065,7 +3060,7 @@ function IssueChatSystemMessage({ message }: { message: ThreadMessage }) {
       <IssueChatMetadataRow anchorId={anchorId} icon={rowIcon}>
         <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-xs">
           <span className="font-medium text-foreground">{actorName}</span>
-          {isSystemActor ? <SystemNoticeTag /> : null}
+          <SystemNoticeTag label="系统记录" />
           <span className="text-muted-foreground">
             {custom.followUpRequested === true ? "requested follow-up" : "updated this task"}
           </span>
@@ -4349,27 +4344,47 @@ const IssueChatComposer = forwardRef<IssueChatComposerHandle, IssueChatComposerP
               if (!option) return <span className="text-muted-foreground">Responsible</span>;
               const agentId = option.id.startsWith("agent:") ? option.id.slice("agent:".length) : null;
               const agent = agentId ? agentMap?.get(agentId) : null;
-              return (
-                <>
-                  {agent ? (
+              if (agent) {
+                return (
+                  <>
                     <AgentIcon icon={agent.icon} className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                  ) : null}
-                  <span className="truncate">{option.label}</span>
-                </>
-              );
+                    <span className="truncate">{option.label}</span>
+                  </>
+                );
+              }
+              // Human option (e.g. "Me") carries a person glyph — every row in
+              // this dropdown shows a face, none falls back to bare text (MUL-151).
+              if (option.id.startsWith("user:")) {
+                return (
+                  <>
+                    <User className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                    <span className="truncate">{option.label}</span>
+                  </>
+                );
+              }
+              return <span className="truncate">{option.label}</span>;
             }}
             renderOption={(option) => {
               if (!option.id) return <span className="truncate">{option.label}</span>;
               const agentId = option.id.startsWith("agent:") ? option.id.slice("agent:".length) : null;
               const agent = agentId ? agentMap?.get(agentId) : null;
-              return (
-                <>
-                  {agent ? (
+              if (agent) {
+                return (
+                  <>
                     <AgentIcon icon={agent.icon} className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                  ) : null}
-                  <span className="truncate">{option.label}</span>
-                </>
-              );
+                    <span className="truncate">{option.label}</span>
+                  </>
+                );
+              }
+              if (option.id.startsWith("user:")) {
+                return (
+                  <>
+                    <User className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                    <span className="truncate">{option.label}</span>
+                  </>
+                );
+              }
+              return <span className="truncate">{option.label}</span>;
             }}
           />
         ) : null}
