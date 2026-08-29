@@ -117,6 +117,7 @@ import { Identity } from "./Identity";
 import { InlineEntitySelector, type InlineEntityOption } from "./InlineEntitySelector";
 import { IssueThreadInteractionCard } from "./IssueThreadInteractionCard";
 import { AgentIcon, agentCustomIcon } from "./AgentIconPicker";
+import { SystemActorAvatar, SystemNoticeTag } from "./SystemActorAvatar";
 import {
   AssigneeChip,
   ComposerHandoffPreviewRow,
@@ -3043,11 +3044,17 @@ function IssueChatSystemMessage({ message }: { message: ThreadMessage }) {
 
   if (custom.kind === "event" && actorName) {
     const isAgent = actorType === "agent";
+    const isSystemActor = actorType === "system";
     const agentIcon = isAgent && actorId ? agentMap?.get(actorId)?.icon : undefined;
     const isCurrentUser = actorType === "user" && !!currentUserId && actorId === currentUserId;
+    // A system-authored event carries the product glyph, not the clipboard —
+    // platform bookkeeping is nobody's message (MUL-150, after Multica's
+    // actor-avatar where system rows wear the logo).
     const rowIcon = agentIcon
       ? <AgentIcon icon={agentIcon} className="h-3 w-3" />
-      : <ClipboardList className="h-3 w-3" />;
+      : isSystemActor
+        ? <SystemActorAvatar size="xs" />
+        : <ClipboardList className="h-3 w-3" />;
     const handoffResolvers: HandoffChipResolvers = {
       agentMap,
       currentUserId,
@@ -3058,6 +3065,7 @@ function IssueChatSystemMessage({ message }: { message: ThreadMessage }) {
       <IssueChatMetadataRow anchorId={anchorId} icon={rowIcon}>
         <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-xs">
           <span className="font-medium text-foreground">{actorName}</span>
+          {isSystemActor ? <SystemNoticeTag /> : null}
           <span className="text-muted-foreground">
             {custom.followUpRequested === true ? "requested follow-up" : "updated this task"}
           </span>
@@ -4364,6 +4372,26 @@ const IssueChatComposer = forwardRef<IssueChatComposerHandle, IssueChatComposerP
               );
             }}
           />
+        ) : null}
+
+        {/* Draft length, Multica-style (user 2026-08-29): quiet right-aligned
+            tabular counter; soft-warn near the soft cap, red past it. Mirrors
+            TaskChatComposer so both chat surfaces read the same. */}
+        {body.length > 0 ? (
+          <span
+            data-testid="issue-chat-composer-char-count"
+            className={cn(
+              "shrink-0 text-right text-(length:--text-nano) tabular-nums",
+              body.length > 8000
+                ? "text-destructive"
+                : body.length >= 7200
+                  ? "text-(--status-task-icon-todo)"
+                  : "text-muted-foreground/70",
+            )}
+            aria-label={`${body.length} characters`}
+          >
+            {body.length > 8000 ? `超出 ${body.length - 8000} 字，考虑改投 document` : `${body.length} / 8000`}
+          </span>
         ) : null}
 
         <Button size="sm" disabled={!canSubmit} onClick={() => void handleSubmit()}>

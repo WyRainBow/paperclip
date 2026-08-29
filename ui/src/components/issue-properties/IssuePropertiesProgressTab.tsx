@@ -1,10 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
 import { Activity } from "lucide-react";
+import { useMemo } from "react";
 import { issuesApi } from "@/api/issues";
 import { agentsApi } from "@/api/agents";
+import { accessApi } from "@/api/access";
 import { queryKeys } from "@/lib/queryKeys";
 import { AgentIcon, agentCustomIcon } from "@/components/AgentIconPicker";
 import { MarkdownBody } from "@/components/MarkdownBody";
+import { SystemActorAvatar, SystemNoticeTag } from "@/components/SystemActorAvatar";
+import { buildCompanyUserLabelMap } from "@/lib/company-members";
 import type { Agent, IssueComment } from "@paperclipai/shared";
 
 interface IssuePropertiesProgressTabProps {
@@ -43,6 +47,17 @@ export function IssuePropertiesProgressTab({ issueId, companyId }: IssueProperti
     queryKey: [...queryKeys.agents.list(companyId), "with-terminated"],
     queryFn: () => agentsApi.list(companyId, { includeTerminated: true }),
   });
+  // Human authors show their profile name (e.g. cocoyu), never a bare role
+  // word — "board" reading as a fourth participant was the MUL-150 complaint.
+  const { data: companyMembers } = useQuery({
+    queryKey: queryKeys.access.companyUserDirectory(companyId),
+    queryFn: () => accessApi.listUserDirectory(companyId),
+    enabled: Boolean(companyId),
+  });
+  const userLabelMap = useMemo(
+    () => buildCompanyUserLabelMap(companyMembers?.users),
+    [companyMembers?.users],
+  );
 
   const notes = (Array.isArray(comments) ? comments : []).filter(isProgressNoteComment);
   const agentById = (id: string | null): Agent | null =>
@@ -61,9 +76,17 @@ export function IssuePropertiesProgressTab({ issueId, companyId }: IssueProperti
         <ol className="space-y-1.5">
           {notes.map((note) => {
             const agent = agentById(note.authorAgentId);
+            // Three actor kinds, three faces (MUL-150): agent → its icon and
+            // name; system → the product-glyph avatar named "system" with a
+            // 系统通知 tag (platform bookkeeping is nobody's message); human →
+            // the profile display name, falling back to the id, never "board".
+            const isSystem = (note as { authorType?: string | null }).authorType === "system"
+              || (!note.authorAgentId && !note.authorUserId);
             const who = note.authorAgentId
               ? agent?.name ?? "agent"
-              : note.authorUserId ?? "board";
+              : isSystem
+                ? "system"
+                : (note.authorUserId && userLabelMap.get(note.authorUserId)) || note.authorUserId || "member";
             return (
               <li
                 key={note.id}
@@ -72,17 +95,22 @@ export function IssuePropertiesProgressTab({ issueId, companyId }: IssueProperti
                 {/* The writer's own icon, same as chat and the discussion bubbles —
                     scanning "who did what, in order" is the whole point of this
                     ledger, and a generic pulse glyph on every row defeats it.
-                    Falls back to the pulse for board/user entries. */}
+                    System entries carry the product glyph instead of a pulse. */}
                 {agent ? (
                   <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center overflow-hidden rounded-full">
                     <AgentIcon icon={agent.icon} customIconUrl={agentCustomIcon(agent)} className="h-4 w-4" />
                   </span>
+                ) : isSystem ? (
+                  <SystemActorAvatar size="xs" className="mt-0.5" />
                 ) : (
                   <Activity className="mt-0.5 h-4 w-4 shrink-0 text-sky-600 dark:text-sky-400" aria-hidden />
                 )}
                 <div className="min-w-0 flex-1">
                   <div className="flex items-baseline justify-between gap-2">
-                    <span className="text-xs font-medium text-foreground">{who}</span>
+                    <span className="flex items-baseline gap-1.5">
+                      <span className="text-xs font-medium text-foreground">{who}</span>
+                      {isSystem ? <SystemNoticeTag /> : null}
+                    </span>
                     <span className="shrink-0 text-(length:--text-micro) text-muted-foreground" title={new Date(note.createdAt).toLocaleString()}>
                       {relativeTime(note.createdAt)}
                     </span>

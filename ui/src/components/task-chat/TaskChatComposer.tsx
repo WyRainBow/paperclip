@@ -534,6 +534,27 @@ export function TaskChatComposer({
 
         <div className="flex-1" />
 
+        {/* Draft length, Multica-style (user 2026-08-29): quiet right-aligned
+            tabular counter, soft-warn at 90% of the soft cap, red past it.
+            There is no hard server cap on comment bodies — this is a nudge
+            that a comment this long probably wants to be a document. */}
+        {body.length > 0 ? (
+          <span
+            data-testid="task-chat-composer-char-count"
+            className={cn(
+              "shrink-0 text-right text-(length:--text-nano) tabular-nums",
+              body.length > 8000
+                ? "text-destructive"
+                : body.length >= 7200
+                  ? "text-(--status-task-icon-todo)"
+                  : "text-muted-foreground/70",
+            )}
+            aria-label={`${body.length} characters`}
+          >
+            {body.length > 8000 ? `超出 ${body.length - 8000} 字，考虑改投 document` : `${body.length} / 8000`}
+          </span>
+        ) : null}
+
         {showAssignee ? (
           <InlineEntitySelector
             value={assigneeValue}

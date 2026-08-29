@@ -1049,6 +1049,20 @@ export interface IssueCommentPresentation {
   title?: string | null;
   detailsDefaultOpen: boolean;
   density?: IssueCommentPresentationDensity;
+  /** discussion_qa threads: which Q&A pair this comment belongs to (MUL-38). */
+  threadId?: string;
+  /** discussion_qa: "question" | "answer" — which bubble of the pair. */
+  role?: string;
+  label?: string | null;
+  answerAgent?: string;
+  answerAgentId?: string;
+  questionAgentId?: string;
+  docKey?: string;
+  docTitle?: string | null;
+  answerModel?: string;
+  answerEffort?: string;
+  questionModel?: string;
+  questionEffort?: string;
 }
 
 export interface IssueThreadInteractionActorFields {
