@@ -13179,6 +13179,62 @@ export function issueRoutes(
       },
     });
 
+    // MUL-158 re-review: a down vote on a closed, already-sedimented card
+    // opens one auditable re-review ask instead of dying in silence.
+    if (result.vote.vote === "down" && (issue.status === "done" || issue.status === "cancelled")) {
+      const sedimented = await db
+        .select({ entityId: activityLog.entityId })
+        .from(activityLog)
+        .where(and(
+          eq(activityLog.companyId, issue.companyId),
+          eq(activityLog.action, "workspace.experience_remembered"),
+          sql`${activityLog.details}->>'issueId' = ${issue.id}`,
+        ))
+        .limit(1)
+        .then((rows) => rows.length > 0)
+        .catch(() => false);
+      if (sedimented) {
+        const reason = result.vote.reason?.trim() || "（未填理由）";
+        const body = `经验重评提醒：这张已收卡且经验已沉淀的卡收到新差评——${reason}。建议重开一次复盘（改 cases/ 对应页或补一条新经验），由老板决定是否重评。`;
+        const alreadyAsked = await db
+          .select({ id: issueComments.id })
+          .from(issueComments)
+          .where(and(
+            eq(issueComments.companyId, issue.companyId),
+            eq(issueComments.issueId, issue.id),
+            eq(issueComments.authorType, "system"),
+            eq(issueComments.body, body),
+          ))
+          .limit(1)
+          .then((rows) => rows.length > 0)
+          .catch(() => true);
+        if (!alreadyAsked) {
+          await db.insert(issueComments).values({
+            companyId: issue.companyId,
+            issueId: issue.id,
+            authorType: "system",
+            body,
+            presentation: { kind: "progress_note", tone: "info", detailsDefaultOpen: false },
+          });
+          await logActivity(db, {
+            companyId: issue.companyId,
+            actorType: "system",
+            actorId: "retro-gate",
+            action: "issue.experience_revote_requested",
+            entityType: "issue",
+            entityId: issue.id,
+            issueId: issue.id,
+            details: {
+              identifier: issue.identifier,
+              reason,
+              targetType: result.vote.targetType,
+              targetId: result.vote.targetId,
+            },
+          });
+        }
+      }
+    }
+
     if (result.consentEnabledNow) {
       await logActivity(db, {
         companyId: issue.companyId,
