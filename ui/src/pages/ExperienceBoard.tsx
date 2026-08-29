@@ -63,7 +63,7 @@ export function ExperienceBoard() {
           经验看板
         </h1>
         <p className="text-sm text-muted-foreground">
-          每行一张被记过摩擦分的卡——分高先看，有 retro-owed 的欠一次复盘，已沉淀的标了出处。
+          每行一张被记过摩擦分的卡——分高先看、有 retro-owed 的欠一次复盘、已沉淀的标了出处。
           待沉淀 {board.data?.retroOwedCount ?? 0} 张。
         </p>
       </header>
