@@ -203,6 +203,7 @@ import {
   MoreHorizontal,
   MoreVertical,
   PauseCircle,
+  PanelRight,
   Paperclip,
   PlayCircle,
   Plus,
@@ -4845,7 +4846,7 @@ export function IssueDetail() {
               title={panelVisible && !suppressPanelForFirstTask ? "Hide properties" : "Show properties"}
               aria-label={panelVisible && !suppressPanelForFirstTask ? "Hide properties" : "Show properties"}
             >
-              <SlidersHorizontal className="h-4 w-4" />
+              <PanelRight className="h-4 w-4" />
             </Button>
           </div>
         </div>
