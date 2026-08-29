@@ -273,6 +273,8 @@ export interface RetroGateInput {
   identifier: string | null;
   /** `in_review` or `done` — recorded on the activity row for sampling. */
   enteredStatus: string;
+  /** For the branch-registration reminder (MUL-144): null means no `issue start` ever ran. */
+  workingBranch: string | null;
 }
 
 /**
@@ -298,6 +300,7 @@ export async function recordRetroGate(db: Db, input: RetroGateInput): Promise<Fr
         total: score.total,
         signals: score.signals,
         threshold: RETRO_OWED_SCORE_THRESHOLD,
+        branchRegistered: Boolean(input.workingBranch?.trim()),
       },
     });
 
@@ -465,4 +468,45 @@ export async function experienceBoardRows(db: Db, companyId: string): Promise<Ex
   }));
   rows.sort((a, b) => b.frictionTotal - a.frictionTotal || (a.sediment ? 0 : 1) - (b.sediment ? 0 : 1));
   return rows;
+}
+
+/**
+ * The branch-registration reminder (MUL-144): claiming records ownership but
+ * the working branch / worktree / session五件 only land via `issue start`,
+ * and nothing between claim and close enforces them — cards were empirically
+ * closed with branch=None. This is deliberately a soft note, not a gate:
+ * research/discussion cards legitimately have no branch. Deduplicated by
+ * exact body so repeated close transitions do not stack reminders.
+ */
+export async function noteUnregisteredBranch(
+  db: Db,
+  input: { companyId: string; issueId: string; identifier: string | null; workingBranch: string | null },
+): Promise<void> {
+  try {
+    if (input.workingBranch?.trim()) return;
+    const identifierText = input.identifier ?? input.issueId.slice(0, 8);
+    const body = `收卡登记提醒：${identifierText} 未登记工作分支。写码卡请补 issue start --branch <分支名>（工作树/基线/会话一并登记）；纯调研/讨论卡可忽略本提醒。`;
+    const existing = await db
+      .select({ id: issueComments.id })
+      .from(issueComments)
+      .where(and(
+        eq(issueComments.companyId, input.companyId),
+        eq(issueComments.issueId, input.issueId),
+        eq(issueComments.authorType, "system"),
+        eq(issueComments.body, body),
+      ))
+      .limit(1)
+      .then((rows) => rows[0] ?? null);
+    if (existing) return;
+    await db.insert(issueComments).values({
+      companyId: input.companyId,
+      issueId: input.issueId,
+      authorType: "system",
+      body,
+      presentation: { kind: "progress_note", tone: "info", detailsDefaultOpen: false },
+    });
+    await db.update(issues).set({ updatedAt: new Date() }).where(eq(issues.id, input.issueId));
+  } catch (err) {
+    logger.warn({ err, issueId: input.issueId }, "branch reminder failed (transition unaffected)");
+  }
 }
