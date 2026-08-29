@@ -4843,8 +4843,8 @@ export function IssueDetail() {
                 }
                 setPanelVisible(!open);
               }}
-              title={panelVisible && !suppressPanelForFirstTask ? "Hide properties" : "Show properties"}
-              aria-label={panelVisible && !suppressPanelForFirstTask ? "Hide properties" : "Show properties"}
+              title={panelVisible && !suppressPanelForFirstTask ? "关闭侧边栏" : "展开侧边栏"}
+              aria-label={panelVisible && !suppressPanelForFirstTask ? "关闭侧边栏" : "展开侧边栏"}
             >
               <PanelRight className="h-4 w-4" />
             </Button>

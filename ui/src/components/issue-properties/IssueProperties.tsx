@@ -2730,9 +2730,10 @@ export function IssueProperties({
           // In the pane header the strip stretches to the bar's full height
           // and the active underline drops to bottom-0, so it hugs the
           // header's border line. A narrow pane gives the strip less width
-          // than four labels need, so the strip scrolls horizontally inside
-          // its slot instead of running under the window controls.
-          ? "min-w-0 overflow-x-auto items-stretch justify-start gap-1 p-0 group-data-[orientation=horizontal]/tabs:h-full"
+          // than four labels need, so the strip wraps onto a second line
+          // inside its slot instead of clipping or running under the window
+          // controls (MUL-164).
+          ? "min-w-0 flex-wrap items-stretch justify-start gap-1 p-0 group-data-[orientation=horizontal]/tabs:h-full"
           : "w-full justify-start gap-1"
       }
     >

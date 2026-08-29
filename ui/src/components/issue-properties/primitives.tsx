@@ -63,7 +63,7 @@ export function PropertyRow({
       >
         {label}
       </span>
-      <div className={cn("flex min-w-0 flex-1 items-center gap-1.5", wrap && "flex-wrap")}>{children}</div>
+      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">{children}</div>
     </div>
   );
 }
@@ -137,7 +137,7 @@ export function SessionIdentity({
       )}
       {sessionId && (
         <span
-          className="shrink-0 rounded-sm border border-border bg-muted/40 px-1.5 font-mono text-(length:--text-micro) text-muted-foreground"
+          className="max-w-full break-all rounded-sm border border-border bg-muted/40 px-1.5 font-mono text-(length:--text-micro) text-muted-foreground"
           title={sessionId}
         >
           {shortSessionId(sessionId)}
