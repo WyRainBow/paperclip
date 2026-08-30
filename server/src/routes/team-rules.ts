@@ -73,7 +73,28 @@ export function teamRulesRoutes(db: Db) {
       .from(teamRuleNotes)
       .where(eq(teamRuleNotes.companyId, companyId))
       .orderBy(asc(teamRuleNotes.position), asc(teamRuleNotes.createdAt));
-    res.json(notes);
+    // The newest revision's author is the updater — the version chain is the
+    // ledger for who touched the text, so the card header reads it from here
+    // instead of a duplicated column on the note.
+    const withLatestVersion = await Promise.all(
+      notes.map(async (note) => {
+        const [latestVersion] = await db
+          .select({
+            revisionNumber: teamRuleNoteVersions.revisionNumber,
+            createdAt: teamRuleNoteVersions.createdAt,
+            authorUserId: teamRuleNoteVersions.authorUserId,
+            authorAgentId: teamRuleNoteVersions.authorAgentId,
+          })
+          .from(teamRuleNoteVersions)
+          .where(
+            and(eq(teamRuleNoteVersions.noteId, note.id), eq(teamRuleNoteVersions.companyId, companyId)),
+          )
+          .orderBy(desc(teamRuleNoteVersions.revisionNumber))
+          .limit(1);
+        return { ...note, latestVersion: latestVersion ?? null };
+      }),
+    );
+    res.json(withLatestVersion);
   });
 
   router.post("/companies/:companyId/team-rules/notes", async (req, res) => {

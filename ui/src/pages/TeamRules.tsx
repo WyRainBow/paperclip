@@ -3,6 +3,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { History, Pencil, RotateCcw, Save, Scale, X } from "lucide-react";
 import { api } from "@/api/client";
 import { agentsApi } from "@/api/agents";
+import type { Agent } from "@paperclipai/shared";
+import { AgentMark } from "@/components/AgentIconPicker";
 import { queryKeys } from "@/lib/queryKeys";
 import { useCompany } from "@/context/CompanyContext";
 import { useToastActions } from "@/context/ToastContext";
@@ -27,6 +29,12 @@ interface TeamRuleNote {
   createdByAgentId: string | null;
   createdAt: string;
   updatedAt: string;
+  latestVersion: {
+    revisionNumber: number;
+    createdAt: string;
+    authorUserId: string | null;
+    authorAgentId: string | null;
+  } | null;
 }
 
 interface TeamRuleNoteVersion {
@@ -50,31 +58,51 @@ function versionsKey(companyId: string | null, noteId: string) {
 }
 
 /**
- * Notes and versions only store an agent id, so resolve names once per company
- * and hand the map down — a rule reader wants to know *which* teammate wrote a
- * revision, and "agent" alone doesn't answer that.
+ * Notes and versions only store an agent id. Resolve full agent objects once
+ * per company — including terminated ones, since a retired teammate still
+ * deserves a name and a logo on the revisions they wrote.
  */
-function useAgentNames(companyId: string | null) {
+function useCompanyAgents(companyId: string | null) {
   const agentsQuery = useQuery({
     queryKey: companyId ? queryKeys.agents.list(companyId) : ["agents", "team-rules", "none"],
-    queryFn: () => agentsApi.list(companyId!),
+    queryFn: () => agentsApi.list(companyId!, { includeTerminated: true }),
     enabled: Boolean(companyId),
   });
   return useMemo(() => {
-    const map = new Map<string, string>();
-    for (const agent of agentsQuery.data ?? []) map.set(agent.id, agent.name);
+    const map = new Map<string, Agent>();
+    for (const agent of agentsQuery.data ?? []) map.set(agent.id, agent);
     return map;
   }, [agentsQuery.data]);
 }
 
 /**
- * Byline for a note or revision. An id with no matching agent means the author
- * has since been removed from the company — say so rather than falling back to
- * a bare "agent", which reads as if we simply didn't bother to look it up.
+ * Byline for a note or revision. Agent authors render their brand mark; a
+ * human author shows as the board. An agent id with no matching agent means
+ * the author has since been removed from the company — say so rather than
+ * falling back to a bare "agent", which reads as if we simply didn't bother
+ * to look it up.
  */
-function authorLabel(agentId: string | null, agentNames: Map<string, string>) {
-  if (!agentId) return null;
-  return agentNames.get(agentId) ?? "已移除的 Agent";
+function AuthorName({
+  agentId,
+  userId,
+  agents,
+}: {
+  agentId: string | null;
+  userId: string | null;
+  agents: Map<string, Agent>;
+}) {
+  if (agentId) {
+    const agent = agents.get(agentId);
+    if (!agent) return <span>已移除的 Agent</span>;
+    return (
+      <span className="inline-flex items-center gap-1">
+        <AgentMark agent={agent} className="h-3.5 w-3.5 shrink-0" />
+        {agent.name}
+      </span>
+    );
+  }
+  if (userId) return <span>Board</span>;
+  return null;
 }
 
 /**
@@ -94,7 +122,7 @@ export function TeamRules() {
   const [draft, setDraft] = useState<{ title: string; body: string } | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [historyFor, setHistoryFor] = useState<string | null>(null);
-  const agentNames = useAgentNames(selectedCompanyId);
+  const agents = useCompanyAgents(selectedCompanyId);
 
   const notesQuery = useQuery({
     queryKey: notesKey(selectedCompanyId),
@@ -212,23 +240,31 @@ export function TeamRules() {
                         </Button>
                       </div>
                     </div>
-                    <div className="mt-1 text-sm text-muted-foreground">
-                      <MarkdownBody>{note.body || "_（空）_"}</MarkdownBody>
-                    </div>
-                    <p className="mt-2 text-(length:--text-micro) text-muted-foreground">
+                    <p className="mt-1 flex flex-wrap items-center gap-x-1 text-(length:--text-micro) text-muted-foreground">
                       更新于 {new Date(note.updatedAt).toLocaleString()}
-                      {` · ${charCountLabel(note.body)}`}
-                      {authorLabel(note.createdByAgentId, agentNames)
-                        ? ` · ${authorLabel(note.createdByAgentId, agentNames)} 创建`
-                        : ""}
+                      {note.latestVersion ? (
+                        <>
+                          {" · "}
+                          <AuthorName
+                            agentId={note.latestVersion.authorAgentId}
+                            userId={note.latestVersion.authorUserId}
+                            agents={agents}
+                          />
+                        </>
+                      ) : null}
+                      {" · 创建于 "}
+                      {new Date(note.createdAt).toLocaleString()}
+                      {" · "}
+                      <AuthorName agentId={note.createdByAgentId} userId={note.createdByUserId} agents={agents} />
+                      {" · "}
+                      {charCountLabel(note.body)}
                     </p>
                     {historyFor === note.id ? (
-                      <NoteVersions
-                        companyId={selectedCompanyId}
-                        noteId={note.id}
-                        agentNames={agentNames}
-                      />
+                      <NoteVersions companyId={selectedCompanyId} noteId={note.id} agents={agents} />
                     ) : null}
+                    <div className="mt-3 text-sm text-muted-foreground">
+                      <MarkdownBody>{note.body || "_（空）_"}</MarkdownBody>
+                    </div>
                   </>
                 )}
               </li>
@@ -243,11 +279,11 @@ export function TeamRules() {
 function NoteVersions({
   companyId,
   noteId,
-  agentNames,
+  agents,
 }: {
   companyId: string | null;
   noteId: string;
-  agentNames: Map<string, string>;
+  agents: Map<string, Agent>;
 }) {
   const queryClient = useQueryClient();
   const { pushToast } = useToastActions();
@@ -302,7 +338,7 @@ function NoteVersions({
           <History className="mr-1.5 h-3.5 w-3.5" aria-hidden /> 对比
         </Button>
       </div>
-      <div className="mt-2 border-t border-border">
+      <div className="mt-2 max-h-72 overflow-y-auto border-t border-border">
         {versions.length === 0 && !versionsQuery.isLoading ? (
           <p className="py-4 text-xs text-muted-foreground">还没有保存过版本。</p>
         ) : (
@@ -316,11 +352,10 @@ function NoteVersions({
                   {revisionLabel(version)}
                   {index === 0 ? <span className="ml-2 text-muted-foreground">当前</span> : null}
                 </div>
-                <div className="mt-0.5 text-(length:--text-micro) text-muted-foreground">
+                <div className="mt-0.5 flex flex-wrap items-center gap-x-1 text-(length:--text-micro) text-muted-foreground">
                   {relativeTime(version.createdAt)}
-                  {authorLabel(version.authorAgentId, agentNames)
-                    ? ` · ${authorLabel(version.authorAgentId, agentNames)}`
-                    : ""}
+                  {" · "}
+                  <AuthorName agentId={version.authorAgentId} userId={version.authorUserId} agents={agents} />
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-1">
