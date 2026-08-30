@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import { documentRevisions, documents, issueDocuments, issues } from "@paperclipai/db";
 import { isSystemIssueDocumentKey, issueDocumentKeySchema } from "@paperclipai/shared";
@@ -170,6 +170,45 @@ export function documentService(db: Db) {
         .where(and(eq(issueDocuments.issueId, issueId), eq(issueDocuments.key, key)))
         .then((rows) => rows[0] ?? null);
       return row ? mapIssueDocumentRow(row, true) : null;
+    },
+
+    // docID (documents.id first 8 chars, shown in DocumentFrameHeader) had no
+    // reverse-lookup path: callers had to walk issue lists doing prefix
+    // matching (MUL-172). Dash-stripped text matching so prefixes of any
+    // length work against the canonical dashed uuid.
+    lookupIssueDocumentsByIdOrPrefix: async (idOrPrefix: string, companyIds: string[]) => {
+      const normalized = idOrPrefix.replace(/-/g, "").toLowerCase();
+      if (companyIds.length === 0 || !/^[0-9a-f]{8,32}$/.test(normalized)) return [];
+      return db
+        .select({
+          documentId: documents.id,
+          companyId: documents.companyId,
+          key: issueDocuments.key,
+          title: documents.title,
+          latestRevisionNumber: documents.latestRevisionNumber,
+          createdByAgentId: documents.createdByAgentId,
+          createdByUserId: documents.createdByUserId,
+          updatedAt: documents.updatedAt,
+          issueId: issues.id,
+          issueCompanyId: issues.companyId,
+          issueProjectId: issues.projectId,
+          issueParentId: issues.parentId,
+          issueAssigneeAgentId: issues.assigneeAgentId,
+          issueAssigneeUserId: issues.assigneeUserId,
+          issueIdentifier: issues.identifier,
+          issueTitle: issues.title,
+          issueStatus: issues.status,
+        })
+        .from(documents)
+        .innerJoin(issueDocuments, eq(issueDocuments.documentId, documents.id))
+        .innerJoin(issues, eq(issueDocuments.issueId, issues.id))
+        .where(
+          and(
+            inArray(documents.companyId, companyIds),
+            sql`replace(${documents.id}::text, '-', '') like ${`${normalized}%`}`,
+          ),
+        )
+        .orderBy(asc(documents.updatedAt));
     },
 
     listIssueDocumentRevisions: async (issueId: string, rawKey: string) => {

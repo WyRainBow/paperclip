@@ -2403,6 +2403,15 @@ registry.registerPath({
 
 registry.registerPath({
   method: "get",
+  path: "/api/documents/{idOrPrefix}",
+  tags: ["issues"],
+  summary: "Lookup issue documents by full uuid or hex prefix (docID reverse lookup)",
+  request: { params: z.object({ idOrPrefix: z.string() }) },
+  responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized, 404: r.notFound },
+});
+
+registry.registerPath({
+  method: "get",
   path: "/api/issues/{id}/documents",
   tags: ["issues"],
   summary: "List issue documents",

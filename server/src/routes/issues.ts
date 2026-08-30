@@ -160,7 +160,7 @@ import { logger } from "../middleware/logger.js";
 import { badRequest, conflict, forbidden, HttpError, notFound, unauthorized, unprocessable } from "../errors.js";
 import { privateJsonEtag } from "../middleware/private-json-etag.js";
 import { createRequestPromiseMemo } from "../lib/request-promise-memo.js";
-import { assertBoard, assertCompanyAccess, getAccessibleResource, getActorInfo } from "./authz.js";
+import { assertBoard, assertBoardOrAgent, assertCompanyAccess, getAccessibleResource, getActorInfo } from "./authz.js";
 import {
   assertNoAgentHostWorkspaceCommandMutation,
   collectIssueWorkspaceCommandPaths,
@@ -7311,6 +7311,62 @@ export function issueRoutes(
       includeComments: shouldIncludeDocumentAnnotationComments(req),
     });
     res.json({ ...doc, annotations });
+  });
+
+  router.get("/documents/:idOrPrefix", async (req, res) => {
+    assertBoardOrAgent(req);
+    const normalized = String(req.params.idOrPrefix ?? "").replace(/-/g, "").toLowerCase();
+    if (!/^[0-9a-f]{8,32}$/.test(normalized)) {
+      res.status(400).json({ error: "Invalid document id or prefix: expected 8-32 hex characters" });
+      return;
+    }
+    const companyIds: string[] = [];
+    if (req.actor.type === "agent") {
+      if (req.actor.companyId) companyIds.push(req.actor.companyId);
+    } else {
+      for (const id of req.actor.companyIds ?? []) {
+        if (typeof id === "string") companyIds.push(id);
+      }
+    }
+    const rows = await documentsSvc.lookupIssueDocumentsByIdOrPrefix(normalized, companyIds);
+    if (rows.length === 0) {
+      res.status(404).json({ error: "Document not found" });
+      return;
+    }
+    const matches = [];
+    for (const row of rows) {
+      const decision = await decideIssueAccess(req, {
+        id: row.issueId,
+        companyId: row.issueCompanyId,
+        projectId: row.issueProjectId,
+        parentId: row.issueParentId,
+        assigneeAgentId: row.issueAssigneeAgentId,
+        assigneeUserId: row.issueAssigneeUserId,
+        status: row.issueStatus,
+      }, "issue:read");
+      if (!decision.allowed) continue;
+      matches.push({
+        documentId: row.documentId,
+        companyId: row.companyId,
+        key: row.key,
+        title: row.title,
+        latestRevisionNumber: row.latestRevisionNumber,
+        createdByAgentId: row.createdByAgentId,
+        createdByUserId: row.createdByUserId,
+        updatedAt: row.updatedAt,
+        issue: {
+          id: row.issueId,
+          identifier: row.issueIdentifier,
+          title: row.issueTitle,
+          status: row.issueStatus,
+        },
+      });
+    }
+    if (matches.length === 0) {
+      res.status(404).json({ error: "Document not found" });
+      return;
+    }
+    res.json({ query: req.params.idOrPrefix, matches });
   });
 
   router.get("/issues/:id/documents/:key/annotations", async (req, res) => {
