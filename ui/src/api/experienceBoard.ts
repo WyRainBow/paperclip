@@ -12,6 +12,17 @@ export interface FrictionEvidence {
   note?: string;
 }
 
+export interface ExperienceSelfReported {
+  documents: number;
+  parsed: number;
+  parseErrors: number;
+  totalCalls: number;
+  failedCalls: number;
+  failureRate: number;
+  clusters: number;
+  latestAt: string | null;
+}
+
 export interface ExperienceBoardRow {
   issueId: string;
   identifier: string | null;
@@ -23,6 +34,7 @@ export interface ExperienceBoardRow {
   sediment: { path: string; at: string } | null;
   lastScoredAt: string | null;
   updatedAt: string;
+  selfReported: ExperienceSelfReported | null;
 }
 
 export interface ExperienceBoardResult {

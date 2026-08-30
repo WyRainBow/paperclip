@@ -17,6 +17,7 @@ import {
 } from "@paperclipai/db";
 import { logActivity } from "./activity-log.js";
 import { documentService } from "./documents.js";
+import { loadSelfReportedForIssues, type ExperienceSelfReported } from "./exec-log.js";
 import { logger } from "../middleware/logger.js";
 
 /**
@@ -610,6 +611,8 @@ export interface ExperienceBoardRow {
   sediment: { path: string; at: string } | null;
   lastScoredAt: string | null;
   updatedAt: string;
+  /** Agent-self-reported execution-log metrics (MUL-173); null when the card has no exec-log documents. */
+  selfReported: ExperienceSelfReported | null;
 }
 
 /**
@@ -671,7 +674,11 @@ export async function experienceBoardRows(db: Db, companyId: string): Promise<Ex
   }
   const retroOwed = new Set(retroOwedRows.map((row) => row.issueId));
 
-  const issueIds = [...new Set([...frictionByIssue.keys(), ...sedimentByIssue.keys(), ...retroOwed])];
+  const baseIssueIds = [...new Set([...frictionByIssue.keys(), ...sedimentByIssue.keys(), ...retroOwed])];
+  const selfReportedByIssue = await loadSelfReportedForIssues(db, companyId, baseIssueIds);
+  // A card whose only signal is a self-reported execution log still earns a
+  // row — the layer's whole point is surfacing friction the server rows miss.
+  const issueIds = [...new Set([...baseIssueIds, ...selfReportedByIssue.keys()])];
   if (issueIds.length === 0) return [];
   const issueRows = await db
     .select({ id: issues.id, identifier: issues.identifier, title: issues.title, status: issues.status, updatedAt: issues.updatedAt })
@@ -689,6 +696,7 @@ export async function experienceBoardRows(db: Db, companyId: string): Promise<Ex
     sediment: sedimentByIssue.get(issue.id) ?? null,
     lastScoredAt: frictionByIssue.get(issue.id)?.at ?? null,
     updatedAt: issue.updatedAt.toISOString(),
+    selfReported: selfReportedByIssue.get(issue.id) ?? null,
   }));
   rows.sort((a, b) => b.frictionTotal - a.frictionTotal || (a.sediment ? 0 : 1) - (b.sediment ? 0 : 1));
   return rows;

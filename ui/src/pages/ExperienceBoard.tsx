@@ -97,6 +97,12 @@ export function ExperienceBoard() {
 
 function BoardRow({ row }: { row: ExperienceBoardRow }) {
   const href = row.identifier ? `/${row.identifier.split("-")[0]}/issues/${row.identifier}` : null;
+  const self = row.selfReported;
+  const selfLabel = !self
+    ? null
+    : self.parsed > 0
+      ? `自报 ${self.totalCalls} 调用 / ${self.failedCalls} 失败（${Math.round(self.failureRate * 100)}%）`
+      : `自报 ×${self.documents} 档不可解析`;
   return (
     <div className="flex flex-col gap-1.5 p-4">
       <div className="flex flex-wrap items-center gap-2">
@@ -109,12 +115,20 @@ function BoardRow({ row }: { row: ExperienceBoardRow }) {
         <Badge variant="outline">{STATUS_LABELS[row.status] ?? row.status}</Badge>
         <Badge variant={frictionBadgeVariant(row.frictionTotal)}>摩擦分 {row.frictionTotal}</Badge>
         {row.retroOwed ? <Badge variant="destructive">欠复盘</Badge> : null}
+        {selfLabel ? <Badge variant="secondary">{selfLabel}</Badge> : null}
         {row.sediment ? (
           <Badge variant="secondary">已沉淀 · {row.sediment.path}</Badge>
         ) : (
           <Badge variant="outline">未沉淀</Badge>
         )}
       </div>
+      {self ? (
+        <p className="text-xs text-muted-foreground">
+          自报执行日志 ×{self.documents} 档{self.clusters > 0 ? `，连败簇 ${self.clusters} 次` : ""}
+          {self.parseErrors > 0 ? `，${self.parseErrors} 档缺结构块按原文计` : ""}
+          （执行方自述，补充服务端摩擦分，不作门禁依据）
+        </p>
+      ) : null}
       {row.frictionSignals.length > 0 ? (
         <div className="flex flex-col gap-1">
           {row.frictionSignals.map((signal) => (
