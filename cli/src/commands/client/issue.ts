@@ -40,6 +40,7 @@ import {
   resolveSessionId,
   resolveSessionIdVerbose,
   detectTerminalSlug,
+  autoClaimIfUnclaimed,
   type BaseClientOptions,
   type ResolvedClientContext,
   assertDecisionBodyTemplate,
@@ -247,31 +248,6 @@ function agentIdResolver(ctx: ResolvedClientContext, companyId: string | undefin
 
 /** `--option "id|Label"` — the pipe keeps the flag typable without shell-quoting JSON. */
 
-/**
- * 认领防漏（MUL-72）: an agent writing progress or advancing status on an
- * unclaimed card (no assignee AND no Driving) auto-claims it first — the
- * server now 409s such writes, and this keeps the CLI path frictionless.
- * Board callers (no /api/agents/me) are untouched.
- */
-async function autoClaimIfUnclaimed(ctx: ResolvedClientContext, issue: Issue): Promise<void> {
-  if (issue.assigneeAgentId || issue.drivingAgentId) return;
-  const me = await ctx.api.get<{ id: string } | null>(apiPath`/api/agents/me`).catch(() => null);
-  if (!me?.id) return;
-  const drivingSession = resolveSessionId().sessionId;
-  // Driving alone is the claim marker (same as the claim command's normal
-  // path); assigneeAgentId is left untouched because cards default to
-  // assigneeUserId=local-board and setting both trips the one-assignee rule.
-  try {
-    await ctx.api.patch<Issue>(apiPath`/api/issues/${issue.id}`, {
-      drivingAgentId: me.id,
-      ...(drivingSession ? { drivingSession } : {}),
-    });
-    console.error(`auto-claimed ${issue.identifier ?? issue.id}（Driving 记为本 agent）`);
-    issue.drivingAgentId = me.id;
-  } catch (err) {
-    console.error(`auto-claim failed for ${issue.identifier ?? issue.id}: ${err instanceof Error ? err.message : String(err)}`);
-  }
-}
 
 /** Shape of `GET /api/issues/:id/preflight` (MUL-448). */
 type IssuePreflightReport = {
@@ -1367,6 +1343,10 @@ export function registerIssueCommands(program: Command): void {
             changeSummary: opts.changeSummary,
             baseRevisionId: opts.baseRevisionId,
           });
+          // 认领门禁扩面 (MUL-443): writing a document is taking the card, so
+          // the CLI takes it rather than making the caller discover the 409.
+          const existing = await ctx.api.get<Issue>(apiPath`/api/issues/${issueId}`).catch(() => null);
+          if (existing) await autoClaimIfUnclaimed(ctx, existing);
           const doc = await ctx.api.put(apiPath`/api/issues/${issueId}/documents/${key}`, payload);
           printOutput(doc, { json: ctx.json });
         } catch (err) {

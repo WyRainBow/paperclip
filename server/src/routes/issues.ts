@@ -195,6 +195,7 @@ import { decisionTrainingService } from "../services/decision-training.js";
 import { feedbackService } from "../services/feedback.js";
 import { noteUnregisteredBranch, recordRetroGate } from "../services/retro-gate.js";
 import { missingIssueClosePrerequisites, issuePreflight, type IssuePreflightActor } from "../services/issue-prerequisites.js";
+import { unclaimedDeliverableDenial, type ClaimGateDeliverable } from "../services/issue-claim-gate.js";
 import { instanceSettingsService } from "../services/instance-settings.js";
 import {
   ISSUE_BLOCKER_DIAGNOSTICS_MAX_BLOCKERS,
@@ -7693,12 +7694,30 @@ export function issueRoutes(
     },
   );
 
+  /**
+   * Sends the 认领门禁 denial when there is one (MUL-443). Returns true when
+   * the caller should stop — the response is already written. The rule itself
+   * lives in services/issue-claim-gate.ts, shared with the decision routes.
+   */
+  function denyUnclaimedDeliverableWrite(
+    req: Request,
+    res: Response,
+    issue: { id: string; identifier?: string | null; assigneeAgentId: string | null; drivingAgentId: string | null },
+    deliverable: ClaimGateDeliverable,
+  ): boolean {
+    const denial = unclaimedDeliverableDenial({ actorType: req.actor.type, issue, deliverable });
+    if (!denial) return false;
+    res.status(denial.status).json(denial.body);
+    return true;
+  }
+
   router.put("/issues/:id/documents/:key", validate(upsertIssueDocumentSchema), async (req, res) => {
     const id = req.params.id as string;
     const issue = await getAccessibleResource(req, res, svc.getById(id), "Issue not found");
     if (!issue) return;
     if (!(await assertAgentIssueMutationAllowed(req, res, issue))) return;
     if (!(await assertDeliverableMutationAllowedByRunContext(req, res, issue))) return;
+    if (denyUnclaimedDeliverableWrite(req, res, issue, "document")) return;
     const keyParsed = issueDocumentKeySchema.safeParse(String(req.params.key ?? "").trim().toLowerCase());
     if (!keyParsed.success) {
       res.status(400).json({ error: "Invalid document key", details: keyParsed.error.issues });
