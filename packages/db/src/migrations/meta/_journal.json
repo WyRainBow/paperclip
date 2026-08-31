@@ -1681,6 +1681,20 @@
       "when": 1787915699330,
       "tag": "0241_recall_misses",
       "breakpoints": true
+    },
+    {
+      "idx": 242,
+      "version": "7",
+      "when": 1787915699331,
+      "tag": "0242_recall_queries",
+      "breakpoints": true
+    },
+    {
+      "idx": 243,
+      "version": "7",
+      "when": 1787915699332,
+      "tag": "0243_recall_queries_scoring_terms",
+      "breakpoints": true
     }
   ]
 }

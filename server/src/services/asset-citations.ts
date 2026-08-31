@@ -6,7 +6,7 @@ import {
   feedbackVotes,
   teamRuleNotes,
   teamRuleNoteVersions,
-  recallMisses,
+  recallQueries,
   teamWikiPages,
   teamWikiPageVersions,
   workspaceAssetCitations,
@@ -50,46 +50,68 @@ export function assetKey(kind: AssetKind, id: string): string {
   return `${kind}:${id}`;
 }
 
-/** What the ranking pipeline saw, so a miss says why rather than only that. */
-export interface MissDiagnostics {
-  /** Scoring terms left after tokenization. Zero means the tokenizer ate the query. */
+/** What the ranking pipeline saw, so a row says why rather than only what. */
+export interface RecallQueryOutcome {
+  /** Terms the tokenizer produced. Zero means it ate the query entirely. */
   termCount: number;
+  /**
+   * Terms that survived df pruning. Its ratio to `termCount` says how much of
+   * the question the corpus recognised, which coverage alone gets backwards:
+   * a noise query can score coverage 1.0 off the one generic term left to it.
+   */
+  scoringTermCount?: number | null;
   /** Rows SQL returned before ranking. Zero is a content gap, non-zero is a score floor. */
   candidateCount: number;
   /** Whether the vector leg ran at all. */
   semanticUsed: boolean;
+  /** Results the caller received. Zero is the miss case. */
+  resultCount: number;
+  /** Best result's final score, null when there were none. */
+  topScore?: number | null;
+  /** Best result's weighted coverage, null when there were none. */
+  topCoverage?: number | null;
 }
 
 /**
- * Record a recall query that matched nothing (MUL-449).
+ * Record one recall search and how it went (MUL-449).
  *
- * `recordServed` returns early on an empty hit list, and for the citation
- * ledger that is right: there is no asset to attach a row to. But it left the
- * most useful signal about recall quality with nowhere to go — MUL-80 waited
- * two months for a real miss to surface, while misses were happening routinely
- * and vanishing.
+ * `recordServed` writes one row per asset and returns early on an empty hit
+ * list — correct for the citation ledger, since there is no asset to attach to,
+ * but it left the most useful signal about recall quality with nowhere to go.
+ * MUL-80 waited two months for a real failure to surface while failures were
+ * happening routinely and vanishing.
+ *
+ * Records every search, not only the empty ones (decision 37dc4085). Measured
+ * against the real corpus, questions built to have no answer still came back
+ * with results, so the failure worth catching is "only noise", not "nothing".
+ * Judging noise needs a threshold that needs a distribution that does not exist
+ * yet, so this stores the facts and judges none of them.
  *
  * Never throws, same as `recordServed` and for the same reason: this is on the
  * path of every session start, and a session that loses one observability row
  * is better than a session that loses its rules.
  */
-export async function recordMiss(
+export async function recordRecallQuery(
   db: Db,
   actor: CitationActor,
   query: string,
-  diagnostics: MissDiagnostics,
+  outcome: RecallQueryOutcome,
 ): Promise<boolean> {
   if (!query.trim()) return false;
   try {
-    await db.insert(recallMisses).values({
+    await db.insert(recallQueries).values({
       companyId: actor.companyId,
       issueId: actor.issueId ?? null,
       agentId: actor.agentId ?? null,
       sessionId: actor.sessionId ?? null,
       query,
-      termCount: diagnostics.termCount,
-      candidateCount: diagnostics.candidateCount,
-      semanticUsed: diagnostics.semanticUsed,
+      termCount: outcome.termCount,
+      scoringTermCount: outcome.scoringTermCount ?? null,
+      candidateCount: outcome.candidateCount,
+      semanticUsed: outcome.semanticUsed,
+      resultCount: outcome.resultCount,
+      topScore: outcome.topScore ?? null,
+      topCoverage: outcome.topCoverage ?? null,
     });
     return true;
   } catch {

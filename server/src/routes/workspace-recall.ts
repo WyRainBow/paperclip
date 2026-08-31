@@ -17,7 +17,7 @@ import {
   type AssetKind,
   adoptionBoost,
   citedCountsByAsset,
-  recordMiss,
+  recordRecallQuery,
   recordServed,
 } from "../services/asset-citations.js";
 import {
@@ -300,13 +300,14 @@ export function workspaceRecallRoutes(db: Db): Router {
     // question from building a hundred-clause OR.
     const sqlTerms = terms.slice(0, MAX_SQL_TERMS);
     if (sqlTerms.length === 0) {
-      // A query that tokenizes to nothing is the most extreme miss there is,
+      // A query that tokenizes to nothing is the most extreme failure there is,
       // and the one most worth seeing: it means the tokenizer failed, not the
       // corpus. Recorded before the 400 so the error does not swallow it.
-      await recordMiss(db, ledgerActor, query, {
+      await recordRecallQuery(db, ledgerActor, query, {
         termCount: 0,
         candidateCount: 0,
         semanticUsed: false,
+        resultCount: 0,
       });
       throw badRequest("q has no searchable terms");
     }
@@ -475,18 +476,31 @@ export function workspaceRecallRoutes(db: Db): Router {
     //
     // Attribution was resolved before the search (see `ledgerActor` above), so
     // both halves and the miss path record the same actor.
-    if (results.length === 0) {
-      // The other half of the picture, added in MUL-449. A query that found
-      // nothing used to leave no trace at all, which is why MUL-80 spent two
-      // months waiting for a real miss that a human eventually had to produce
-      // by hand. The diagnostics say which of four things went wrong: the
-      // tokenizer, the corpus, the score floor, or the vector leg being off.
-      await recordMiss(db, ledgerActor, query, {
-        termCount: terms.length,
-        candidateCount: rows.length,
-        semanticUsed: embeddingConfig !== null,
-      });
-    }
+    // The other half of the picture, added in MUL-449: one row per search,
+    // whatever the outcome. A query that found nothing used to leave no trace,
+    // which is why MUL-80 spent two months waiting for a failure a human
+    // eventually had to produce by hand. Recording only the empty ones turned
+    // out to miss the common case — measured on the real corpus, questions
+    // built to have no answer still returned results, so the failure worth
+    // catching is "only noise" rather than "nothing" (decision 37dc4085).
+    //
+    // Nothing here judges quality. `topScore` and `topCoverage` are stored so
+    // the threshold can be chosen later from a real distribution instead of
+    // guessed now and baked into the write path.
+    await recordRecallQuery(db, ledgerActor, query, {
+      termCount: terms.length,
+      // What survived df pruning. Measured on the real corpus, this is the
+      // column that separates noise from a real answer: a question about
+      // something the corpus knows nothing about still scored coverage 1.000,
+      // because pruning left it one generic bigram which then matched
+      // perfectly. Twelve terms reduced to one is the tell, not the coverage.
+      scoringTermCount: weights.terms.length,
+      candidateCount: rows.length,
+      semanticUsed: embeddingConfig !== null,
+      resultCount: results.length,
+      topScore: results[0]?.score ?? null,
+      topCoverage: results[0]?.coverage ?? null,
+    });
     await recordServed(
       db,
       ledgerActor,
