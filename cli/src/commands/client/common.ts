@@ -10,6 +10,7 @@ import { readConfig } from "../../config/store.js";
 import { readContext, resolveProfile, type ClientContextProfile } from "../../client/context.js";
 import { ApiRequestError, PaperclipApiClient } from "../../client/http.js";
 import { missingDecisionBodySections } from "@paperclipai/shared";
+import { sessionIdFromEnv, sessionLocatorForSlug } from "@paperclipai/shared/session-locator";
 
 export interface BaseClientOptions {
   config?: string;
@@ -288,18 +289,72 @@ export function detectTerminalSlug(): string | null {
  * Recall was the case that made it matter: 340 served ledger rows had a null
  * `session_id` because the parameter existed but had to be passed by hand, so
  * "did this session have to search twice" was unanswerable.
+ *
+ * Now a thin alias over resolveSessionId (MUL-175). The three-variable chain it
+ * used to inline read `CODEX_SESSION_ID` and `ZCODE_SESSION_ID`, neither of
+ * which any harness exports — so those recall rows were null for Codex and
+ * ZCode no matter who passed what. Delegating fixes them here too rather than
+ * leaving two helpers that answer the same question differently.
  */
 export function detectTerminalSessionId(): string | null {
-  return (
-    process.env.CLAUDE_CODE_SESSION_ID?.trim() ||
-    process.env.CODEX_SESSION_ID?.trim() ||
-    process.env.ZCODE_SESSION_ID?.trim() ||
-    null
-  );
+  return resolveSessionId().sessionId;
 }
 
 export function terminalKeyPath(slug: string): string {
   return path.join(os.homedir(), ".paperclip", "keys", slug);
+}
+
+/**
+ * The session id to record on a card, resolved through this host's locator
+ * (MUL-175).
+ *
+ * Replaces the `CLAUDE_CODE_SESSION_ID || CODEX_SESSION_ID || ZCODE_SESSION_ID`
+ * chain that four call sites each carried their own copy of. Two of those three
+ * variables are not exported by anything, so Codex and ZCode had been filing
+ * cards with an empty session slot and no complaint — see SESSION_LOCATORS for
+ * what each harness actually publishes.
+ *
+ * Returns the id, or a reason it has none. Callers surface the reason instead
+ * of writing a blank, because "this harness publishes no session variable" and
+ * "there is no session" are different facts and only the first is normal.
+ */
+export function resolveSessionId(explicit?: string | null): {
+  sessionId: string | null;
+  reason: string | null;
+} {
+  const trimmed = explicit?.trim();
+  if (trimmed) return { sessionId: trimmed, reason: null };
+
+  let slug: string | null = null;
+  try {
+    slug = detectTerminalSlug();
+  } catch {
+    // Ambiguous host: identity resolution reports this loudly on its own path,
+    // and a missing session id must not be the thing that fails a write.
+    return { sessionId: null, reason: "host terminal is ambiguous" };
+  }
+
+  const locator = sessionLocatorForSlug(slug);
+  if (!locator) {
+    return { sessionId: null, reason: slug ? `no session locator for ${slug}` : "not running under a recognized terminal" };
+  }
+  const fromEnv = sessionIdFromEnv(slug, process.env);
+  if (fromEnv) return { sessionId: fromEnv, reason: null };
+  if (!locator.sessionIdEnv) {
+    return { sessionId: null, reason: `${locator.label} publishes no session variable — pass --session, transcripts are at ${locator.transcriptPathTemplate}` };
+  }
+  return { sessionId: null, reason: `$${locator.sessionIdEnv} is empty — pass --session` };
+}
+
+/**
+ * Same as resolveSessionId but says so on stderr when it comes up empty. A
+ * silently blank session slot is how Codex and ZCode cards lost their session
+ * for months; the write still proceeds, the gap is just no longer invisible.
+ */
+export function resolveSessionIdVerbose(explicit?: string | null): string | null {
+  const { sessionId, reason } = resolveSessionId(explicit);
+  if (!sessionId && reason) console.error(`session id not recorded: ${reason}`);
+  return sessionId;
 }
 
 /**

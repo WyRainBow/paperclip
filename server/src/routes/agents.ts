@@ -41,6 +41,7 @@ import {
   writePaperclipSkillSyncPreference,
 } from "@paperclipai/adapter-utils/server-utils";
 import { trackAgentCreated } from "@paperclipai/shared/telemetry";
+import { sessionLocatorForSlug } from "@paperclipai/shared/session-locator";
 import { validate } from "../middleware/validate.js";
 import {
   agentService,
@@ -2920,6 +2921,28 @@ export function agentRoutes(
     },
   );
 
+  /**
+   * Publish where this agent's sessions live (MUL-175).
+   *
+   * Two facts, two homes, so neither can drift into the other: which harness an
+   * agent runs on is per-agent and lives on the record
+   * (`runtimeConfig.terminalSlug`); where that harness keeps its transcripts is
+   * per-harness and lives in SESSION_LOCATORS. The read model joins them so the
+   * agents list, and MUL-173's transcript collector, resolve against the same
+   * table the CLI does rather than a copy that goes stale when a harness moves.
+   *
+   * Agents with no terminalSlug (hosted adapters, anything not a terminal) get
+   * null, which is the honest answer rather than a guessed path.
+   */
+  function withSessionLocator<T extends { runtimeConfig?: Record<string, unknown> | null } | null>(agent: T) {
+    if (!agent) return agent;
+    const slug = agent.runtimeConfig?.terminalSlug;
+    return {
+      ...agent,
+      sessionLocator: typeof slug === "string" ? sessionLocatorForSlug(slug) : null,
+    };
+  }
+
   router.get("/companies/:companyId/agents", async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
@@ -2938,10 +2961,10 @@ export function agentRoutes(
     const result = await filterAgentsForActor(req, await svc.list(companyId, { includeTerminated }));
     const canReadConfigs = await actorCanReadConfigurationsForCompany(req, companyId);
     if (canReadConfigs) {
-      res.json(result);
+      res.json(result.map((agent) => withSessionLocator(agent)));
       return;
     }
-    res.json(result.map((agent) => redactForRestrictedAgentView(agent)));
+    res.json(result.map((agent) => withSessionLocator(redactForRestrictedAgentView(agent))));
   });
 
   router.get("/instance/scheduler-heartbeats", async (req, res) => {
