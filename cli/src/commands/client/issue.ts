@@ -37,6 +37,8 @@ import {
   inferContentTypeFromPath,
   printOutput,
   resolveCommandContext,
+  resolveSessionId,
+  resolveSessionIdVerbose,
   type BaseClientOptions,
   type ResolvedClientContext,
   assertDecisionBodyTemplate,
@@ -251,8 +253,7 @@ async function autoClaimIfUnclaimed(ctx: ResolvedClientContext, issue: Issue): P
   if (issue.assigneeAgentId || issue.drivingAgentId) return;
   const me = await ctx.api.get<{ id: string } | null>(apiPath`/api/agents/me`).catch(() => null);
   if (!me?.id) return;
-  const drivingSession =
-    process.env.CLAUDE_CODE_SESSION_ID?.trim() || process.env.CODEX_SESSION_ID?.trim() || process.env.ZCODE_SESSION_ID?.trim() || null;
+  const drivingSession = resolveSessionId().sessionId;
   // Driving alone is the claim marker (same as the claim command's normal
   // path); assigneeAgentId is left untouched because cards default to
   // assigneeUserId=local-board and setting both trips the one-assignee rule.
@@ -416,7 +417,7 @@ export function registerIssueCommands(program: Command): void {
       .option("--billing-code <code>", "Billing code")
       .option(
         "--session <id>",
-        "Session id to record on the card — which CLI/agent session filed it (navigation aid, not identity). Defaults to $CLAUDE_CODE_SESSION_ID / $CODEX_SESSION_ID / $ZCODE_SESSION_ID",
+        "Session id to record on the card — which CLI/agent session filed it (navigation aid, not identity). Defaults to whatever this host terminal publishes; Zcode and Qoder publish nothing, so pass it there",
       )
       .option("--allow-duplicate", "Create even when an active issue with the same title exists")
       .option("--as-board", "File as the board instead of an agent — the card gets no agent author and that cannot be corrected later")
@@ -513,12 +514,7 @@ export function registerIssueCommands(program: Command): void {
               );
             }
           }
-          const session =
-            opts.session?.trim() ||
-            process.env.CLAUDE_CODE_SESSION_ID?.trim() ||
-            process.env.CODEX_SESSION_ID?.trim() ||
-            process.env.ZCODE_SESSION_ID?.trim() ||
-            undefined;
+          const session = resolveSessionIdVerbose(opts.session) ?? undefined;
           const payload = createIssueSchema.parse({
             title: opts.title,
             description: opts.description,
@@ -625,11 +621,7 @@ export function registerIssueCommands(program: Command): void {
           // advancing an unclaimed card (MUL-72), and Driving is the claim
           // marker that opens that gate. Self-assigning instead trips the
           // one-assignee rule (cards default to assigneeUserId=local-board).
-          const drivingSession =
-            process.env.CLAUDE_CODE_SESSION_ID?.trim() ||
-            process.env.CODEX_SESSION_ID?.trim() ||
-            process.env.ZCODE_SESSION_ID?.trim() ||
-            null;
+          const drivingSession = resolveSessionIdVerbose();
           const me = await ctx.api.get<{ id: string } | null>(apiPath`/api/agents/me`).catch(() => null);
           const drivingAgentId = me?.id ?? process.env.PAPERCLIP_AGENT_ID?.trim() ?? null;
           if (drivingSession || drivingAgentId) {
@@ -667,7 +659,7 @@ export function registerIssueCommands(program: Command): void {
       .option("--note <text>", "Extra start note text")
       .option(
         "--session <id>",
-        "Driving session to record on the card — who is working it now (one slot, overwritten per start). Defaults to $CLAUDE_CODE_SESSION_ID / $CODEX_SESSION_ID",
+        "Driving session to record on the card — who is working it now (one slot, overwritten per start). Defaults to whatever this host terminal publishes; Zcode and Qoder publish nothing, so pass it there",
       )
       .action(async (issueId: string, opts: IssueStartOptions) => {
         try {
@@ -691,12 +683,7 @@ export function registerIssueCommands(program: Command): void {
               });
             }
           }
-          const drivingSession =
-            opts.session?.trim() ||
-            process.env.CLAUDE_CODE_SESSION_ID?.trim() ||
-            process.env.CODEX_SESSION_ID?.trim() ||
-            process.env.ZCODE_SESSION_ID?.trim() ||
-            null;
+          const drivingSession = resolveSessionIdVerbose(opts.session);
           const drivingPatch: Record<string, unknown> = {};
           // Structured branch column (MUL-59): the branch used to live only in
           // the opening comment's prose.
