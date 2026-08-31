@@ -53,9 +53,14 @@ export const issues = pgTable(
     /**
      * 评审会话 (MUL-456): who reviewed this card and in which session.
      *
-     * Written when a review is archived, not claimed up front. Review is the
-     * step most likely to run on another terminal, so it is the one whose
-     * context is hardest to find again, and it had nowhere to be recorded.
+     * Review is the step most likely to run on another terminal, so it is the
+     * one whose context is hardest to find again, and it had nowhere to be
+     * recorded.
+     *
+     * Set by hand and only when it is worth pointing back at (MUL-457). It was
+     * briefly wired to the review-archive command, which was wrong: that
+     * command files any Q&A pair, so ordinary exchanges would have been stamped
+     * as reviews and the field would no longer answer "was this reviewed".
      *
      * One slot, overwritten by the latest pass. Earlier rounds stay in the
      * discussion thread.

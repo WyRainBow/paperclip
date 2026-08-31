@@ -2258,11 +2258,17 @@ export function IssueProperties({
             <span className="text-sm text-muted-foreground">{t("Unclaimed")}</span>
           )}
         </PropertyRow>
-        {/* 评审会话 (MUL-456): review usually runs on another terminal, so this
-            is the session hardest to find again later and the only one the card
-            had nowhere to record. Always rendered, like 分支 below: "nobody has
-            reviewed this" is a real answer and has to look different from
-            "wrong section". */}
+        {/* 评审会话 (MUL-456, 写入时机由 MUL-457 改定): review usually runs on
+            another terminal, so this is the session hardest to find again and
+            the only one the card had nowhere to record.
+
+            Filled by hand, never automatically. Wiring it to `issue qa` looked
+            tempting, but that command files any Q&A pair — auto-filling would
+            mark ordinary exchanges as reviews, and then the row would answer a
+            different question than the one it is here to answer.
+
+            Always rendered, like 分支 below: "nobody reviewed this" is a real
+            answer and has to look different from "wrong section". */}
         <PropertyRow label={t("Reviewer Session")}>
           {issue.reviewerSession || issue.reviewerAgentId ? (
             <SessionIdentity
