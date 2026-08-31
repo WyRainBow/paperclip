@@ -1018,7 +1018,10 @@ export function IssueDocumentsSection({
               key={doc.id}
               id={`document-${doc.key}`}
               className={cn(
-                "rounded-lg border border-border p-3 transition-colors duration-1000",
+                // The lift is deliberately below notice: it stops the card
+                // reading as painted onto the page without announcing itself
+                // as a raised surface (MUL-442).
+                "rounded-lg border border-border bg-card p-3 shadow-(--surface-shadow) transition-colors duration-1000",
                 highlightDocumentKey === doc.key && "border-primary/50 bg-primary/5",
               )}
             >

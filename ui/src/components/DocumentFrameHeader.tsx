@@ -82,9 +82,43 @@ function RevisionActorAvatar({ actor }: { actor: DocumentFrameHeaderRevisionActo
   );
 }
 
+/**
+ * The document's role, as colour. A list of documents is scanned for kind
+ * before it is read, and an all-grey column of keys makes `tech-proposal`
+ * and `review-r1` cost the same glance (MUL-442).
+ *
+ * The hues are borrowed from the task-status vocabulary rather than declared
+ * here — a fifth colour family competing with the status chips is exactly
+ * what the /decisions cleanup removed. One recipe throughout: the hue at 15%
+ * for the ground, the same hue solid for the text, no border.
+ */
+const DOCUMENT_KEY_HUE: { match: (key: string) => boolean; hue: string }[] = [
+  { match: (key) => key === "requirements", hue: "--status-task-in_progress" },
+  { match: (key) => key === "tech-proposal" || key === "spec", hue: "--status-task-in_review" },
+  { match: (key) => key.startsWith("review"), hue: "--status-task-todo" },
+  { match: (key) => key.startsWith("decision"), hue: "--status-task-done" },
+];
+
 function DocumentKeyBadge({ documentKey }: { documentKey: string }) {
+  const hue = DOCUMENT_KEY_HUE.find((entry) => entry.match(documentKey))?.hue;
+  // Keys outside the taxonomy (plan, meeting notes, system documents) keep
+  // the neutral outline: colour is reserved for the roles it distinguishes.
+  if (!hue) {
+    return (
+      <Badge variant="outline" className="border-border font-mono text-(length:--text-nano) uppercase tracking-(--tracking-eyebrow) text-muted-foreground">
+        {documentKey}
+      </Badge>
+    );
+  }
   return (
-    <Badge variant="outline" className="border-border font-mono text-(length:--text-nano) uppercase tracking-(--tracking-eyebrow) text-muted-foreground">
+    <Badge
+      variant="outline"
+      className="border-transparent font-mono text-(length:--text-nano) uppercase tracking-(--tracking-eyebrow)"
+      style={{
+        backgroundColor: `color-mix(in oklch, var(${hue}) 15%, transparent)`,
+        color: `var(${hue})`,
+      }}
+    >
       {documentKey}
     </Badge>
   );
@@ -213,6 +247,8 @@ export function DocumentFrameHeader({
               {relativeTime(updatedAt)}
             </a>
           ) : null}
+          {/* The id sits a tier below the timestamp: it is a handle you go
+              looking for, never something you scan (MUL-442 third tier). */}
           {!folded && documentId ? (
             // Multica-style id chip: the muted block says "identifier", so the
             // value needs no "docID:" prefix. Hover reveals the full UUID,
@@ -222,7 +258,7 @@ export function DocumentFrameHeader({
               type="button"
               onClick={copyDocumentId}
               title={copiedDocumentId ? "已复制" : `复制 docID：${documentId}`}
-              className="inline-flex shrink-0 items-center gap-1 rounded-sm border border-border bg-muted/40 px-1.5 font-mono text-(length:--text-micro) text-muted-foreground transition-colors hover:text-foreground"
+              className="inline-flex shrink-0 items-center gap-1 rounded-sm border border-border bg-muted/40 px-1.5 font-mono text-(length:--text-micro) text-faint-foreground transition-colors hover:text-foreground"
             >
               {documentId.slice(0, 8)}
               {copiedDocumentId ? <Check className="h-3 w-3" /> : null}
