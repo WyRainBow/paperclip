@@ -4875,6 +4875,11 @@ export function IssueDetail() {
             placeholder={t("Add a description...")}
             multiline
             foldable
+            // The body is for reading and copying first (MUL-461). Click-to-edit
+            // turned every text selection and every missed link into an
+            // accidental edit; the pencil is now the only way in, matching the
+            // task-chat description bubble.
+            explicitEdit
             mentions={mentionOptions}
             externalReferences={externalObjectsState.isEnabled ? externalObjectsState.markdownReferences : undefined}
             imageUploadHandler={async (file) => {

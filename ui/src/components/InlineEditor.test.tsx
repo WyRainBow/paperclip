@@ -207,6 +207,54 @@ describe("InlineEditor", () => {
     });
   });
 
+  // 显式编辑 (MUL-461): the body is read and copied far more than edited, so
+  // a click on it must do nothing at all.
+  it("under explicitEdit, clicking the multiline preview does not open the editor", () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const root = createRoot(container);
+
+    act(() => {
+      root.render(<InlineEditor value="Hello world" multiline explicitEdit onSave={onSave} />);
+    });
+
+    act(() => {
+      enterMultilineEdit(container);
+    });
+
+    expect(container.querySelector('[data-testid="multiline-md-mock"]')).toBeNull();
+    expect(container.querySelector('[data-testid="multiline-md-preview"]')).not.toBeNull();
+    // Nothing here is operable, so nothing should claim to be: an announced
+    // textbox that cannot be typed into misleads a screen reader worse than
+    // plain prose does.
+    expect(container.querySelector('[role="textbox"]')).toBeNull();
+
+    act(() => {
+      root.unmount();
+    });
+  });
+
+  it("under explicitEdit, the pencil button opens the editor", () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const root = createRoot(container);
+
+    act(() => {
+      root.render(<InlineEditor value="Hello world" multiline explicitEdit onSave={onSave} />);
+    });
+
+    const pencil = container.querySelector<HTMLButtonElement>('[data-testid="inline-editor-edit"]');
+    expect(pencil).not.toBeNull();
+
+    act(() => {
+      pencil!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(container.querySelector('[data-testid="multiline-md-mock"]')).not.toBeNull();
+
+    act(() => {
+      root.unmount();
+    });
+  });
+
   it("marks multiline preview textboxes as multiline", () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
     const root = createRoot(container);
