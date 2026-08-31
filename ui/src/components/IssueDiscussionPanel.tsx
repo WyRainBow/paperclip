@@ -17,6 +17,7 @@ const AGENT_BRAND_COLORS: Record<string, string> = {
 };
 import { agentsApi } from "@/api/agents";
 import type { Agent } from "@paperclipai/shared";
+import { modelSignatureFor } from "@paperclipai/shared/model-signature";
 import { MarkdownBody } from "@/components/MarkdownBody";
 import { useMemo } from "react";
 
@@ -171,6 +172,11 @@ export function IssueDiscussionPanel({ issueId, issueIdentifier }: { issueId: st
               ?? (answerAgentName ? agentByName.get(normalizeAgentNameKey(answerAgentName)) : null)
               ?? null;
             const displayName = agent?.name ?? answerAgentName ?? msg.authorUserId ?? "board";
+            // Each harness writes its model its own way (MUL-444): Codex joins
+            // effort with a hyphen, Claude with a plus, Zcode and Qoder prefix
+            // the harness name. Which one applies comes from the agent's own
+            // sessionLocator, so the bubble never guesses from the name string.
+            const modelLine = modelSignatureFor(agent?.sessionLocator?.slug ?? null, model, effort);
             return (
               <div
                 key={msg.id}
@@ -214,9 +220,9 @@ export function IssueDiscussionPanel({ issueId, issueIdentifier }: { issueId: st
                     ) : (
                       displayName
                     )}
-                    {model ? (
+                    {modelLine ? (
                       <span className="font-mono text-muted-foreground/80">
-                        · {model}{effort ? ` ${effort}` : ""}
+                        · {modelLine}
                       </span>
                     ) : (
                       // Every bubble names its model+effort (MUL-149). Bubbles
