@@ -2224,6 +2224,7 @@ export function IssueProperties({
             agentName={createdByAgent?.name ?? null}
             agentIcon={createdByAgent?.icon ?? null}
             agentCustomIconUrl={createdByAgent ? agentCustomIcon(createdByAgent) : null}
+            agentAdapterType={createdByAgent?.adapterType ?? null}
             userId={issue.createdByUserId ?? null}
             sessionId={issue.createdBySession ?? null}
             /* Whoever opened the card owns it, so the ownership tag belongs on
@@ -2244,6 +2245,7 @@ export function IssueProperties({
                 const driver = agentById.get(issue.drivingAgentId ?? "") ?? null;
                 return driver ? agentCustomIcon(driver) : null;
               })()}
+              agentAdapterType={(agentById.get(issue.drivingAgentId ?? "") ?? null)?.adapterType ?? null}
               userId={null}
               sessionId={issue.drivingSession ?? null}
               live={Boolean(

@@ -1,7 +1,10 @@
-import type { CSSProperties, ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { IssueWorkProduct } from "@paperclipai/shared";
+import { Check } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { AgentIcon } from "@/components/AgentIconPicker";
+import { copyTextToClipboard } from "@/lib/clipboard";
+import { sessionCopyText } from "@/lib/session-resume";
 import { t } from "@/i18n";
 import { cn } from "../../lib/utils";
 
@@ -106,6 +109,7 @@ export function SessionIdentity({
   agentName,
   agentIcon,
   agentCustomIconUrl,
+  agentAdapterType,
   userId,
   sessionId,
   tag,
@@ -115,6 +119,8 @@ export function SessionIdentity({
   agentName: string | null;
   agentIcon?: string | null;
   agentCustomIconUrl?: string | null;
+  /** Decides which CLI's resume command the id copies as (see SessionIdChip). */
+  agentAdapterType?: string | null;
   userId: string | null;
   sessionId: string | null;
   tag?: string;
@@ -136,12 +142,11 @@ export function SessionIdentity({
         </span>
       )}
       {sessionId && (
-        <span
-          className="max-w-full break-all rounded-sm border border-border bg-muted/40 px-1.5 font-mono text-(length:--text-micro) text-muted-foreground"
-          title={sessionId}
-        >
-          {shortSessionId(sessionId)}
-        </span>
+        <SessionIdChip
+          sessionId={sessionId}
+          agentName={agentName}
+          agentAdapterType={agentAdapterType}
+        />
       )}
       {tag && (
         <span className="shrink-0 rounded-full border border-border px-1.5 text-(length:--text-micro) text-muted-foreground">
@@ -158,9 +163,58 @@ export function SessionIdentity({
   );
 }
 
-/** `sess_1ecef3b3-9a23-…` → `sess_1ecef3b3`; the full id stays in the tooltip. */
-function shortSessionId(sessionId: string) {
-  return sessionId;  // full ID — user wants complete session visible (2026-08-26)
+/**
+ * The session id, clickable. A recorded session is only useful if you can
+ * reopen it, and the id alone is half the command — so for the CLIs whose
+ * resume syntax we know (Claude, Codex) the click copies the whole line
+ * (`claude --resume <id>`) instead of the bare id. Everything else copies the
+ * id, which is still what a reader wants from it.
+ */
+function SessionIdChip({
+  sessionId,
+  agentName,
+  agentAdapterType,
+}: {
+  sessionId: string;
+  agentName: string | null;
+  agentAdapterType?: string | null;
+}) {
+  const [copied, setCopied] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(timerRef.current), []);
+
+  const copyText = sessionCopyText({ adapterType: agentAdapterType, agentName, sessionId });
+
+  const handleCopy = useCallback(async () => {
+    try {
+      await copyTextToClipboard(copyText);
+      setCopied(true);
+      clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => setCopied(false), 1500);
+    } catch { /* clipboard blocked; leave the id on screen to copy by hand */ }
+  }, [copyText]);
+
+  return (
+    <span className="flex min-w-0 max-w-full items-center gap-1">
+      <button
+        type="button"
+        onClick={handleCopy}
+        /* The tooltip is the copy text itself, so the resume command is
+           readable before the click, not only after pasting it. */
+        title={copyText}
+        aria-label={`Copy ${copyText} to clipboard`}
+        className="max-w-full cursor-pointer break-all rounded-sm border border-border bg-muted/40 px-1.5 text-left font-mono text-(length:--text-micro) text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground"
+      >
+        {sessionId}
+      </button>
+      {copied && (
+        <span className="flex shrink-0 items-center gap-1 text-(length:--text-micro) text-emerald-600 dark:text-emerald-400" role="status">
+          <Check className="h-3 w-3 shrink-0" />
+          Copied
+        </span>
+      )}
+    </span>
+  );
 }
 
 /**
