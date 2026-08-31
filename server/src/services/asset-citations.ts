@@ -6,6 +6,7 @@ import {
   feedbackVotes,
   teamRuleNotes,
   teamRuleNoteVersions,
+  recallMisses,
   teamWikiPages,
   teamWikiPageVersions,
   workspaceAssetCitations,
@@ -47,6 +48,53 @@ export interface CitationActor {
 /** `${kind}:${id}`, the key both the ledger aggregate and the ranking use. */
 export function assetKey(kind: AssetKind, id: string): string {
   return `${kind}:${id}`;
+}
+
+/** What the ranking pipeline saw, so a miss says why rather than only that. */
+export interface MissDiagnostics {
+  /** Scoring terms left after tokenization. Zero means the tokenizer ate the query. */
+  termCount: number;
+  /** Rows SQL returned before ranking. Zero is a content gap, non-zero is a score floor. */
+  candidateCount: number;
+  /** Whether the vector leg ran at all. */
+  semanticUsed: boolean;
+}
+
+/**
+ * Record a recall query that matched nothing (MUL-449).
+ *
+ * `recordServed` returns early on an empty hit list, and for the citation
+ * ledger that is right: there is no asset to attach a row to. But it left the
+ * most useful signal about recall quality with nowhere to go — MUL-80 waited
+ * two months for a real miss to surface, while misses were happening routinely
+ * and vanishing.
+ *
+ * Never throws, same as `recordServed` and for the same reason: this is on the
+ * path of every session start, and a session that loses one observability row
+ * is better than a session that loses its rules.
+ */
+export async function recordMiss(
+  db: Db,
+  actor: CitationActor,
+  query: string,
+  diagnostics: MissDiagnostics,
+): Promise<boolean> {
+  if (!query.trim()) return false;
+  try {
+    await db.insert(recallMisses).values({
+      companyId: actor.companyId,
+      issueId: actor.issueId ?? null,
+      agentId: actor.agentId ?? null,
+      sessionId: actor.sessionId ?? null,
+      query,
+      termCount: diagnostics.termCount,
+      candidateCount: diagnostics.candidateCount,
+      semanticUsed: diagnostics.semanticUsed,
+    });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**

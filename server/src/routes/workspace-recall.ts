@@ -13,7 +13,13 @@ import {
 import { Router, type Request, type Response } from "express";
 import { assertCompanyAccess } from "./authz.js";
 import { badRequest } from "../errors.js";
-import { type AssetKind, adoptionBoost, citedCountsByAsset, recordServed } from "../services/asset-citations.js";
+import {
+  type AssetKind,
+  adoptionBoost,
+  citedCountsByAsset,
+  recordMiss,
+  recordServed,
+} from "../services/asset-citations.js";
 import {
   MIN_COVERAGE,
   buildSnippet,
@@ -248,6 +254,39 @@ export function workspaceRecallRoutes(db: Db): Router {
     // nobody has ever cited (MUL-133 decision 61891ec2, option b).
     const citedCounts = await citedCountsByAsset(db, companyId);
 
+    // Attribution, resolved before any search work.
+    //
+    // Moved ahead of ranking in MUL-449 so both miss paths can record with the
+    // same attribution the served rows get, and so a malformed issue id fails
+    // before a search is spent on it.
+    //
+    // `recordServed` and `recordMiss` swallow their own errors (a ledger write
+    // must not fail recall), so a bad issue id reaching the insert would not
+    // 500 — it would silently drop the whole batch and the signal with it.
+    // Failing with a 400 keeps the caller's typo loud, and the company check
+    // keeps a cross-company card id out of this company's ledger.
+    const servedIssueIdRaw = typeof req.query.issue === "string" ? req.query.issue : null;
+    let servedIssueId: string | null = null;
+    if (servedIssueIdRaw) {
+      if (!UUID_RE.test(servedIssueIdRaw)) {
+        throw badRequest(`issue "${servedIssueIdRaw}" is not a uuid`);
+      }
+      const [issueRow] = await db
+        .select({ id: issues.id })
+        .from(issues)
+        .where(and(eq(issues.id, servedIssueIdRaw), eq(issues.companyId, companyId)))
+        .limit(1);
+      if (!issueRow) throw badRequest(`issue "${servedIssueIdRaw}" not found in this company`);
+      servedIssueId = issueRow.id;
+    }
+    const servedSessionId = typeof req.query.session === "string" ? req.query.session.slice(0, 200) : null;
+    const ledgerActor = {
+      companyId,
+      issueId: servedIssueId,
+      agentId: req.actor.type === "agent" ? (req.actor.agentId ?? null) : null,
+      sessionId: servedSessionId,
+    };
+
     // Tokenization and scoring live in `recall-ranking` (MUL-441), shared with
     // the other recall consumers. The rule this replaced split on whitespace
     // and required every term to hit. That is correct for English and useless
@@ -260,7 +299,17 @@ export function workspaceRecallRoutes(db: Db): Router {
     // corpus-wide term weights are known. Capping the term count keeps a long
     // question from building a hundred-clause OR.
     const sqlTerms = terms.slice(0, MAX_SQL_TERMS);
-    if (sqlTerms.length === 0) throw badRequest("q has no searchable terms");
+    if (sqlTerms.length === 0) {
+      // A query that tokenizes to nothing is the most extreme miss there is,
+      // and the one most worth seeing: it means the tokenizer failed, not the
+      // corpus. Recorded before the 400 so the error does not swallow it.
+      await recordMiss(db, ledgerActor, query, {
+        termCount: 0,
+        candidateCount: 0,
+        semanticUsed: false,
+      });
+      throw badRequest("q has no searchable terms");
+    }
 
     // Keyword candidates. The corpus definition lives in `recall-corpus` so the
     // indexer embeds exactly the set recall searches — defining it here meant
@@ -419,42 +468,28 @@ export function workspaceRecallRoutes(db: Db): Router {
         return hit.assetKind ? `${label} → ${hit.assetKind}:${hit.assetId}` : label;
       })
       .join("\n");
-
     // The served half of the ledger. Written after the response is assembled
     // and before it is sent, so what is recorded is exactly what the caller
     // received — including the degraded, title-only entries, which were still
     // put in front of the session and still spent budget.
     //
-    // The `issue` param is validated before use. `recordServed` swallows its
-    // own errors (a ledger write must not fail recall), so a malformed issue
-    // id reaching the insert would not 500 — it would silently drop the whole
-    // served batch and the ranking signal with it. Failing the request with a
-    // 400 instead keeps the caller's typo loud, and checking company
-    // ownership keeps a cross-company card id from leaking into this
-    // company's ledger through the insert's plain FK.
-    const servedIssueIdRaw = typeof req.query.issue === "string" ? req.query.issue : null;
-    let servedIssueId: string | null = null;
-    if (servedIssueIdRaw) {
-      if (!UUID_RE.test(servedIssueIdRaw)) {
-        throw badRequest(`issue "${servedIssueIdRaw}" is not a uuid`);
-      }
-      const [issueRow] = await db
-        .select({ id: issues.id })
-        .from(issues)
-        .where(and(eq(issues.id, servedIssueIdRaw), eq(issues.companyId, companyId)))
-        .limit(1);;
-      if (!issueRow) throw badRequest(`issue "${servedIssueIdRaw}" not found in this company`);
-      servedIssueId = issueRow.id;
+    // Attribution was resolved before the search (see `ledgerActor` above), so
+    // both halves and the miss path record the same actor.
+    if (results.length === 0) {
+      // The other half of the picture, added in MUL-449. A query that found
+      // nothing used to leave no trace at all, which is why MUL-80 spent two
+      // months waiting for a real miss that a human eventually had to produce
+      // by hand. The diagnostics say which of four things went wrong: the
+      // tokenizer, the corpus, the score floor, or the vector leg being off.
+      await recordMiss(db, ledgerActor, query, {
+        termCount: terms.length,
+        candidateCount: rows.length,
+        semanticUsed: embeddingConfig !== null,
+      });
     }
-    const servedSessionId = typeof req.query.session === "string" ? req.query.session.slice(0, 200) : null;
     await recordServed(
       db,
-      {
-        companyId,
-        issueId: servedIssueId,
-        agentId: req.actor.type === "agent" ? (req.actor.agentId ?? null) : null,
-        sessionId: servedSessionId,
-      },
+      ledgerActor,
       query,
       // Non-asset sources are left out of the ledger entirely. The served/cited
       // ratio drives asset adoption ranking (MUL-133), and an issue that can

@@ -278,6 +278,26 @@ export function detectTerminalSlug(): string | null {
   return null;
 }
 
+/**
+ * The host terminal's session id, from whichever terminal is running us.
+ *
+ * A navigation aid, not identity: it says which session did something so a
+ * later reader can go back and look, and nothing is authorized on its strength.
+ *
+ * Centralized in MUL-449 after the third copy of this expression appeared.
+ * Recall was the case that made it matter: 340 served ledger rows had a null
+ * `session_id` because the parameter existed but had to be passed by hand, so
+ * "did this session have to search twice" was unanswerable.
+ */
+export function detectTerminalSessionId(): string | null {
+  return (
+    process.env.CLAUDE_CODE_SESSION_ID?.trim() ||
+    process.env.CODEX_SESSION_ID?.trim() ||
+    process.env.ZCODE_SESSION_ID?.trim() ||
+    null
+  );
+}
+
 export function terminalKeyPath(slug: string): string {
   return path.join(os.homedir(), ".paperclip", "keys", slug);
 }

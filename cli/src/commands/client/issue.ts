@@ -32,6 +32,7 @@ import {
 import {
   addCommonClientOptions,
   apiPath,
+  detectTerminalSessionId,
   formatInlineRecord,
   handleCommandError,
   inferContentTypeFromPath,
@@ -251,8 +252,7 @@ async function autoClaimIfUnclaimed(ctx: ResolvedClientContext, issue: Issue): P
   if (issue.assigneeAgentId || issue.drivingAgentId) return;
   const me = await ctx.api.get<{ id: string } | null>(apiPath`/api/agents/me`).catch(() => null);
   if (!me?.id) return;
-  const drivingSession =
-    process.env.CLAUDE_CODE_SESSION_ID?.trim() || process.env.CODEX_SESSION_ID?.trim() || process.env.ZCODE_SESSION_ID?.trim() || null;
+  const drivingSession = detectTerminalSessionId();
   // Driving alone is the claim marker (same as the claim command's normal
   // path); assigneeAgentId is left untouched because cards default to
   // assigneeUserId=local-board and setting both trips the one-assignee rule.
@@ -513,12 +513,7 @@ export function registerIssueCommands(program: Command): void {
               );
             }
           }
-          const session =
-            opts.session?.trim() ||
-            process.env.CLAUDE_CODE_SESSION_ID?.trim() ||
-            process.env.CODEX_SESSION_ID?.trim() ||
-            process.env.ZCODE_SESSION_ID?.trim() ||
-            undefined;
+          const session = opts.session?.trim() || detectTerminalSessionId() || undefined;
           const payload = createIssueSchema.parse({
             title: opts.title,
             description: opts.description,

@@ -2,6 +2,7 @@ import { Command } from "commander";
 import {
   addCommonClientOptions,
   apiPath,
+  detectTerminalSessionId,
   handleCommandError,
   printOutput,
   resolveCommandContext,
@@ -77,7 +78,12 @@ export function registerWorkspaceRecallCommands(program: Command): void {
           const params = new URLSearchParams({ q: opts.query });
           if (opts.budget) params.set("budget", opts.budget);
           if (opts.issue) params.set("issue", opts.issue);
-          if (opts.session) params.set("session", opts.session);
+          // Falls back to the host terminal's session id (MUL-449). The
+          // parameter existed before but had to be passed by hand, so all 340
+          // served ledger rows had a null session_id and "did this session
+          // have to search twice" could not be answered.
+          const sessionId = opts.session?.trim() || detectTerminalSessionId();
+          if (sessionId) params.set("session", sessionId);
           const base = apiPath`/api/companies/${ctx.companyId}/workspace/recall`;
           const resp = await ctx.api.get<RecallResult>(`${base}?${params}`);
           if (!resp) throw new Error("recall returned no data");
