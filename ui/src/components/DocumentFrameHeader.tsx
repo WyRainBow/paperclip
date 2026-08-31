@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { Check, ChevronDown, ChevronRight, Copy } from "lucide-react";
+import { Check, ChevronDown, ChevronRight } from "lucide-react";
 import { cn, relativeTime } from "../lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -214,14 +214,18 @@ export function DocumentFrameHeader({
             </a>
           ) : null}
           {!folded && documentId ? (
+            // Multica-style id chip: the muted block says "identifier", so the
+            // value needs no "docID:" prefix. Hover reveals the full UUID,
+            // click copies it. Same recipe as the session-id box in the
+            // properties pane (issue-properties/primitives.tsx).
             <button
               type="button"
               onClick={copyDocumentId}
               title={copiedDocumentId ? "已复制" : `复制 docID：${documentId}`}
-              className="inline-flex shrink-0 items-center gap-1 font-mono text-(length:--text-micro) text-muted-foreground transition-colors hover:text-foreground"
+              className="inline-flex shrink-0 items-center gap-1 rounded-sm border border-border bg-muted/40 px-1.5 font-mono text-(length:--text-micro) text-muted-foreground transition-colors hover:text-foreground"
             >
-              docID: {documentId.slice(0, 8)}
-              {copiedDocumentId ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+              {documentId.slice(0, 8)}
+              {copiedDocumentId ? <Check className="h-3 w-3" /> : null}
             </button>
           ) : null}
           {annotationSlot}
