@@ -1,6 +1,7 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import {
+  agents,
   companySkillVersions,
   companySkills,
   feedbackVotes,
@@ -312,6 +313,86 @@ async function downVotesByAsset(
   for (const row of skillRows) bump("skill", row);
   for (const row of wikiRows) bump("wiki", row);
   return map;
+}
+
+export interface RecallQueryRow {
+  query: string;
+  termCount: number;
+  scoringTermCount: number | null;
+  candidateCount: number;
+  semanticUsed: boolean;
+  resultCount: number;
+  topScore: number | null;
+  topCoverage: number | null;
+  /** scoringTermCount / termCount, null when the older rows have no scoring count. */
+  recognizedRatio: number | null;
+  agentName: string | null;
+  sessionId: string | null;
+  createdAt: Date;
+}
+
+/**
+ * Recent recall searches that came back with little or nothing (MUL-449).
+ *
+ * A picture for a person to read, not a gate. Nothing here decides that a
+ * search failed — it surfaces the ones worth looking at and leaves the judgment
+ * where it belongs. Without this the query log would exist only for whoever is
+ * willing to open a database client, which is how MUL-139's cite command sat
+ * broken long enough for the adoption ledger to collect two rows.
+ *
+ * "Little or nothing" is two conditions, because the failures look different:
+ * an empty result set, or a result set the corpus barely understood the
+ * question behind. The second is the common one — measured 2026-08-31, a
+ * question about cosmic background radiation returned eight results and a
+ * perfect coverage score off the single generic term that survived pruning.
+ */
+export async function recentPoorRecallQueries(
+  db: Db,
+  companyId: string,
+  options: { limit?: number; ratioBelow?: number; includeAll?: boolean } = {},
+): Promise<RecallQueryRow[]> {
+  const limit = Math.min(Math.max(options.limit ?? 20, 1), 200);
+  const ratioBelow = options.ratioBelow ?? 0.5;
+
+  const rows = await db
+    .select({
+      query: recallQueries.query,
+      termCount: recallQueries.termCount,
+      scoringTermCount: recallQueries.scoringTermCount,
+      candidateCount: recallQueries.candidateCount,
+      semanticUsed: recallQueries.semanticUsed,
+      resultCount: recallQueries.resultCount,
+      topScore: recallQueries.topScore,
+      topCoverage: recallQueries.topCoverage,
+      sessionId: recallQueries.sessionId,
+      createdAt: recallQueries.createdAt,
+      agentName: agents.name,
+    })
+    .from(recallQueries)
+    .leftJoin(agents, eq(agents.id, recallQueries.agentId))
+    .where(eq(recallQueries.companyId, companyId))
+    .orderBy(desc(recallQueries.createdAt))
+    // Filtering happens below rather than in SQL: the ratio is a computed
+    // expression over two nullable columns, and doing it here keeps the
+    // threshold in one readable place while the volume stays small.
+    .limit(limit * 5);
+
+  const mapped: RecallQueryRow[] = rows.map((row) => ({
+    ...row,
+    recognizedRatio:
+      row.scoringTermCount === null || row.termCount === 0
+        ? null
+        : row.scoringTermCount / row.termCount,
+  }));
+
+  const poor = options.includeAll
+    ? mapped
+    : mapped.filter(
+        (row) =>
+          row.resultCount === 0 ||
+          (row.recognizedRatio !== null && row.recognizedRatio < ratioBelow),
+      );
+  return poor.slice(0, limit);
 }
 
 /**

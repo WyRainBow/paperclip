@@ -31,6 +31,22 @@ interface RecallResult {
   references: string;
 }
 
+interface RecallQueryRow {
+  query: string;
+  termCount: number;
+  scoringTermCount: number | null;
+  candidateCount: number;
+  semanticUsed: boolean;
+  resultCount: number;
+  topScore: number | null;
+  topCoverage: number | null;
+  /** scoringTermCount / termCount — how much of the question the corpus knew. */
+  recognizedRatio: number | null;
+  agentName: string | null;
+  sessionId: string | null;
+  createdAt: string;
+}
+
 interface ReindexResult {
   model: string;
   provider: string;
@@ -179,6 +195,66 @@ export function registerWorkspaceRecallCommands(program: Command): void {
             return;
           }
           console.log(`声明 ${resp?.declared ?? 0} 条，新记 ${resp?.recorded ?? 0} 条，重复 ${resp?.duplicates ?? 0} 条`);
+        } catch (err) {
+          handleCommandError(err);
+        }
+      }),
+  );
+
+  addCommonClientOptions(
+    existing
+      .command("recall:health")
+      .description("Recent searches that came back with little or nothing — says which of four things went wrong")
+      .option("-C, --company-id <id>", "Company ID (falls back to PAPERCLIP_COMPANY_ID env or context profile)")
+      .option("--limit <n>", "How many rows to show (default 20)")
+      .option("--ratio-below <n>", "Flag a search when this fraction or less of its terms exist in the corpus (default 0.5)")
+      .option("--all", "Show every recent search, not only the poor ones")
+      .action(async (opts: { companyId?: string; limit?: string; ratioBelow?: string; all?: boolean; json?: boolean }) => {
+        try {
+          const ctx = resolveCommandContext(opts, { requireCompany: true });
+          const params = new URLSearchParams();
+          if (opts.limit) params.set("limit", opts.limit);
+          if (opts.ratioBelow) params.set("ratioBelow", opts.ratioBelow);
+          if (opts.all) params.set("all", "1");
+          const base = apiPath`/api/companies/${ctx.companyId}/workspace/recall/health`;
+          const resp = await ctx.api.get<{ queries: RecallQueryRow[]; count: number }>(
+            params.toString() ? `${base}?${params}` : base,
+          );
+          if (!resp) throw new Error("recall health returned no data");
+          if (opts.json) {
+            printOutput(resp, { json: true });
+            return;
+          }
+          if (resp.queries.length === 0) {
+            console.error(opts.all ? "还没有召回记录。" : "最近没有搜得很差的提问。");
+            return;
+          }
+          console.error(`${resp.count} 条${opts.all ? "" : "值得看的"}提问\n`);
+          for (const row of resp.queries) {
+            console.log(`「${row.query}」`);
+            // Four causes, four different fixes. Naming the likely one saves the
+            // reader from re-deriving it from the raw numbers every time.
+            const cause =
+              row.termCount === 0
+                ? "切词把整个提问切没了 → 切词的问题"
+                : row.candidateCount === 0
+                  ? "语料里没有这些词 → 内容缺口"
+                  : row.resultCount === 0
+                    ? "捞到了候选但全被打分门槛挡掉 → 阈值的问题"
+                    : row.recognizedRatio !== null && row.recognizedRatio < 0.5
+                      ? `语料只认得 ${row.scoringTermCount}/${row.termCount} 个词 → 结果多半是噪声`
+                      : // Reachable only under --all, which shows healthy rows too.
+                        // Calling those "结果偏少" would be wrong: they returned
+                        // results off terms the corpus knows.
+                        `语料认得 ${row.scoringTermCount ?? "?"}/${row.termCount} 个词 → 看着正常`;
+            console.log(`  ${cause}`);
+            const scoreText = row.topScore === null ? "无结果" : `最高分 ${row.topScore.toFixed(2)}`;
+            const who = row.agentName ?? "未知";
+            console.log(
+              `  返回 ${row.resultCount} 条 · ${scoreText} · 候选 ${row.candidateCount} · 语义腿${row.semanticUsed ? "开" : "关"} · ${who}`,
+            );
+            console.log();
+          }
         } catch (err) {
           handleCommandError(err);
         }

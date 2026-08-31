@@ -8,6 +8,7 @@ import {
   type AssetRef,
   assetHealth,
   isAssetKind,
+  recentPoorRecallQueries,
   recordCited,
 } from "../services/asset-citations.js";
 import { experienceBoardRows } from "../services/retro-gate.js";
@@ -109,6 +110,30 @@ export function workspaceCitationsRoutes(db: Db): Router {
       assets: rows,
       deadWeightCount: rows.filter((row) => row.deadWeight).length,
     });
+  });
+
+  /**
+   * Recall searches that came back with little or nothing (MUL-449).
+   *
+   * The consumer side of the query log. Without it the log would only be
+   * readable by whoever opens a database client, which is how MUL-139's broken
+   * cite command went unnoticed long enough for the adoption ledger to collect
+   * two rows total.
+   *
+   * Read-only and judges nothing on its own: `ratioBelow` is a lens the caller
+   * chooses, not a verdict stored anywhere.
+   */
+  r.get("/companies/:companyId/workspace/recall/health", async (req: Request, res: Response) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    const limitRaw = Number.parseInt(String(req.query.limit ?? ""), 10);
+    const ratioRaw = Number.parseFloat(String(req.query.ratioBelow ?? ""));
+    const rows = await recentPoorRecallQueries(db, companyId, {
+      limit: Number.isInteger(limitRaw) ? limitRaw : undefined,
+      ratioBelow: Number.isFinite(ratioRaw) ? ratioRaw : undefined,
+      includeAll: String(req.query.all ?? "") === "1",
+    });
+    res.json({ queries: rows, count: rows.length });
   });
 
   /**

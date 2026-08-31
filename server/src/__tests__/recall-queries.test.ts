@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { recordRecallQuery, recordServed } from "../services/asset-citations.js";
+import {
+  recentPoorRecallQueries,
+  recordRecallQuery,
+  recordServed,
+} from "../services/asset-citations.js";
 
 /**
  * Both writers go through drizzle's insert builder, so a fake that records what
@@ -172,6 +176,83 @@ describe("recordServed is unchanged", () => {
         { kind: "wiki", id: "11111111-1111-1111-1111-111111111111" },
       ]),
     ).resolves.toBe(0);
+  });
+});
+
+describe("recentPoorRecallQueries", () => {
+  /** Minimal drizzle-shaped query builder returning a fixed row set. */
+  function readDb(rows: unknown[]) {
+    const chain = {
+      from: () => chain,
+      leftJoin: () => chain,
+      where: () => chain,
+      orderBy: () => chain,
+      limit: async () => rows,
+    };
+    return { select: () => chain };
+  }
+
+  const row = (over: Record<string, unknown>) => ({
+    query: "q",
+    termCount: 8,
+    scoringTermCount: 6,
+    candidateCount: 100,
+    semanticUsed: false,
+    resultCount: 8,
+    topScore: 0.9,
+    topCoverage: 0.4,
+    sessionId: null,
+    createdAt: new Date(),
+    agentName: "Claude（Terminal）",
+    ...over,
+  });
+
+  it("keeps a search that returned nothing", async () => {
+    const out = await recentPoorRecallQueries(
+      readDb([row({ resultCount: 0, topScore: null })]) as never,
+      "company-1",
+    );
+    expect(out).toHaveLength(1);
+  });
+
+  it("keeps a search the corpus barely understood, even with a full result set", async () => {
+    // The case measured on the real corpus: eight results and a perfect
+    // coverage score off the single generic term that survived pruning.
+    const out = await recentPoorRecallQueries(
+      readDb([row({ termCount: 12, scoringTermCount: 1, resultCount: 8, topCoverage: 1 })]) as never,
+      "company-1",
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0]!.recognizedRatio).toBeCloseTo(1 / 12, 5);
+  });
+
+  it("drops a healthy search", async () => {
+    const out = await recentPoorRecallQueries(readDb([row({})]) as never, "company-1");
+    expect(out).toHaveLength(0);
+  });
+
+  it("returns healthy searches too when asked for all of them", async () => {
+    const out = await recentPoorRecallQueries(readDb([row({})]) as never, "company-1", {
+      includeAll: true,
+    });
+    expect(out).toHaveLength(1);
+  });
+
+  it("leaves the ratio null for rows written before the column existed", async () => {
+    // Those rows must not be flagged on a ratio nobody recorded.
+    const out = await recentPoorRecallQueries(
+      readDb([row({ scoringTermCount: null })]) as never,
+      "company-1",
+    );
+    expect(out).toHaveLength(0);
+  });
+
+  it("honours a caller-supplied threshold instead of a baked-in one", async () => {
+    const rows = [row({ termCount: 10, scoringTermCount: 7 })];
+    expect(await recentPoorRecallQueries(readDb(rows) as never, "company-1")).toHaveLength(0);
+    expect(
+      await recentPoorRecallQueries(readDb(rows) as never, "company-1", { ratioBelow: 0.8 }),
+    ).toHaveLength(1);
   });
 });
 
