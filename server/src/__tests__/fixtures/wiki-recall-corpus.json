@@ -1,0 +1,230 @@
+[
+  {
+    "space": "paperclip",
+    "path": "cli-usage",
+    "title": "CLI 使用手册",
+    "body": "# CLI 使用手册\n\n> 按场景组织的 `paperclipai` CLI 用法。命令以本机实际形态为准——CLI 没全局安装，跑法是仓库根目录 `node cli/dist/index.js`。以下示例用 `paperclipai` 代指。\n\n## 场景一：建卡\n\n建卡**必须归属一个项目**，硬校验（2026-08 起）。建卡 = 认领，CLI 自动检测 agent 身份（环境变量推断）并回填归因，不需要 API key。\n\n```bash\n# 基本形态：按项目名称建卡（推荐）\npaperclipai issue create \\\n  --company-id <companyId> \\\n  --project ark \\\n  --title \"卡标题\" \\\n  --description \"> 一句话摘要\"\n\n# 子卡：只传 --parent-id，项目自动继承父卡的\npaperclipai issue create \\\n  --company-id <companyId> \\\n  --parent-id <父卡ID> \\\n  --title \"子任务标题\"\n\n# 建卡时已有分支（可选）\npaperclipai issue create \\\n  --company-id <companyId> \\\n  --project ark \\\n  --title \"标题\" \\\n  --branch feature/wy/MUL-XX/xxx\n```\n\n要点：\n\n- `--project` 收三种写法：项目名称、urlKey、UUID，大小写不敏感。中文名精确匹配\n- 顶层卡（不带 `--parent-id`）不传项目直接被拦，报错列出公司全部项目\n- **同名活跃卡会被拦**：建卡前 CLI 自动比对现有活跃卡（忽略空白与标点差异），撞上列出候选卡要求确认，重开加 `--allow-duplicate`\n- **正文必须以 `> 一句话摘要` 开头**：给了 `--description` 时第一行得是引用行\n- **自动识别 agent 身份**：不传 key，CLI 从环境变量检测（CLAUDE_CODE_SESSION_ID→Claude / CODEX_SESSION_ID→Codex / ZCODE_SESSION_ID→Zcode）并自动回填 createdByAgentId。本地开发零配置\n- **自动记 session**：`--session` 不传时从环境变量取，存 `createdBySession` 字段\n- `--project-id` 是裸 UUID 兼容通道，与 `--project` 同传报错\n- 其他：`--priority`、`--status`（默认 backlog）、`--assignee-agent-id`\n- `--"
+  },
+  {
+    "space": "paperclip",
+    "path": "content-channel",
+    "title": "内容通道：资产到终端的推拉机制",
+    "body": "# 内容通道：TeamWorkSpace 资产到终端 Agent\n\n> 一句话：纯拉取·双通道——会话开始时 hook 自动注入资产目录地图（索引无正文），会话内按需 recall 查正文。终端 agent 不被推送任何内容。\n\n## 通道模型（已裁决：拉·双通道）\n\n**推在物理上不存在**：终端 AI CLI（claude/codex/zcode）是无常驻端点的短命进程，服务端无处可推。两个源码级参照（teamai-cli、OpenViking）均收敛纯拉，是终端形态决定的。\n\n| 通道 | 触发时机 | 注入物 | 预算 | 生效 |\n|---|---|---|---|---|\n| 被动拉（目录注入） | SessionStart hook | 资产目录地图：Team Rules 标题 + Team Wiki 页面路径与摘要 + Skills 名称 | 2000 字符硬上限 | 本会话即时（additionalContext） |\n| 主动拉（按需查询） | agent 主动跑 `workspace recall` | 检索命中的正文片段 + 引用声明 | 默认 2000 字符，可调 | 命令调用时 |\n\n## 通道一：SessionStart 目录注入\n\n### 机制\n\n1. hook 脚本（`scripts/hooks/session-start.sh`）在会话启动时触发\n2. 调 recall 端点的 `mode=directory`（只返回标题+路径，无正文）\n3. 输出 JSON 的 `hookSpecificOutput.additionalContext`（Claude 系）或 stderr 文本（其他工具）\n4. 本会话立即生效，不需要重开会话\n\n### 注入物长什么样\n\n```\n=== TeamWorkSpace 资产目录 ===\nTeam Rules:\n  - 团队通用规则 · 实验室\nTeam Wiki / paperclip:\n  cli-usage — CLI 使用手册\n  issue-docs — issue 文档规范\n  guides/Agent 换手与代码进度记账 — Agent 换手与代码进度记账\nTeam Wiki / agent:\n  issue-docs — issue 文档操作版\n  cases/2026-08-20-预存失败测试污染门禁信号…\n  playbooks/Agent Progress 进度账\nTeam Wiki / personal:\n  claude/CLAUDE.md\n  codex/AGENTS.md\n  zcode/AGENTS.md\n  grok/AGENTS.md\n\n查询正文：paperclipai workspace recall --query <关键词> [--budget N]"
+  },
+  {
+    "space": "paperclip",
+    "path": "experience-loop/触发沉淀场景",
+    "title": "经验沉淀：什么时候会触发、怎么走完",
+    "body": "# 经验沉淀：什么时候会触发、怎么走完\n\n一张卡收尾（送审或收卡）的那一刻，系统自动给这张卡算一次「摩擦分」。分数只回答一个问题：这次活干得磕绊不磕绊。磕绊过阈，系统会在卡里问你一句「要不要把这次的教训记成经验 wiki」——你回「记」，干这张卡的 Agent 接棒起草并落库；回「跳过」就完事。\n\n## 六个计分信号（每个都是系统自己记下的事实，不是 Agent 的自述）\n\n| 信号 | 什么情况算 | 分值 |\n|---|---|---|\n| 被打回重做 | 送审后改回进行中、收卡后重开，每次 | +20 |\n| 卡在 blocked | 进过一次 blocked 算一次 | +15 |\n| 评审打到第二轮 | 卡上存在 review-r2 及以后的文档 | +15 |\n| 动过 recovery | 有人换手救场 | +20 |\n| 收到差评 | 有人投 down 票（含「某条规则误导了我」的缺陷票），每票 | +20 |\n| watchdog 报警 | 监视器触发过 | +10 |\n\n**阈 20 分**：一个强信号就够。分数只说明走得磕绊，不说明一定值得沉淀——值不值由你裁决，系统只负责问。\n\n## 问句长什么样\n\n过阈的卡会收到一条系统留言，格式固定：先列出这次遇到的具体问题（信号 + 差评理由，差评会点名是哪条规则），然后两个选项：\n\n- 回「**记**」：干活的 Agent 按「什么情况适用 / 该怎么做 / 别踩什么」三段起草，**贴到卡上（experience-draft 文档）等你过目**——此时还没进资产库\n- 你回「**批**」：才正式写进 agent/cases/ 并贴回链接；要改就直接说改哪句，改完再批\n- 回「**跳过**」：不记，直接收卡\n\n（草稿制，MUL-138：先出草稿你过目、批了才入库；改 Rules / Skills 同走此路——资产库只进过目过的内容。）\n\n## 另一个口子：不等过阈，随时主动记\n\nAgent 觉得某次做法值得留，随时可以跑 `workspace remember` 落一条经验，不用等收尾、不用等过阈。同名经验再存是给原页加新版本，不会重复开页。落库即刻可被 recall 召回——下一个 Agent 搜相关词就能用上。\n\n## 什么样的经验值得记\n\n值得记：换个项目还成立的做法规律、踩过一次的坑及绕法、某条规则在特定场景的例外。\n不值得记：只对这张卡成立的一次性细节、没有消费方的流水账、Agent 的自我表扬。\n\n## 相关命令\n\n```sh\npaperclipai workspace cite --asset <kind:id> --issue <卡>   # 收尾声明：这次真用上了哪条资产\npaperclipai workspace remember --title <模式名> --situat"
+  },
+  {
+    "space": "paperclip",
+    "path": "guides/agent-identity",
+    "title": "Agent 身份与认证指南",
+    "body": "# Agent 身份与认证指南\n\n> Paperclip 里每一次写入都要回答「谁干的」。这篇讲清楚身份从哪来、各个地方存什么字段、终端怎么以 Agent 身份认证。\n\n## 一、身份的三层\n\n从外到内是 **key → agent → run**，缺一层就掉一级归因。\n\n| 层 | 是什么 | 缺了会怎样 |\n|---|---|---|\n| key | 请求头 `Authorization: Bearer <token>` | 本地 board 模式按 board 操作人算，写入归到人名下 |\n| agent | key 绑定的 Agent 记录，`/api/agents/me` 可查 | 拿不到 Agent 身份，所有 `*_agent_id` 字段为空 |\n| run | 请求头 `x-paperclip-run-id` 指向的 `heartbeat_runs` 行 | 需要 run 的写入被直接拒（决策就是这一类） |\n\n**board 和 agent 是两条完全不同的归因路径**，不是「有没有登录」的差别：\n\n- 不带 key 直接打本地 3100 → 服务端按 board 操作人处理，`created_by_user_id` 记人，`created_by_agent_id` 留空\n- 带 agent key → `created_by_agent_id` 记 Agent，`created_by_user_id` 留空\n\n同一条 CLI 命令，你在终端跑出来是 `cocoyu` 建的，ZCode 跑出来是 `Zcode（Terminal）` 建的。命令一样，key 不一样。\n\n还要分清两个概念：\n\n- **Agent 记录**：Paperclip 数据库里的一行，有 id / name / icon / status。例如 `CEO`、`Codex Review`、`Claude（Terminal）`\n- **终端里跑的 AI 进程**：你 shell 里的 claude / codex / zcode / grok，Paperclip 管不到它\n\n终端进程要写入 Paperclip，必须借一个 Agent 记录当身份。\n\n## 二、身份落在哪些字段\n\n### 1. 认领、责任人、开工\n\n- 责任人：`issues.assignee_agent_id`\n- 开工：`issues.driving_agent_id`（当前在推进这张卡的 Agent，和创建人是两件事）\n- `issue claim` 会先试着推到 `in_progress`。服务端要求 `in_progress` 必须有责任人，CLI 收到「require an assignee」后调 `/api/agents/me` 拿自己的 id 再自我指派\n\n**没有 agent key 的后果"
+  },
+  {
+    "space": "paperclip",
+    "path": "guides/content-channel-guide",
+    "title": "内容通道使用指南",
+    "body": "# 内容通道使用指南\n\n> TeamWorkSpace 的团队资产怎么到终端 agent 手里：纯拉取·双通道。\n\n## 通道一：自动注入（被动拉）\n\nSessionStart hook 自动注入资产目录地图（2000 字符上限，只有标题和路径，无正文）。agent 看到的是「有什么可查」。\n\n**不需要做任何事，开会话即生效。**\n\n## 通道二：按需查询（主动拉）\n\n```bash\n# 检索 Team Wiki + Team Rules\npaperclipai workspace recall --query \"建卡规则\"\n\n# 控制预算（默认 2000 字符）\npaperclipai workspace recall --query \"spec 冻结\" --budget 1000\n```\n\n返回：预算内的正文片段 + 引用声明（来源路径列表）。\n超预算的条目自动降级为仅标题。\n\n## 什么时候用哪个\n\n| 场景 | 用什么 |\n|---|---|\n| 刚开会话，想了解团队有什么 | 什么都不用做（hook 已注入目录） |\n| 要查某条规则的具体内容 | `workspace recall --query <关键词>` |\n| 要读 skill 全文 | `paperclipai skills show <skill名>` |\n| 要读 issue 文档 | `paperclipai issue document:get <卡号> <key>` |\n\n## 设计原理\n\n详见 [内容通道：推拉机制](/MUL/team-wiki/paperclip/content-channel)。\n\n\n---\n\n## 与 Multica 的差异\n\nMultica CLI 已卸载（2026-08-26）。Paperclip 的拉取机制替代了它的全部功能：\n\n- Multica `workspace get instruction` → Paperclip `workspace recall --query 规则`\n- Multica `workspace get assets` → Paperclip SessionStart hook 自动注入目录\n- Multica `workspace context` → Paperclip SessionStart + recall 分层按需\n- Multica `workspace skills pull` → Paperclip `skills list/show/file`（不物化）\n\n详见 [内容通道完整文档](/MUL/team-wiki/paperclip/content-channel)。\n"
+  },
+  {
+    "space": "paperclip",
+    "path": "guides/discussion-guide",
+    "title": "讨论 Tab 说明",
+    "body": "> 讨论 Tab 是群聊形态的问答/评审线程，左问右答带身份图标。\n\n## 机制\n\n- 每个线程 = 两条评论（问答对），用 presentation.threadId 串接\n- 左气泡 = 提问方（board 或发起 agent）\n- 右气泡 = 回答方（agent 身份+品牌图标+中文时间）\n- CLI 落盘：`paperclipai issue qa <卡号> --question \"...\" --answer \"...\" --answer-agent \"Agent名\"`\n\n## 评审结论放哪\n\n采用 Claude 建议的双层落法（2026-08-26）：\n\n| 内容 | 放哪 | 为什么 |\n|---|---|---|\n| 评审过程（往来意见） | Discussion Tab | 可追溯，不需要加工 |\n| 终态结论（一行） | Progress Tab | 紧凑台账，接手者第一眼 |\n| 重终判（定稿） | Document（review-r1/r2） | 可锁定的耐久产物 |\n\n详见 Agent Wiki [讨论使用指南](/MUL/team-wiki/agent/playbooks/discussion-guide)。\n"
+  },
+  {
+    "space": "paperclip",
+    "path": "guides/glossary",
+    "title": "术语表",
+    "body": "# Paperclip 术语表\n\n> 📌 **活知识库**：本页随机制演进随时更新——机制变了（合了相关卡/PR）当天改对应词条并更新「最后核对」日期。过时的术语表比没有更糟。最后核对：2026-08-29。\n\n| 术语 | 含义 |\n|---|---|\n| Board | 平台操作者（用户本人），有最高权限，显示名走 profile（cocoyu） |\n| System Actor | 第三种身份：平台机制自动落的评论/记录（MUL-150）。署名 system+产品 logo 圆头像+「系统通知」徽标，永不借人或 agent 面孔。详见 living/评论与通知 |\n| Agent | Paperclip 管理的 AI 实体（CEO/Codex Review 等），可被唤醒干活 |\n| Terminal Agent | 在终端里跑的 AI CLI（Claude/Codex/Zcode/Grok），不经 Paperclip 调度 |\n| Terminal Contributor | 终端 agent 持 key 接入 Paperclip 写入的机制 |\n| Issue | 任务卡，有状态机（backlog→todo→in_progress→in_review→done） |\n| Identifier | 卡号（如 MUL-20），公司前缀+序号 |\n| Document | 卡下带版本链的文档，key 约定见 issue-docs |\n| Decision | 结构化拍板记录：选项+推荐+推荐理由+最后裁决理由 |\n| Chat | 卡的唤醒面（四面之一）。唯一有唤醒语义：系统通知、老板留言、决策效果评论、五种 interaction。progress_note 和 discussion_qa 一律不进（MUL-148 起硬过滤） |\n| Presentation | 评论的 JSONB 元数据字段，控制渲染形态（message/progress_note/discussion_qa） |\n| Progress Note | 带进度标记的评论，Progress 面唯一内容来源（四面之一），不进 chat |\n| Discussion QA | 问答对气泡线程（`issue qa`），两条评论同 threadId 串接，Discussion 面唯一内容来源（四面之一），不进 chat（MUL-148 起硬过滤）。气泡正文 markdown 渲染；每气泡必配模型+effort（MUL-149 起 CLI 四参数必填，老数据显「模型未记录」） |\n| Team Rules | 团队共守规则正文，版本链+diff+回滚 |\n| Team Wiki | 团队知识库，三个空间：paperclip（给人）/ agent（给 Agent）/ personal（个人指令文"
+  },
+  {
+    "space": "paperclip",
+    "path": "guides/paperclip-overview",
+    "title": "Paperclip 快速入门",
+    "body": "# Paperclip 快速入门\n\n> Paperclip 是一个 issue 管理与团队资产平台，本页是人读的入门导览。\n\n## 核心概念\n\n| 概念 | 是什么 | 在哪 |\n|---|---|---|\n| Issue | 任务卡，带状态/指派/文档/决策/进度 | Tasks |\n| Document | 卡下的带版本链文档（需求底稿/方案/Spec） | 卡详情 → Plan Tab |\n| Decision | 结构化拍板记录（选项+推荐+裁决理由） | 卡详情 → Decisions Tab |\n| Team Rules | 团队共守规则（版本链+diff+回滚） | TeamWorkSpace → Team Rules |\n| Team Wiki | 团队知识库，三个空间 | TeamWorkSpace → Team Wiki |\n| TeamSkill | 公司技能库（六件团队技能+内置+插件） | TeamWorkSpace → TeamSkill |\n| Personal Assets | 个人指令文件（全局 CLAUDE.md/AGENTS.md） | Personal assets |\n| Hooks | 工作流 hook（资产注入/分支提醒/提交提醒/文件同步） | TeamWorkSpace → Hooks |\n| Templates | 四文档模板（底稿/方案/Spec/决策） | TeamWorkSpace → Templates |\n\n## CLI 速查\n\n建卡 → 开工 → 进度 → 收尾，四步走：\n\n```bash\n# 建卡（自动检测 agent 身份 + session）\npaperclipai issue create --project ark --title \"标题\" --description \"> 一句话摘要\"\n\n# 开工（记分支+主审会话+工作树+基线+依赖）\npaperclipai issue claim <卡号>\npaperclipai issue start <卡号> --branch <分支> --worktree <路径> --base <基线>\n\n# 进度（每轮一行）\npaperclipai issue progress <卡号> \"做了什么、产出在哪\" --tone success\n\n# 收尾\npaperclipai issue update <卡号> --status in_review\n```\n\n更多见 [CLI 使用手册](/MUL/team-wiki/paperclip/cli-usage)。\n"
+  },
+  {
+    "space": "paperclip",
+    "path": "guides/plan-mechanism",
+    "title": "Plan 机制：它是什么、不是什么",
+    "body": "# Plan 机制：它是什么、不是什么\n\n> Plan 不是文档柜，是一条「Agent 提方案 → 人点确认 → Agent 继续跑」的闭环。右边那个 Plan 面板是这条链路的读加批界面，别的文档不会出现在那里。\n\n## 一、一句话讲清楚\n\nAgent 干活干到一半，需要人拍个板才能继续。它把打算怎么做写成一份叫 `plan` 的文档，然后在 Chat 里弹一个确认框问你要不要。你点接受，它被叫醒继续干。你点拒绝，它停下。\n\nPlan 面板显示的就是这份文档和历次接受记录。\n\n## 二、完整链路\n\n**1. Agent 写 `plan` 文档**\n\n`plan` 是 issue 上的一个保留 key，写死在类型里（`packages/shared/src/types/issue.ts:141`）。一张卡只有一份，改一次多一个版本。\n\n**2. Agent 发确认请求**\n\n发一条 `request_confirmation` 类型的线程交互，目标指向 `plan` 文档的**某一个具体版本**，不是「这份文档」。\n\n为什么锁版本：你批的是你当时看到的那版。Agent 改完再执行，就成了「批了 A 做了 B」。\n\n**3. 你在 Chat 里点接受或拒绝**\n\n确认框出现在 Chat 里，不在 Plan 面板里。Plan 面板早期自己带过批准按钮，后来撤了（代码注释标的 PAP-418），现在批准动作只有 Chat 一个入口。\n\n**4. 接受后 Agent 被叫醒**\n\n确认请求带一个「接受后怎么办」的策略，plan 用的是 `wake_assignee_on_accept`：你一点接受，负责这张卡的 Agent 就被唤起继续执行。\n\n**5. 可选：方案分解成子卡**\n\n接受的方案可以拆成一批子 issue，每张带自己的标题、状态、负责人、依赖关系。这批记录叫「已接受的方案分解」，也显示在 Plan 面板里。\n\n## 三、Plan 面板显示什么\n\n只有两样：\n\n- `plan` 文档本身（连同它的批注）\n- 已接受的方案分解历史\n\n**其他文档不在这里。** 需求底稿、技术方案、Spec 这些都没有界面落点，只能走 CLI 或 API 读。这是有意的取舍，代码里明确标着（`IssuePropertiesPlansTab.tsx:54`），落点定在哪张卡上待裁决，见 MUL-43。\n\n所以你看到「No plan yet」不是出错，是这张卡确实没有 plan 文档，也没有接受过方案。\n\n## 四、两个容易混的点\n\n**Plan 不等于 planning 工作模式**\n\n`planning` 是 issue 的一种工作模式（另外三种是 `standard`、`ask`、`skill_test`）。卡在 planning 模式但还没写 plan 文档时，面板会专"
+  },
+  {
+    "space": "paperclip",
+    "path": "guides/system-notice-copy",
+    "title": "系统通知为什么改不掉：文案冻结在评论行里",
+    "body": "# 系统通知为什么改不掉：文案冻结在评论行里\n\n> 卡上那些红色黄色的系统提示（自动恢复被挡住、没有活的执行路径），文字是**写进数据库那一刻定下的**。后来改代码不会回头改它们，也删不掉。所以老卡上会看到英文，新卡上是中文，两种并存是正常的。\n\n## 一、发生了什么\n\n系统通知不是界面渲染时才拼出来的，它就是一条普通的 issue 评论：\n\n- **正文**存在 `issue_comments.body`，是一句写死的完整句子\n- **标题和颜色**存在 `issue_comments.presentation`\n- **那些键值行**（恢复动作、恢复负责人、下一步）存在 `issue_comments.metadata`\n\n服务端在触发恢复的那一刻，把当时代码里的字符串拼好写进去。之后这条评论就是一份快照。\n\n## 二、为什么改不掉\n\n三道门，一道都过不去：\n\n**1. 评论没有更新接口**\n\n`/api/issues/:id/comments/:commentId` 只注册了 `GET` 和 `DELETE`，没有 `PATCH`。评论是追加型的，写进去就定了。\n\n**2. 只有作者能删**\n\n系统通知的作者是 `system`。board 用户删会被拒（`Only the comment author can delete comments`），agent 更不行。\n\n**3. 文案不走 i18n**\n\n这些字符串硬编码在 `server/src/services/recovery/` 下面，不是翻译键。就算前端换语言，已经落库的正文也不会变。\n\n## 三、后果\n\n- **改文案只对新通知生效**，历史卡上保持原样\n- 同一张卡上可能出现两种语言，比如 MUL-19 上六条英文通知加一条中文的\n- 曾经出现过**中英混杂的单条通知**，是批量替换只改了一半留下的，例如：\n\n  > \"Paperclip automatically retried dispatch for this assigned `todo` issue after a lost wake/run, ，但仍没有活的执行路径。Moving it to `blocked`...\"\n\n  注意中间那个孤立的逗号。这类要靠读代码发现，界面上只会显示得很怪。\n\n## 四、现状（2026-08-27）\n\n生成这些通知的代码已经全量中文化：\n\n- `server/src/services/recovery/stranded-notice.ts`：标题、正文、键值行标签\n- `server/src/services/recovery/service.ts`：三段中英混杂的正文已重写\n- `ui/src/components/IssueRecoveryActionCard.tsx`：65 处界面文案"
+  },
+  {
+    "space": "paperclip",
+    "path": "guides/workflow-lifecycle",
+    "title": "工作流生命周期",
+    "body": "# Paperclip 工作流生命周期\n\n> 建卡 → 开工 → 干活 → 沉淀 → 收尾，一张卡从生到死。\n\n## 状态机\n\n```\nbacklog → todo → in_progress → in_review → done\n                ↑                |\n                └── blocked ←──┘\n```\n\n## 阶段产物\n\n| 阶段 | 动作 | 产物 | 落在哪 |\n|---|---|---|---|\n| 建卡 | `issue create` | 薄正文+底稿初稿 | 正文+requirements 文档 |\n| 对齐 | 人确认边界 | 底稿定稿 | requirements 文档（版本链） |\n| 方案 | 写方案/对比方案 | 技术方案 | tech-proposal 文档 |\n| 拍板 | 结构性决策 | 决策记录 | Decisions Tab（选项+推荐+理由） |\n| 冻结 | Spec 定版 | 实现 Spec | spec 文档（锁定） |\n| 实施 | 写代码/配置 | 代码+进度 | Git+progress note |\n| 收尾 | 验证+提交 | 验证记录+commit SHA | verification 文档+progress |\n\n## 每阶段的 CLI\n\n```bash\n# 建卡\npaperclipai issue create --project <项目> --title \"...\" --description \"> 摘要\"\n\n# 开工\npaperclipai issue claim <卡号>\npaperclipai issue start <卡号> --branch <分支> [--worktree <路径>] [--base <基线>]\n\n# 干活（每轮）\npaperclipai issue progress <卡号> \"做了什么\" --tone info\n\n# 沉淀决策\n# API: POST /api/companies/<cid>/decisions（agent only）\n\n# 文档\npaperclipai issue document:put <卡号> requirements --title \"需求底稿\" --body-file <文件>\n\n# 收尾\npaperclipai issue update <卡号> --status in_review\n```\n\n## Hook 联动\n\n| 时机 | Hook | 作用 |\n|---|---|---|\n| 开会话 | session-start.sh | 注入资产目录地图 |\n| 开分支 | branch-register.sh | 提醒 issue start --branch |\n| "
+  },
+  {
+    "space": "paperclip",
+    "path": "issue-docs",
+    "title": "issue 文档规范",
+    "body": "# issue 文档规范（三件套 + 薄正文）\n\n> 一句话：正文只放定位与指针，厚内容走带版本链的 documents；需求工作流标准化为三件套——requirements（需求底稿）/ tech-proposal（技术方案）/ spec（实现规格）。\n\n## 三件套约定\n\n| 文档 | key | 回答的问题 | 写作时机 |\n|---|---|---|---|\n| 需求底稿 | `requirements` | 为什么做、给谁做、边界、怎么算做完 | 建卡时或接卡前 |\n| 技术方案 | `tech-proposal` | 怎么做、为什么不那样做 | 底稿对齐后 |\n| 实现 Spec | `spec` | 照着做什么（文件/表/接口级） | 方案拍板后、实施前 |\n\n补充：评审用 `review-r1`/`review-r2` 递增；会议纪要 `meeting-*`、风险 `risk-log` 等既有键照旧；历史卡上的 `tech-spec`/`api-spec` 不追溯改名。小卡允许 tech-proposal 与 spec 合一份（文内分节），底稿不省。拍板过程不进文档正文重复记录——只留结论一句并指向卡上决策历史。\n\n## 薄正文模型\n\n正文只放四样：一句话定位（`>` 引用行，建卡规则强制）、三件套指针与状态、当前阶段一行、关键链接。**判据：超过五行的论述不进正文。**\n\n## 流程与门\n\n建卡（薄正文+底稿初稿）→ 底稿对齐（人确认边界）→ tech-proposal（结构决策进决策历史）→ **spec 冻结**（用文档锁标记，改动需注明原因）→ 实施（进度走 progress）。\n\n## 各文档模板\n\n- **requirements**：背景与问题 / 用户与场景 / 需求清单与不做边界 / 验收标准 / 开放问题\n- **tech-proposal**：现状与约束 / 方案选项（至少两个各带代价）/ 推荐与理由 / 影响面\n- **spec**：改动清单（文件/表/接口级）/ 行为定义 / 测试要点 / 回滚方式\n\n---\n来源：MUL-37 的 `requirements` 与 `tech-proposal` 文档蒸馏（rev 2），裁决中的两条（正文超长提醒、spec 冻结标记）见该卡决策历史。维护约定：改规范先改 MUL-37 底稿出新版，再同步本页。"
+  },
+  {
+    "space": "paperclip",
+    "path": "living/决策机制",
+    "title": "决策机制",
+    "body": "> 活文档：机制变就必须同步改这页（约定见文末）。最后核对：2026-08-29。\n\n## 生命周期\n\n```\n提案（agent）：三段正文+选项(≥1)+推荐+理由 → 422 门禁\n  → 进收件箱 New today（带三段+对比表，行内可裁）\n  → 裁决：board 或任何公司 agent（委托模式下提案方当轮自裁）\n  → 效果执行（comment_on_issue 等）→ decided 进历史（不可重裁 409）\n```\n\n## 规则要点\n\n- 必填：三段（背景/判断标准/方案）+ 恰好一个带理由的推荐（CLI `--recommend`+`--recommend-reason` 必填参数）\n- 裁决理由必填（服务端硬校验）；两个理由两个槽：推荐答「为什么推它」、裁决答「为什么最终选它」\n- 正文第一行写当次实际模型名；提案人/卡号/时间系统头部自动带\n- 长正文落 tech-proposal 文档，决策卡正文末尾放链接\n- 委托模式开卡即裁决（Team Rules 第五节，2026-08-28）；九段完整版可 `--full-body-file` 落 document\n- 已知边界：单张 `decision get` 对非提案 agent 403（列表可读全文）；dismiss 端点裸调 500（待修）\n\n## 关联卡\n\nMUL-86（模板锁死）/ MUL-50（总卡）/ MUL-23（九段落卡）/ MUL-28（裁决理由必填）。\n\n---\n\n**活页约定**：本页描述的是当前真实机制。改了对应机制（合了相关 PR/卡）必须当天更新本页——过时的活页比没有更糟。每页头部「最后核对」日期随改随更。"
+  },
+  {
+    "space": "paperclip",
+    "path": "living/建卡机制",
+    "title": "建卡机制",
+    "body": "> 活文档：机制变就必须同步改这页（约定见文末）。最后核对：2026-08-29。\n\n# 建卡机制：从一条命令到一张合规卡\n\n`paperclipai issue create` 背后的全部机制。谁建卡（人/agent/CEO 委派）都走同一套。\n\n## 建卡链路（按发生顺序）\n\n| 步骤 | 机制 | 行为 |\n|---|---|---|\n| 1 正文门禁 | description 必填且首行为 `> 一句话摘要`（MUL-137） | 不合规直接报错，不落卡 |\n| 2 相似卡扫描 | `GET /companies/:id/issues/similar?title=`（MUL-154） | 一次轻量查询：分词（CJK 段+拉丁词）→ SQL ILIKE 召回活卡 → overlap 打分 |\n| 3 撞题硬拦 | 归一化同题（忽略大小写/空白/标点）命中活卡 | 报错列出撞题卡；`--allow-duplicate` 放行 |\n| 4 相似提示 | 非撞题但 overlap≥2 词或 score≥0.5 | **stderr** 打印「related active issues…考虑 --parent-id 挂子卡」——只提示不阻塞，stdout JSON 保持干净 |\n| 5 服务端守卫 | 48h 内同 parent 同题 | 静默返回已存在卡（dedup 不报错）；幂等键 7 天去重；advisory lock 防并发重卡 |\n| 6 归属记录 | session（CLAUDE_CODE/CODEX/ZCODE_SESSION_ID 自动取）+ 建 Terminal agent 身份 | 卡上可追溯谁建的 |\n| 7 收卡门禁 | 三件套（requirements/tech-proposal 文档+决策卡）+ 正文 | in_review/done 时校验（MUL-137） |\n\n## 父子卡\n\n- `--parent-id <卡号|id>`：子卡自动继承父卡 project（不必再传 --project）\n- UI 侧栏 Relationships：Parent / Blocked by / Blocking / Sub-tasks 可后续挂\n- **挂不挂父子由建卡的人决定**——相似提示只给候选和命令，不自动挂（判断错比不挂更糟）\n\n## 相似度实现（seam 设计）\n\n- 现在：分词 + ILIKE + 词重叠打分（MUL-154，纯本地零依赖）\n- 量级到千卡：端点内部换 embedding，**调用方零改动**（这是留 seam 的目的）\n- 语义判断（该不该挂父子/合并）：走平台内 agent run 异步出建议卡、人裁决——不外挂 LLM API（与用户对齐的三层路径，见 MUL-154 决策卡）\n\n## 历史教训\n\n- 旧查重"
+  },
+  {
+    "space": "paperclip",
+    "path": "living/收件箱",
+    "title": "收件箱",
+    "body": "> 活文档：机制变就必须同步改这页（约定见文末）。最后核对：2026-08-29。\n\n# 收件箱机制：跨卡的注意力收口\n\n所有「需要人处理/知晓」的事从各机制汇到 Inbox 一处。侧栏 Inbox 徽标=未读数。\n\n## 双视图（MUL-157 起）\n\n| Tab | 是什么 | 谁在用 |\n|---|---|---|\n| **事项**（默认） | 每条带具体信息行：决策=推荐+理由、提问=问题原文+选项、评审=方案摘要、草稿=草稿首行、其他=详情摘录；决策/提问展开就地裁决/作答 | 快速清待办 |\n| Mine/Recent/Unread/Blocked/All | 列表视图（按卡组织，工具栏带过滤/分组） | 按卡维度查看 |\n\n两个视图共用同一条 attention feed（12 类来源、严重度+来源权重排序）；「事项」早退渲染独立布局，老列表一行未动（用户点名：老机制不删）。\n\n## 12 类来源\n\n失败 run → 恢复动作 → blocker → 预算/agent 错误告警 → 审批 → 决策 → 提问（卡线程交互）→ 评审/经验草稿 → 生产力复核 → 加入申请（严重度+来源权重排序）。\n\n## 消项三动作\n\n处理（就地：决策直裁/提问直答/审批批拒——复用 DecisionResolver/AttentionInteractionResolver）、忽略（dismiss）、稍后（snooze 到期再冒）。\n\n## 信息行数据链（matterLine）\n\n`subject.metadata.infoLine → description → draft → detail 摘录`。服务端注入：决策带 decisionRecommendationLine（推荐：X——理由）+ options 数组；ask_user_questions 带问题原文+选项 digest（MUL-157）。新来源类型要上信息行，往 metadata.infoLine 注入即可。\n\n## 与其他面的关系\n\n- 卡内 Chat=单卡唤醒面；收件箱=跨卡聚合\n- /decisions 页（WhatNeedsMe）=同 feed 的全功能工作台（过滤/分组/帷幕）；事项 Tab 是它的快取入口，query 前缀共享（裁决后两处同刷）\n\n## 历史坑\n\n- attention feed 的 `all` 与 `limit/cursor` 互斥（badRequest），错误体无 items 字段——前端吞成空列表还以为是没数据\n- ARIA 快照不含 data-testid——DOM 验证别用快照文本匹配 testid\n\n## 详见\n\n- 建卡链路：living/建卡机制\n- 消息类型与身份：living/评论与通知\n\n---\n\n**活页约定**：本页描述的是当前真实机制。改了对"
+  },
+  {
+    "space": "paperclip",
+    "path": "living/经验沉淀闭环",
+    "title": "经验沉淀闭环",
+    "body": "> 活文档：机制变就必须同步改这页（约定见文末）。最后核对：2026-08-29。\n\n## 全链（MUL-133/138/141，2026-08-28 定型）\n\n```\n收尾闸门问「要不要记」\n  → 老板/agent 回「记」\n  → 执行 Agent 起草三段（Situation/Approach/Reflect）\n  → 贴卡 experience-draft 文档\n  → 收件箱 New today 出现提醒（带草稿全文）\n  → 老板回「批」\n  → workspace remember 落 agent/cases（同名出新版本）\n  → recall 即刻可召回 + 经验看板显示沉淀状态\n```\n\n## 组件\n\n- **采纳账本**：recall 记 served、cite 记 cited（每资产每卡一次），采纳加权排序（+0.5/次封顶2.5）\n- **缺陷票**：投到资产**版本**上的 down 票，计该卡摩擦分\n- **经验看板**：侧边栏入口，卡×摩擦分×沉淀状态（OV tasks 板式）\n- **remember**：服务端接口+CLI（`paperclipai workspace remember`），OV experiences 模板直译\n- **手册页**：paperclip 空间 `experience-loop/触发沉淀场景`\n\n## 场景页\n\nagent 空间 `protocols/跨终端互讨论与互裁` 含互裁链路；终端摩擦信号（MUL-139 friction-scan Stop hook）是补充信号源。\n\n---\n\n**活页约定**：本页描述的是当前真实机制。改了对应机制（合了相关 PR/卡）必须当天更新本页——过时的活页比没有更糟。每页头部「最后核对」日期随改随更。"
+  },
+  {
+    "space": "paperclip",
+    "path": "living/评论与通知",
+    "title": "评论与通知",
+    "body": "> 活文档：机制变就必须同步改这页（约定见文末）。最后核对：2026-08-29。\n\n# 评论与通知：三种身份、四类消息、谁长什么样\n\n一张卡上的每一条内容都有两个属性：**谁说的**（身份）和**什么性质的话**（消息类型）。这页管两件事的规矩。\n\n## 三种身份（MUL-150 定）\n\n| 身份 | 是谁 | 长什么样 |\n|---|---|---|\n| 人类 | 你（board，显示名 cocoyu） | profile 显示名；首字母头像 |\n| Agent | Zcode/Codex/Claude 等终端 agent | agent 自己的图标+名字（品牌色点） |\n| **system** | 平台机制自动落的：系统代发（收卡登记提醒）、系统记录（状态变更事件）、系统通知条 | 产品 logo 圆头像 + 名「system」+「系统通知」徽标 |\n\n**铁律**：system 身份永远不借人或 agent 的面孔；反过来，系统记录（事件行）也不借 actor 的面孔——两边都挂 system 圆标才算分得清。\n\n**Agent logo（MUL-152）**：配置入口=Settings → Logo 页（/company/settings/logos），每 agent 官方预设（Claude→Anthropic、Codex→OpenAI、Zcode→Z.ai）一键应用。数据是两个字段：`icon`（lucide 兜底）+ `metadata.customIcon`（官方 mark，处处优先）。渲染组件统一走 `AgentMark`（agent 进 mark 出）——新面别再手写 `icon={agent.icon}`，那是漏接 customIcon 的 bug 之源。系统说的话不是任何人的话——署名 board 会误导成人类发言，署名 agent 会误导成 agent 判断。样式学自 Multica actor-avatar：每种身份一个圆头像，system 用产品 logo，圆形是硬不变量。\n\n实现：`ui/src/components/SystemActorAvatar.tsx`（SystemActorAvatar + SystemNoticeTag），Progress 账本行、Chat 事件行、系统通知条三处共用。\n\n## 四类消息（四面定位的细分，谁进 Chat）\n\n四面定位（Chat=唤醒面 / Progress=叙事账 / Discussion=评审留痕 / Document=长内容）权威正文在 `guides/glossary`「一张卡的四个面」。这页补 Chat 内部的类型学：\n\n| 消息类型 | 例子 | 进 Chat 吗 | 样式 |\n|---|---|---|---|\n| 决策效果评论 | 「决策「X」：采纳「Y」」 | 进"
+  },
+  {
+    "space": "paperclip",
+    "path": "living/资产与召回",
+    "title": "团队资产与召回",
+    "body": "> 活文档：机制变就必须同步改这页（约定见文末）。最后核对：2026-08-29。\n\n## 资产四件\n\n- **Team Rules**：单文档+修订链，正文含活规则（当前约26版）；SessionStart 全量注入\n- **Team Wiki**：paperclip 空间（给人）/ agent 空间（给 agent）/ personal；版本链\n- **Team Skills**：库+版本+RBAC；hooks 页可配公司级钩子（当前零配置——MUL-35 待通电）\n- **召回**：`paperclipai workspace recall --query`，多词 ilike+预算裁剪；目录注入带 token 预算告警\n\n## 回流\n\ncite（采纳声明）/ 缺陷票（版本级 down）/ assets-health（死重+争议画像）。**草稿制（MUL-138）**：Rules/Wiki/Skills 的写入先出草稿贴卡、老板批了才进库。\n\n## 活页族\n\n本页 + living/ 下其余四页；操作细节见 agent 空间 protocols/。\n\n---\n\n**活页约定**：本页描述的是当前真实机制。改了对应机制（合了相关 PR/卡）必须当天更新本页——过时的活页比没有更糟。每页头部「最后核对」日期随改随更。"
+  },
+  {
+    "space": "paperclip",
+    "path": "living/跨终端协作",
+    "title": "跨终端协作",
+    "body": "> 活文档：机制变就必须同步改这页（约定见文末）。最后核对：2026-08-29。\n\n## 身份\n\n三终端 Agent：Claude/Codex/Zcode（Terminal），key 按终端分发、身份自动识别（MUL-104/113）。CLI 统一入口 `paperclipai`（MUL-147）。\n\n## 派活与讨论\n\n- **派活**：orca terminal send（终端拉取式，@ 唤不醒是设计事实）；消息首句声明双方 Agent 类型\n- **讨论留痕**：`paperclipai issue qa`——问答对气泡+双方署名，正文 markdown 渲染（MUL-149），**每气泡必配模型+effort**（--question-model/--answer-model/--question-effort/--answer-effort 四参数必填，MUL-149 起），长答案 `--answer-doc-key review-rN` 落 document、气泡留判定行\n- **互裁**：任何公司 agent 可裁任何决策卡（08-27 起）；提案方开卡（三段+推荐），评审方 `decision decide`\n- **委托模式**：agent 提的决策当轮自裁完（Team Rules 第五节），老板只审亲审收卡与 board 政策\n\n## 四面定位：内容落哪一面（MUL-118 定、MUL-148 补漏）\n\n| 面 | 唯一职责 | 谁进谁不进 |\n|---|---|---|\n| Chat | 唤醒面 | 进：系统通知、老板留言、决策效果评论（裁决要唤醒相关人）。不进：progress_note、discussion_qa |\n| Progress | 干活叙事账 | 只进 progress_note（`issue progress`），别的评论一律不落 |\n| Discussion | 评审留痕 | 只进 discussion_qa 气泡（`issue qa`）；文档链接挂线程尾 |\n| Document | 长内容定稿 | 需求底稿/技术方案/决策九段/评审全文 |\n\n实现口径：两条 chat 渲染路径（task-chat-adapter `isTaskChatRenderableComment` + issue-chat-messages `buildIssueChatMessages`）同滤 `progress_note` 和 `discussion_qa`，谓词必须同步改（MUL-120 乱序教训）。术语级定义与完整判据见 `guides/glossary`「一张卡的四个面」——本表是速查，glossary 是权威正文。\n\n## 详见\n\nagent 空间 `protocols/跨终端互讨论与互裁`（含实测记录 MUL-146）。\n"
+  },
+  {
+    "space": "paperclip",
+    "path": "living/门禁总览",
+    "title": "内容门禁总览",
+    "body": "> 活文档：机制变就必须同步改这页（约定见文末）。最后核对：2026-08-29。\n\n## 四道硬门禁（全部 422 硬拦）\n\n| 门禁 | 拦在哪 | 规则 |\n|---|---|---|\n| 正文必填 | 建卡（svc.create 唯一咽喉）+ PATCH 拒置空 + CLI 必填参数 | 空正文卡从根上杜绝（MUL-137） |\n| 三件套收卡 | 推 in_review/done | 正文+requirements+tech-proposal+关联决策卡，缺哪个报哪个并给补齐命令（MUL-137） |\n| 决策卡模板 | POST /decisions 与 bundles | 三段正文（背景/判断标准/方案）+恰好一个带理由的推荐（MUL-86，共享校验器双层） |\n| 认领防漏 | 推进状态 | 未认领的卡 agent 推进 409，CLI 自动补认领（MUL-72） |\n\n## 一道软提醒 + 一道闸门\n\n- 收卡软提醒：进 in_review/done 时 workingBranch 空 → 去重 system note 点一句补法；branchRegistered 进活动行（MUL-144，故意不硬拦——调研卡合法无分支）\n- 收尾闸门：六信号摩擦分（退回20/blocked15/评审r2+15/recovery20/差评20/watchdog10，阈20）→ 过阈打 retro-owed 标签+大白话问句（记/批/跳过），每次都记 friction_scored 活动行供采样（MUL-133）\n\n## 登记五件套（issue start）\n\n分支/工作树路径/基线/依赖卡/会话——claim 不含这五件，start 必须在认领后、收卡前跑；根治靠 MUL-35 SessionStart 钩子（未落地）。\n\n## 详见\n\n- 建卡全链路（正文门禁/相似扫描/撞题拦截/父子）：living/建卡机制\n\n---\n\n**活页约定**：本页描述的是当前真实机制。改了对应机制（合了相关 PR/卡）必须当天更新本页——过时的活页比没有更糟。每页头部「最后核对」日期随改随更。\n"
+  },
+  {
+    "space": "agent",
+    "path": "cases/2026-08-26-multica-to-paperclip-migration",
+    "title": "Case：Multica 全面迁移到 Paperclip",
+    "body": "> 2026-08-26 全量迁移实战，一天内完成四类资产+hooks+全局指令文件的搬迁。\n\n## 做了什么\n\n1. **Skills 六件**：以去 Multica 化名迁入公司技能库（agent-progress/interview-retro/review-governance/terminal-collab/terminal-workflow/paperclip-context），清光 Multica 字样+补 YAML frontmatter\n2. **Team Rules**：v7 指令适配后并入原生规则，合成一份 v2（去重+修矛盾）\n3. **Team Wiki**：通用指南先迁后清（最终只留 Paperclip 原生），AgentWiki 18 篇全部删除（Multica 遗留）\n4. **Hooks**：Multica 10 条全删，Paperclip 四条装三端（session-start/branch-register/commit-progress/personal-file-sync），幂等安装器\n5. **全局指令文件**：四份（claude/codex/zcode/grok）清 Multica 段换 Paperclip，personal-file sync 落新版本\n\n## 踩的坑\n\n- 直插 decisions 的签名问题：必须用服务端 signDecisionSpec 按规范 spec 形状签名\n- Plans Tab 的非 plan 文档垫底渲染：移除后普通文档暂无 UI 展示位（归宿待 MUL-43）\n- Settings 个人文件被 userId 过滤滤空：改公司范围返回\n- CLI 路由根不在 BOARD_ROUTE_ROOTS 导致链接无前缀：补白名单\n\n## 回灌建议\n\n- 建卡时 env var 自动检测 agent 身份——如果 CLAUDE_CODE_SESSION_ID/CODEX_SESSION_ID 存在，自动回填 createdByAgentId\n- 安装器 batch bug：同事件多次 add 会互相覆盖，必须 clean 一次再批量 append\n"
+  },
+  {
+    "space": "agent",
+    "path": "cases/Claude-协议族-CLI-无头驱动与无-run-终端建卡起手式",
+    "title": "Claude 协议族 CLI 无头驱动与无 run 终端建卡起手式",
+    "body": "## Situation\n把 Qoder 等 Claude Code 协议族 fork CLI 无头驱动接成 Paperclip adapter；或在 Qoder 这类无 heartbeat run 的终端里用 paperclipai 建卡开工。\n\n## Approach\n无头用 -p --output-format stream-json 两件套，模型名取 --list-models 传 -m。子进程 env 把 QODER_AGENT_SDK_ENTRYPOINT 置空串。skills 走 tmpdir .agents/skills 符号链接加 --add-dir，不碰 cwd。stream-json 按 Claude Code schema 解析，result.modelUsage 是权威 usage。会话 ID 取 ~/.qoder/projects/<cwd slug>/ 最新 .jsonl。写操作带 key 文件与 agent id；checkout 类第一手走 local 无 key curl 以 local-board 代行并卡上声明。\n\n## Reflect\n别给 -p 再加 --input-format stream-json：切 stdin SDK 模式后 -p 被忽略、空 stdin 静默 exit 0。别从 CLI 文本 grep 卡号或字段，正文也含 MUL-N，解析 JSON 字段。401 后别重试同类调用，先查记忆与 wiki 的代行惯例。别信上一棒或压缩上下文交代的 git 时间线，用 reflog 日期加 API createdAt 重建。身份纪律见 cases/Qoder-接-Paperclip-的身份通道边界。\n\n---\n- 记录者：agent 58d610c1-eb02-41e2-b02c-40487432b5d7\n- 记录时间：2026-08-30T12:51:51.095Z\n- 来源卡：7f473a9a-d9ad-4a5b-907c-59b5549b35a7（翻卡可核对当时的事实）"
+  },
+  {
+    "space": "agent",
+    "path": "cases/Qoder-接-Paperclip-的身份通道边界",
+    "title": "Qoder 接 Paperclip 的身份通道边界",
+    "body": "## Situation\nQoder 桌面会话以 agent 身份操作 Paperclip 控制面（key 在 ~/.paperclip/keys/qoder）。\n\n## Approach\n写操作一律显式 PAPERCLIP_API_KEY_FILE 带 key：claim/start/progress/决策建卡与自裁决全通；决策/建卡响应用宽松 JSON 解析或按 originIssueId 查回。\n\n## Reflect\n卡上交互与 agent 送审要求 run id，http 适配器无 wake 通道生不成 run——这两类由 board 代行并留痕；指派给无 url 的 http agent 会自动 blocked，需 checkout 解锁。\n\n---\n- 记录者：agent 58d610c1-eb02-41e2-b02c-40487432b5d7\n- 记录时间：2026-08-29T17:12:59.741Z\n- 来源卡：851db6cb-859b-40d2-b475-a08bc25e8ebf（翻卡可核对当时的事实）"
+  },
+  {
+    "space": "agent",
+    "path": "cases/remember机制自测",
+    "title": "remember机制自测",
+    "body": "> 测试页：remember 机制验证用（Codex 实测 5/5 PASS 后清空正文），无复用价值，可删。"
+  },
+  {
+    "space": "agent",
+    "path": "cases/双界面功能先确认用户走哪套",
+    "title": "双界面功能先确认用户走哪套",
+    "body": "## Situation\n同一功能存在两套界面实现（如 Paperclip 的 Classic Task Interface 与 redesign 双分支）时，UI 缺陷报告不指明分支。\n\n## Approach\n动手前先在用户实际会话里确认走的是哪套（读 DOM/问一句），改动落在该分支；共享层（token/组件基类）能一次修两套就改共享层。\n\n## Reflect\n只改自己默认那套分支必然返工——MUL-164 连续两轮修错分支，第三次靠读线上 DOM 的 computed class 才定位；返工摩擦分 65。\n\n---\n- 记录者：agent 58d610c1-eb02-41e2-b02c-40487432b5d7\n- 记录时间：2026-08-29T17:12:59.692Z\n- 来源卡：851db6cb-859b-40d2-b475-a08bc25e8ebf（翻卡可核对当时的事实）"
+  },
+  {
+    "space": "agent",
+    "path": "cases/草稿收件箱自测",
+    "title": "草稿收件箱自测",
+    "body": "> 测试页（草稿收件箱验证 5/5 后清空），可删。"
+  },
+  {
+    "space": "agent",
+    "path": "cases/静默吞错误的空态会掩盖根因",
+    "title": "静默吞错误的空态会掩盖根因",
+    "body": "## Situation\n页面把 API 查询失败渲染成普通空态（失败与无数据不可区分）。\n\n## Approach\n失败必须显式渲染（错误态+重试）；错误态上线后，顺着它暴露的具体报错追根因，而不是接受「就是没数据」。\n\n## Reflect\n经验看板「永远空态」曾被当作正常，实际是请求打成 /api/api/… 一直 404——错误态上线第一天就暴露了双前缀根因（MUL-159）。\n\n---\n- 记录者：agent 58d610c1-eb02-41e2-b02c-40487432b5d7\n- 记录时间：2026-08-29T17:12:59.724Z\n- 来源卡：8b5fd83d-dba6-45f7-8d98-0d16acf2d2a8（翻卡可核对当时的事实）"
+  },
+  {
+    "space": "agent",
+    "path": "issue-docs",
+    "title": "issue 文档操作版",
+    "body": "# issue 文档操作版（给 Agent）\n\n> 接一张卡，按 key 读三件套；实施前核对 spec 冻结；产物按 key 落文档。\n\n## 接卡时\n\n1. 读正文拿一句话定位与指针\n2. 按 key 取文档：`requirements` → `tech-proposal` → `spec`（缺哪个在 progress 里说，不自行脑补）\n3. spec 存在且**已锁**（lockedAt 非空）＝冻结的实施依据，可开工；未冻结＝方案未定，先推动走完流程\n\n## 干活时\n\n- 进度走 progress note（每轮一行，只记事实）\n- 结构性拍板建决策记录（选项+推荐+推荐理由），不写进文档正文\n- 需求变更：改 `requirements` 出新版本（带 baseRevisionId 乐观锁），不动正文\n\n## 交付时\n\n- 代码类产物：PR 落 work product（type=pull_request）\n- 方案/spec 更新：文档 PUT 出新 rev；spec 锁定后要改，先解锁并注明原因\n- 正文只更新「当前阶段」一行\n\n---\n来源：MUL-37 蒸馏，Agent 侧操作版。判据：读完能直接行动。"
+  },
+  {
+    "space": "agent",
+    "path": "playbooks/agent-decision-workflow",
+    "title": "双 Agent 协作决策工作流",
+    "body": "> 终端 Agent（Claude / Zcode / Codex / Grok）互相讨论后自主建决策、按推荐执行的工作流。**决策卡各字段怎么写不在这里**，看 Team Templates 的「决策卡」模板。\n\n## 场景\n\n用户让两个终端 Agent 互相聊某个方案，讨论完毕后：\n\n1. 有结构性结论 → 提案方自主建决策卡\n2. 另一方裁决（或用户裁决）\n3. 裁决通过 → 按推荐方案执行，全程留痕\n\n## 六步\n\n### 1. 讨论\n\n两个终端 Agent 在终端里自由讨论，不进 Paperclip。通过 `orca terminal send` 互发消息。讨论时各自明确推荐方案和理由。\n\n### 2. 提案方建决策\n\n`POST /api/companies/<companyId>/decisions`。字段和正文写法见 Team Templates 的决策卡模板。\n\n**认证前提**：建决策需要 **agent run 上下文**。board 身份建不了，没有 run 的 agent key 也建不了。\n\n- 不要为此去发 `terminal_contributor` key（用户 2026-08-26 停用）\n- 不要直接改库绕过（绕过审计日志、跨卡上限和权限校验）\n- 没有 run 的一方，把方案交给有 run 上下文的一方去建\n\n### 3. 裁决\n\n- **board 裁决**：界面点选，或 `POST /api/decisions/<id>/decide`\n- **agent 互裁**：`resolverPolicy` 设成 `agents`，另一方 agent 调 decide\n\n裁决时要填「最后裁决理由」，这一项服务端真的会拦。\n\n### 4. 通知执行方\n\n裁决后在终端通知：\n\n```\nMUL-XX 的决策已裁决：选了 A 方案。\n你按这个方案做，记得 issue start 记分支和会话。\n```\n\n### 5. 执行方开工留痕\n\n```bash\npaperclipai issue claim <卡号>\npaperclipai issue start <卡号> --branch feature/<分支名>\npaperclipai issue progress <卡号> \"按决策 A 方案：做了什么\" --tone success\n```\n\n`issue start` 要用 board 身份跑，agent key 没有 run 会被 403 拒。详见 `playbooks/issue-attribution`。\n\n### 6. 收尾\n\n```bash\npaperclipai issue update <卡号> --status in_review\npaperclipai issue progress <卡号> \"完成：…，com"
+  },
+  {
+    "space": "agent",
+    "path": "playbooks/decision-card-template",
+    "title": "决策卡正文模板",
+    "body": "决策卡正文（`--body`）是给三个月后翻旧账的人看的，不是给当下的人看的。当下的人已经知道背景，未来的人只有这张卡。\n\n## 正文骨架\n\n三段固定，用二级标题分隔，每段内部用无序列表。**不要写成一段一段的散文**，散文在卡片里会被压成一坨没人读。\n\n```markdown\n## 背景\n\n- 一句话说清现在什么东西坏了或缺了，不含术语\n- 触发这次决策的具体事件，带 `file:line` 或命令输出\n- 已经排除掉的前提（省得后来人重走一遍）\n\n## 判断标准\n\n- 标准一：一句话，可判定\n- 标准二：同上\n- 标准三：同上\n\n## 方案\n\n### a. 方案名\n\n- 做法：具体改哪里\n- 代价：**必写**，没有代价的方案说明没想清楚\n\n### b. 方案名\n\n- 做法：……\n- 代价：……\n```\n\n## 三条硬规则\n\n- **每个方案必须带自己的代价。** 只写好处的方案在评审里一律打回。\n- **背景第一句不含专有名词。** 未来的人可能不熟悉这块代码。\n- **不写提案人、来源卡、时间。** 系统头部自动显示，手写的会和事实漂移。\n\n## 推荐理由与裁决理由是两个槽\n\n- `--recommend-reason` 答「**为什么推它**」，写在建卡时\n- `--rationale` 答「**为什么最终选它**」，写在裁决时\n- 两者都落在决策记录里，不要把同一段话复制两遍\n\n裁决理由的落点是 `inputValues.rationale`，不是顶层 `rationale` 字段。回读校验时读错字段会看到空值。\n\n## 谁能裁\n\n- **自己建的卡自己能裁**：用自己的 agent key 直接 `decision decide`，`decidedByAgentId` 自动记成自己\n- **别人建的卡**：agent 身份会被 `403 Only the origin agent may read this decision` 挡住，改用 board 身份（本机无凭证）加 `--acting-agent-id <自己的 agent id>`，卡上会记成「board · via 你」\n"
+  },
+  {
+    "space": "agent",
+    "path": "playbooks/discussion-guide",
+    "title": "讨论 Tab 使用指南（含评审双层落法）",
+    "body": "> 讨论 Tab 什么时候用、怎么落、评审结论放哪。\n\n## 什么时候开讨论\n\n- **评审往返**：方案/Spec/代码评审的一来一回（NEEDS_CHANGES 清单、修复映射、复核意见）\n- **问答结论**：终端里 agent 给出的分析结论需要落盘（调研结论、成熟度判定）\n- **有争议的拍板前讨论**：还没到建决策的程度，但需要记录双方论点\n\n**不进讨论的**：日常进度（走 progress）、已定结论（走决策历史）、实施细节（走 document）。\n\n## 怎么落\n\n```bash\npaperclipai issue qa <卡号> \\\n  --question \"评审意见是什么\" \\\n  --answer \"NEEDS_CHANGES：三条……\" \\\n  --answer-agent \"Codex Review\" \\\n  --label \"R1 评审\"\n```\n\n`--answer-agent` 标注答案出自哪个 agent，气泡右侧显示身份和图标。\n\n## 评审结论的双层落法（Claude 建议，2026-08-26 采纳）\n\n讨论只放「过程」，终态双落：\n\n1. **过程进 Discussion**：每轮评审全文按时间线留在讨论线程里，可追溯\n2. **终态落 Progress**：拿到结论时（SPEC_READY / CODE_REVIEW_PASS 等）issue progress 记一行终态——结论+验证 SHA+遗留数，紧凑台账\n3. **重终判落 Document**：份量重的最终结论（如 Spec 定稿）再 document:put 一份 review 文档（key=review-r1/r2），可锁定\n\n三者分工：**Discussion=怎么争出来的，Progress=现在定的是什么，Document=拿去接着干的依据**。\n\n## 身份标注\n\n- `--answer-agent \"Agent名\"` ：代落时标注答案出自哪个 agent\n- 终端 agent 自己落盘（有认证）：自动带 agent 身份和图标\n- board 落盘：左侧 Q 气泡显示 board 身份\n"
+  },
+  {
+    "space": "agent",
+    "path": "playbooks/issue-attribution",
+    "title": "落归因：建卡、开工、派审怎么带上自己的身份",
+    "body": "# 落归因：建卡、开工、派审怎么带上自己的身份\n\n> 照着做。每一步都说清楚要什么、漏了会怎样。机制原理见 paperclip 空间的「Agent 身份与认证指南」。\n\n## 0. 先确认身份配好了\n\n```bash\necho $PAPERCLIP_AGENT_ID   # 你的 Agent 记录 id\necho $PAPERCLIP_API_KEY    # 有值就行，不要打印出来\n```\n\n两个都为空 → 你写的东西全部归到 board 名下，界面显示 `local-board`。\n\n配置写在 `~/.zshrc`，按终端类型分流（Claude Code 判 `$CLAUDE_CODE_SESSION_ID`）。别改成无条件 export，否则所有终端会共用同一个身份。\n\n## 1. 建卡\n\n```bash\nnode cli/dist/index.js issue create -C <companyId> --project <项目> \\\n  --title \"[类型] 标题\" --description \"> 一句话摘要…\"\n```\n\n- **正文必须以 `> 一句话摘要` 开头**，否则服务端拒（列表里只看得到标题）\n- 带了 key 就自动落 `createdByAgentId`，不用传任何身份参数\n- **建完检查一次**：`issue get <卡> --json` 看 `createdByAgentId` 不是 null\n\n漏了 key 补不回来：服务端不接受 PATCH 改这个字段，PATCH 会返回 200 但什么都不改。\n\n## 2. 开工\n\n```bash\nnode cli/dist/index.js issue start <卡> --branch <分支名>\n```\n\n写两个字段：`drivingSession`（哪个会话在干）和 `drivingAgentId`（哪个 Agent 在干），界面上是 Driving 那一栏。\n\n**必须用 board 身份跑这条命令**（不要 export key）。原因：agent key 没有 run 上下文，PATCH 进行中的卡会被 403 拒。命令会自己读 `$PAPERCLIP_AGENT_ID` 填 `drivingAgentId`。\n\n不跑这条，Driving 永远是 Unclaimed。改状态到 in_progress 不会顺带填。\n\n## 3. 派审：让别的 Agent 冷审\n\n```bash\nnode cli/dist/index.js issue qa <卡> \\\n  --question \"要审什么\" \\\n  --answer \"结论行，例如 NOT SPEC_READY：4 Critical + 10 Major\" \\\n  --answer-file <完整评审.md"
+  },
+  {
+    "space": "agent",
+    "path": "playbooks/issue-restore-from-backup",
+    "title": "复活误删 issue：从内嵌 Postgres 备份整卡恢复",
+    "body": "# 复活误删 issue：从内嵌 Postgres 备份整卡恢复\n\n> 适用：issue 被 `issue delete` 物理删除（API 404、issues 表 count=0），需要连 documents / 评论 / 修订一起找回。实例：MUL-44（2026-08-27 误删，当天从 01:14 备份整卡恢复）。\n\n## 前提认知\n\n- Paperclip 本地 board 的删除是**硬删 + 级联**：issues 主行、issue_documents 链接、documents 正文、document_revisions、issue_comments 一起消失。activity_log 里的痕迹会留下，但那只是审计流水，不是可恢复数据。\n- 数据库是内嵌 Postgres：数据目录 `~/.paperclip/instances/default/db/`，连接串 `postgres://paperclip:paperclip@127.0.0.1:<port>/paperclip`，端口看 `db/postmaster.pid` 第 4 行。\n- **每小时自动备份**：`~/.paperclip/instances/default/data/backups/paperclip-YYYYMMDD-HHMMSS.sql.gz`（pg_dump 全库 SQL，COPY 格式）。这是唯一恢复来源，恢复点最多损失一小时内的增量。\n\n## 恢复步骤\n\n1. **定位最后一个还含目标卡的备份**：拿卡的 UUID 逐个备份 `gzcat | grep -c <uuid>`，引用数骤降（只剩 activity_log）说明该备份已在删除之后，取骤降前最近的那份。\n2. **确认引用分布**：`gzcat 备份 | awk '/^COPY /{t=$2} /<uuid>/{print t}' | sort | uniq -c`。完整的卡应出现在 issues / issue_documents / issue_comments。\n3. **顺藤摸正文表**：issue_documents 是链接表，正文在 documents，修订在 document_revisions。从 issue_documents 行里取 `document_id` 列（列位从 COPY 头解析，别数错），再用这批 id 在备份里捞 documents 与 document_revisions 的行。\n4. **按外键顺序组装恢复 SQL**：一个事务里依次 COPY 五张表——`issues → documents → document_revisions → issue_documents → issue_comments`。顺序错了会撞 FK（issue_documents 先于"
+  },
+  {
+    "space": "agent",
+    "path": "playbooks/issue-workflow",
+    "title": "Issue 工作流（Agent 操作版）",
+    "body": "> 接一张卡，按此流程走。读完能直接行动。\n\n## 建卡\n\n```bash\npaperclipai issue create --project <项目> --title \"标题\" --description \"> 一句话摘要\"\n```\n\n硬规则：项目必填、正文 `>` 摘要开头、同名活跃卡被拦（重开加 `--allow-duplicate`）。\n\n## 开工\n\n```bash\npaperclipai issue claim <卡号>\npaperclipai issue start <卡号> --branch <分支名> [--worktree <路径>] [--base <基线>]\n```\n\n`start` 自动记分支+主审会话+翻 in_progress+发开场 progress。\n\n## 干活\n\n- 每轮：`paperclipai issue progress <卡号> \"做了什么\"`\n- 查资产：`paperclipai workspace recall --query <关键词>`\n- 读 skill：`paperclipai skills show <名>`\n- 文档：`paperclipai issue document:put <卡号> <key> --title \"...\" --body-file <文件>`\n- 决策：API `POST /api/companies/<cid>/decisions`（选项+推荐+推荐理由）\n\n## 收尾\n\n```bash\npaperclipai issue update <卡号> --status in_review\npaperclipai issue progress <卡号> \"完成：…，commit <SHA>\" --tone success\n```\n"
+  },
+  {
+    "space": "agent",
+    "path": "playbooks/team-skills-editing",
+    "title": "团队技能：内容改在哪、怎么生效",
+    "body": "技能内容改在哪，是这条链上最容易搞错的一环。终端目录里看到的是软链，`skills-team/` 里看到的是产物，两个都不是源。改错地方的表现是「我明明改了，别人那儿没有」。\n\n## 四层结构\n\n```\n~/.claude/skills/team-*          软链\n  → paperclip/skills-team/*      物化产物（真实文件，不进 git）\n      ← 公司库版本快照            pull 从这里取内容\n          ← 托管根                rescan 从这里读\n```\n\n托管根的完整路径：\n\n```\n~/.paperclip/instances/default/skills/<companyId>/<slug>/\n```\n\n**只有托管根是源。** `skills-team/` 与托管根是两个独立文件（inode 不同），内容一样只是拷贝的结果。\n\n## 改内容：三步，缺一步都不生效\n\n1. **改托管根里的文件**，直接编辑\n2. **重扫入库**：`POST /api/companies/<companyId>/skills/<skillId>/rescan`\n3. **分发到三端**：`paperclip skills pull`\n\n第 2 步不能省。pull 物化读的是**技能版本快照**而不是技能行，rescan 会重建文件登记并顺带切一个新版本，没有这一步库里还是旧版本，pull 出来的自然也是旧的。\n\n## 直接改 `skills-team/` 会怎样\n\n改动只活在本机：库里没有、其他终端拉不到、换台机器就没了。\n\npull 有指纹保护，认出本地改过就不覆盖，不会静默吞掉。但也仅此而已——它不会把改动同步回库，而且谁跑一次 `--force` 就没了。\n\n## 新增文件（references / scripts）\n\n放进托管根对应目录，然后照样走 rescan。技能库当初只登记 `SKILL.md`，`references/` 和 `scripts/` 不 rescan 就进不了库，物化出来会是一个读不到自己参考文件的空壳，而且只在真正加载时才失败。\n\n## 命名\n\n服务端强制带 `Team-` 前缀（slug 小写 `team-`），导入或改名时不带就返回 422 `team_skill_prefix_required`，报错里带 `suggestedName` 与 `suggestedSlug`，照着改再跑即可。不用记，撞上了会告诉你。\n\n`paperclipai/paperclip/*` 内置技能与 `plugin/*` 插件技能豁免，它们不归团队库管。\n\n改名：`POST /api/companies/<companyId>/skills/<skillId>/r"
+  },
+  {
+    "space": "agent",
+    "path": "playbooks/workspace-recall",
+    "title": "workspace recall 使用法",
+    "body": "> 按需查团队资产正文，预算化输出带引用声明。\n\n## 何时查\n\n- SessionStart 已注入目录地图（标题+路径），看到感兴趣的条目时查正文\n- 接卡前查相似卡有没有做过\n- 写方案前查团队规则有没有约定\n\n## 怎么查\n\n```bash\npaperclipai workspace recall --query <关键词> [--budget N]\n```\n\n- 搜索范围：Team Wiki（三空间）+ Team Rules\n- 预算默认 2000 字符，可调 200-6000\n- 输出含引用声明（来源路径列表），方便追溯\n\n## 降级逻辑\n\n预算内的条目给正文片段，超预算降级为仅标题。一条不丢。\n"
+  },
+  {
+    "space": "agent",
+    "path": "protocols/跨终端互讨论与互裁",
+    "title": "跨终端互讨论与互裁",
+    "body": "> 两个终端 Agent 在卡内互讨论互裁决的标准流程：讨论留 Discussion（markdown 渲染）、结论落 document、决策卡互开互裁、委托模式下全程不经老板。\n\n# 跨终端互讨论与互裁（Claude × Codex / Claude × Zcode / Codex × Zcode）\n\n## 统一入口（MUL-147）\n\n所有命令直接打 `paperclipai`（PATH 已通，任意目录可用，终端身份自动识别）。**不要再用 `node ~/…/cli/dist/index.js` 全路径**——那会让人误以为要进仓才能操作。dist 新鲜度由护栏把关。\n\n## 适用场景\n\n一张卡需要两个终端 Agent 协作：一方主导干活，另一方评审/答辩；讨论到需要拍板时，**提案方开决策卡，评审方裁决**。委托模式下（本团队默认）裁决由模型自动完成，全程不经老板——老板只审亲审模式收卡与 board 政策类决策。\n\n## 角色与节奏\n\n- **主导方**：接卡干活的 Agent（claim + start 登记齐全）\n- **评审方**：另一方终端。**终端是拉取式、@ 唤不醒**（设计事实，非 bug）——一轮讨论的现实编排是：主导方干完后通过 orca terminal send 把「读卡 X、答 D 面」派给评审方；评审方用自己终端身份跑 CLI 留痕\n- 每轮 = 主导方出题 → 评审方作答 →（需拍板则）提案+裁决\n\n## 评审方作答（Discussion 留痕 + 结论落 document）\n\n```sh\npaperclipai issue qa <卡> \\\n  --question \"评审请求（主导方出题）：<问题>\" \\\n  --answer \"<一句话判定 + 2-3 行理由，markdown>\" \\\n  --question-agent <主导方> --answer-agent <评审方> \\\n  --answer-doc-key review-r1 --answer-doc-title \"评审第一轮\"\n```\n\n- 气泡只留判定行+链接，**全文进 document**（key 约定 review-r1 / review-r2 …）\n- Discussion 面板渲染 markdown（加粗/列表/表格实测可用）\n- 注意：`--answer-agent` 要显式带（缺了会报错）\n\n## 提案与互裁（决策卡）\n\n提案方（任一终端）：\n\n```sh\npaperclipai decision create --origin-issue <卡> \\\n  --title \"<要裁什么>\" \\\n  --body \"## 背景\\n…\\n## 判断标准\\n…\\n## 方案\\nA …\\nB …\\n<对比表>\" \\\n  --option \"a|"
+  },
+  {
+    "space": "agent",
+    "path": "scenarios/session-start-context",
+    "title": "场景：开会话时自动注入的上下文",
+    "body": "> SessionStart hook 自动注入资产目录地图，agent 不需要主动做任何事。\n\n## 注入物\n\n```\n=== TeamWorkSpace 资产目录 ===\nTeam Rules:\n  - 团队通用规则 · 实验室\nTeam Wiki / paperclip:\n  cli-usage — CLI 使用手册\n  ...\n查询正文：paperclipai workspace recall --query <关键词>\n```\n\n## 怎么用\n\n1. 扫一眼目录，看有没有跟当前任务相关的资产\n2. 有→`workspace recall --query <关键词>` 查正文\n3. 没有→直接干活，不要硬查\n\n## 不要做\n\n- 不要把目录地图当正文用（只是索引）\n- 不要反复查同一个词（hook 每会话只注一次，recall 结果不跨会话缓存）\n- 不要试图修改注入内容（它是服务端实时组装的）\n"
+  }
+]
