@@ -812,6 +812,10 @@ export interface Issue {
   workingBranch?: string | null;
   drivingAgentId: string | null;
   drivingSessionAt: Date | null;
+  /** 评审会话 (MUL-456): the latest review pass, null until one is archived. */
+  reviewerAgentId?: string | null;
+  reviewerSession?: string | null;
+  reviewerSessionAt?: Date | null;
   responsibleUserId: string | null;
   issueNumber: number | null;
   identifier: string | null;

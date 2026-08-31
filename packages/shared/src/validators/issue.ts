@@ -616,6 +616,12 @@ export const updateIssueSchema = objectWithoutDefaults(
   drivingSession: z.string().trim().max(200).nullable().optional(),
   workingBranch: z.string().trim().max(200).nullable().optional(),
   drivingAgentId: z.string().guid().nullable().optional(),
+  // MUL-456 reviewer slot, same shape as driving: one per issue, overwritten by
+  // the latest review pass. Server stamps reviewerSessionAt. Written when a
+  // review is archived rather than claimed up front, so most cards leave it
+  // null and "nobody reviewed this" stays readable as itself.
+  reviewerSession: z.string().trim().max(200).nullable().optional(),
+  reviewerAgentId: z.string().guid().nullable().optional(),
   // Correcting authorship after the fact. Board-only (enforced in the route):
   // an agent must not be able to rewrite who opened a card, but a human fixing
   // a card filed before its terminal had an agent key is legitimate — and
@@ -670,6 +676,12 @@ export const issueCommentPresentationSchema = z.object({
   // Codex today and Grok tomorrow. Distinct from authorAgentId: that records
   // who WROTE the comment, which is the board when filing on behalf.
   answerAgentId: z.string().uuid().optional(),
+  // The reviewing terminal's session (MUL-456). Filing this makes the card
+  // able to point back at the conversation the review actually happened in,
+  // which is the one a later reader cannot otherwise find — review is the step
+  // most likely to have run somewhere else. A navigation aid, never identity:
+  // answerAgentId above is what says who reviewed.
+  answerSession: z.string().trim().max(200).optional(),
   // The agent that ASKED. Filing a review on behalf makes board the writer on
   // both bubbles, so without this the request side reads as "local-board" even
   // when Claude is the one commissioning the review.

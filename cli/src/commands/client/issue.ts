@@ -120,6 +120,7 @@ interface IssueQaOptions extends BaseClientOptions {
   answerDocTitle?: string;
   answerModel?: string;
   answerEffort?: string;
+  answerSession?: string;
   questionModel?: string;
   questionEffort?: string;
 }
@@ -822,6 +823,11 @@ export function registerIssueCommands(program: Command): void {
       .option("--question-model <model>", "Model that asked — defaults to what this terminal is actually running")
       .option("--question-effort <effort>", "Reasoning effort of the question — defaults to what this terminal is actually running")
       .requiredOption("--answer-effort <effort>", "Reasoning effort of the answer (e.g. high/medium/low)")
+      // 评审会话 (MUL-456): the reviewing terminal's session, so the card can
+      // point back at where the review actually happened. Only needed when
+      // archiving on the reviewer's behalf — a reviewer filing its own review
+      // is detected and does not have to say.
+      .option("--answer-session <id>", "Session the review ran in — defaults to this terminal's when the reviewer is filing its own review")
       .action(async (issueId: string, opts: IssueQaOptions) => {
         try {
           const ctx = resolveCommandContext(opts);
@@ -886,6 +892,14 @@ export function registerIssueCommands(program: Command): void {
           // 问侧就是本终端，读它自己的记录而不是让人手打（MUL-444）。答侧是
           // 另一台终端的事实，这里读不到，仍然必填。
           const questionSide = await resolveQuestionModelSide(opts.questionModel, opts.questionEffort);
+          // 评审会话 (MUL-456). Explicit flag first, for the usual case where
+          // Claude archives a review Codex performed elsewhere. Otherwise, if
+          // the reviewer IS this terminal, its own session is a fact the CLI
+          // already holds and should not ask for (MUL-453).
+          const selfAgentId = (await ctx.api.get<{ id: string } | null>(apiPath`/api/agents/me`).catch(() => null))?.id ?? null;
+          const reviewerSession =
+            opts.answerSession?.trim()
+            || (answerAgentId && answerAgentId === selfAgentId ? resolveSessionId().sessionId : null);
           const qComment = await ctx.api.post<{ id: string } & IssueComment>(
             apiPath`/api/issues/${issue.id}/comments`,
             {
@@ -915,15 +929,31 @@ export function registerIssueCommands(program: Command): void {
                 ...(docKey ? { docKey, docTitle: opts.answerDocTitle ?? null } : {}),
                 ...(opts.answerModel ? { answerModel: opts.answerModel } : {}),
                 ...(opts.answerEffort ? { answerEffort: opts.answerEffort } : {}),
+                ...(reviewerSession ? { answerSession: reviewerSession } : {}),
               },
             },
           );
+          // 评审会话 (MUL-456): the archive just proved a review happened, so
+          // the card's reviewer slot is filled from the same facts. Written
+          // after both bubbles land, because a reviewer slot pointing at a
+          // half-filed thread is worse than an empty one.
+          //
+          // Best-effort: a failure here costs the pointer, not the archive.
+          await ctx.api
+            .patch(apiPath`/api/issues/${issue.id}`, {
+              reviewerAgentId: answerAgentId,
+              ...(reviewerSession ? { reviewerSession } : {}),
+            })
+            .catch((err: unknown) => {
+              console.error(`reviewer session not recorded on the card: ${err instanceof Error ? err.message : String(err)}`);
+            });
           printOutput({
             threadId,
             questionCommentId: qComment?.id,
             answerCommentId: aComment?.id,
             answerAgentId,
             questionAgentId,
+            reviewerSession: reviewerSession ?? null,
             answerDocKey: docKey,
             issue: issue.identifier,
           }, { json: ctx.json });

@@ -1702,6 +1702,13 @@
       "when": 1788169842331,
       "tag": "0244_team_wiki_archive",
       "breakpoints": true
+    },
+    {
+      "idx": 245,
+      "version": "7",
+      "when": 1788171411882,
+      "tag": "0245_issue_reviewer_session",
+      "breakpoints": true
     }
   ]
 }

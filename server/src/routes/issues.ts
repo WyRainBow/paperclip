@@ -9724,6 +9724,12 @@ export function issueRoutes(
     if (updateFields.drivingSession !== undefined) {
       updateFields.drivingSessionAt = new Date();
     }
+    // 评审会话 (MUL-456): same stamping rule as the driving slot. Setting
+    // either half of the reviewer pair records when, because "reviewed" with no
+    // date is the kind of fact that quietly becomes wrong as a card ages.
+    if (updateFields.reviewerSession !== undefined || updateFields.reviewerAgentId !== undefined) {
+      updateFields.reviewerSessionAt = new Date();
+    }
     // Authorship is stamped from the authenticated caller at create time. Only
     // a board user may correct it afterwards — letting an agent rewrite it
     // would make "who opened this" forgeable by the same actor it names.
