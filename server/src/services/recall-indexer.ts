@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { recallEmbeddings } from "@paperclipai/db";
+import { companies, recallEmbeddings } from "@paperclipai/db";
 
 import { logger } from "../middleware/logger.js";
 import {
@@ -14,6 +14,7 @@ import {
   type EmbeddingConfig,
 } from "./embedding-client.js";
 import { fetchSourceRows, type SourceRow } from "./recall-corpus.js";
+import { resolveEmbeddingConfig, semanticRecallEnabled } from "./recall-embedding-config.js";
 import { chunkBody } from "./recall-ranking.js";
 import { invalidateSemanticCache } from "./recall-semantic.js";
 
@@ -212,4 +213,43 @@ export async function reindexCompany(
 /** `excluded.<column>` for an upsert's SET clause. */
 function sqlExcluded(column: string) {
   return sql.raw(`excluded."${column}"`);
+}
+
+/**
+ * How often the scheduled refresh runs, default hourly.
+ *
+ * Hourly is affordable because the pass is incremental: measured 2026-08-30 on
+ * the real corpus, a re-run over 3374 unchanged chunks embedded 9 of them for
+ * 1413 tokens. The cost of a tick tracks what the team actually wrote, not the
+ * size of what they have written.
+ */
+export const REINDEX_INTERVAL_MS = (() => {
+  const raw = Number.parseInt(process.env.PAPERCLIP_RECALL_REINDEX_INTERVAL_MS ?? "", 10);
+  return Number.isInteger(raw) && raw >= 60_000 ? raw : 60 * 60 * 1000;
+})();
+
+/**
+ * Refreshes every company that has semantic recall configured.
+ *
+ * Skips silently when the switch is off or a company has stored no key, which
+ * is the normal state — this runs on a timer in every deployment, and most of
+ * them will never turn the feature on.
+ *
+ * One company's failure does not stop the others: an expired key belongs to the
+ * company that owns it, and letting it halt the sweep would quietly freeze
+ * everyone else's index behind it.
+ */
+export async function refreshConfiguredCompanies(db: Db): Promise<void> {
+  if (!semanticRecallEnabled()) return;
+
+  const rows = await db.select({ id: companies.id }).from(companies);
+  for (const row of rows) {
+    const config = await resolveEmbeddingConfig(db, row.id).catch(() => null);
+    if (!config) continue;
+    try {
+      await reindexCompany(db, row.id, config);
+    } catch (err) {
+      log.error({ err, companyId: row.id }, "scheduled recall reindex failed");
+    }
+  }
 }

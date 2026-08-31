@@ -502,9 +502,14 @@ export function registerIssueCommands(program: Command): void {
             if (near.length > 0) {
               // stderr so JSON consumers piping stdout stay clean — the
               // advisory is for the human typing the command.
+              //
+              // Finished cards appear here too since MUL-441 added the semantic
+              // leg. A done card that already answers this is worth more than an
+              // open one, not less: nobody is watching it to notice the
+              // duplicate. The `[status]` on each line says which is which.
               const list = near.map((h) => `  ${h.identifier} [${h.status}] ${h.title}`).join("\n");
               console.error(
-                `related active issues (consider --parent-id <id> to file as a sub-task, or ignore):\n${list}\n`,
+                `related issues (consider --parent-id <id> to file as a sub-task, or ignore):\n${list}\n`,
               );
             }
           }

@@ -6008,6 +6008,17 @@ export function issueRoutes(
 
     // Cards the token query missed entirely. Fetching them is the point: a
     // paraphrased duplicate shares no tokens, so it can only arrive this way.
+    // Closed cards are included on this leg, unlike the token query above.
+    //
+    // The token query excludes done and cancelled because a literal title
+    // collision with a finished card is usually noise. A semantic match is
+    // different: it means someone already worked on this, and "we did this in
+    // MUL-80, here is what came of it" is the single most useful thing dedup
+    // can say. Filing a duplicate of a finished card is worse than filing a
+    // duplicate of an open one, because nobody is around to notice.
+    //
+    // Cancelled stays out. That card was deliberately dropped, and surfacing it
+    // as a duplicate would argue against work someone already decided to do.
     const knownIds = new Set(rows.map((row) => row.id));
     const missingIds = [...similarityById.keys()].filter((id) => !knownIds.has(id));
     if (missingIds.length > 0) {
@@ -6017,7 +6028,7 @@ export function issueRoutes(
         .where(and(
           eq(issueRows.companyId, companyId),
           isNull(issueRows.hiddenAt),
-          notInArray(issueRows.status, ["done", "cancelled"]),
+          notInArray(issueRows.status, ["cancelled"]),
           inArray(issueRows.id, missingIds),
         ))
         .limit(limit * 3);
@@ -6047,8 +6058,15 @@ export function issueRoutes(
           overlap,
           score: Math.round(Math.max(overlapScore, similarity) * 100) / 100,
           similarity: Math.round(similarity * 100) / 100,
-          exact: norm(row.title ?? "") === newNorm
-            || (newStrip.length >= 4 && strip(row.title ?? "") === newStrip),
+          // `exact` is what the CLI hard-blocks on, so it stays restricted to
+          // open cards. The semantic leg can now surface finished ones, and a
+          // finished card with the same title is not a reason to refuse the
+          // new one — reopening the same subject later is ordinary, and MUL-98
+          // is the case where blocking on a stale title match went wrong.
+          exact:
+            !["done", "cancelled"].includes(row.status ?? "")
+            && (norm(row.title ?? "") === newNorm
+              || (newStrip.length >= 4 && strip(row.title ?? "") === newStrip)),
         };
       })
       // A card qualifies on either leg. The semantic threshold is enforced

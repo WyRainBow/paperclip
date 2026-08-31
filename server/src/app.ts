@@ -18,6 +18,7 @@ import {
   sweepAbandonedImportTransferSpools,
 } from "./services/company-import-transfers.js";
 import { companyTransferRunService } from "./services/company-transfer-runs.js";
+import { REINDEX_INTERVAL_MS, refreshConfiguredCompanies } from "./services/recall-indexer.js";
 import { healthRoutes } from "./routes/health.js";
 import { cloudRoutes } from "./routes/cloud.js";
 import { companyRoutes } from "./routes/companies.js";
@@ -853,6 +854,28 @@ app.use("/api/auth", authRoutes(db));
     IMPORT_TRANSFER_SPOOL_SWEEP_INTERVAL_MS,
   );
   importTransferSweepTimer.unref?.();
+  // Semantic recall index refresh (MUL-441): same setInterval + unref +
+  // shutdown-clear shape as the sweeps above.
+  //
+  // Runs hourly and is a no-op unless PAPERCLIP_RECALL_SEMANTIC is on and a
+  // company has stored an embedding key, so a deployment that never enables the
+  // feature pays a database query per hour and nothing else. When it is on, the
+  // pass is incremental by content hash: measured 2026-08-30, a tick over 3374
+  // unchanged chunks re-embedded 9 of them.
+  //
+  // No startup run, unlike the spool sweep. This one spends money at an
+  // external provider, so it waits out the first interval rather than firing on
+  // every restart during development.
+  const refreshRecallIndex = () => {
+    refreshConfiguredCompanies(db).catch((err) => {
+      logger.error({ err }, "scheduled recall index refresh failed");
+    });
+  };
+  let recallReindexTimer: ReturnType<typeof setInterval> | null = setInterval(
+    refreshRecallIndex,
+    REINDEX_INTERVAL_MS,
+  );
+  recallReindexTimer.unref?.();
   // Startup only (never on the hourly interval — that would kill live
   // applies): apply jobs are in-memory in this single process, so any run
   // still "applying" now was interrupted by the previous shutdown and would
@@ -944,6 +967,10 @@ app.use("/api/auth", authRoutes(db));
       if (importTransferSweepTimer) {
         clearInterval(importTransferSweepTimer);
         importTransferSweepTimer = null;
+      }
+      if (recallReindexTimer) {
+        clearInterval(recallReindexTimer);
+        recallReindexTimer = null;
       }
       devWatcher?.close();
       viteHtmlRenderer?.dispose();
