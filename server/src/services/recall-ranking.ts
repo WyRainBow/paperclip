@@ -125,12 +125,16 @@ export interface TermWeights {
   terms: string[];
   weight: Map<string, number>;
   totalWeight: number;
+  /** Mean candidate length, for the length normalization in `scoreCandidate`. */
+  avgLength: number;
 }
 
 export function buildTermWeights(candidates: ScorableCandidate[], terms: string[]): TermWeights {
   const df = new Map<string, number>();
+  let totalLength = 0;
   for (const candidate of candidates) {
     const haystack = (candidate.title + "\n" + candidate.body).toLowerCase();
+    totalLength += haystack.length;
     for (const term of terms) {
       if (haystack.includes(term)) df.set(term, (df.get(term) ?? 0) + 1);
     }
@@ -152,7 +156,7 @@ export function buildTermWeights(candidates: ScorableCandidate[], terms: string[
     totalWeight += idf;
   }
 
-  return { terms: kept, weight, totalWeight };
+  return { terms: kept, weight, totalWeight, avgLength: totalLength / n };
 }
 
 /**
@@ -169,6 +173,17 @@ export function scoreCandidate(
 ): CandidateScore {
   const lowerTitle = candidate.title.toLowerCase();
   const lowerBody = candidate.body.toLowerCase();
+  const length = lowerTitle.length + 1 + lowerBody.length;
+
+  // Length normalization, the `b` term of BM25.
+  //
+  // Without it the longest document wins every query, because a long enough
+  // document contains every term by accident. Measured 2026-08-30 against the
+  // live database: the single Team Rules note (8798 tokens, one row) took top
+  // spot for seven of the eight test queries, including 「花了多少钱怎么看」,
+  // purely by being long enough to contain a bit of everything.
+  const B = 0.75;
+  const norm = weights.avgLength > 0 ? 1 - B + B * (length / weights.avgLength) : 1;
 
   let matched = 0;
   let hitWeight = 0;
@@ -181,16 +196,34 @@ export function scoreCandidate(
     const at = lowerBody.indexOf(term);
     if (!inTitle && at < 0) continue;
     matched += 1;
-    hitWeight += w;
+    // Saturating term frequency, the `k1` term of BM25: the second occurrence
+    // of a word says much less than the first, and the twentieth says nothing.
+    const tf = countOccurrences(lowerBody, term) + (inTitle ? 1 : 0);
+    const K1 = 1.2;
+    hitWeight += w * ((tf * (K1 + 1)) / (tf + K1 * norm));
     if (inTitle) titleWeight += w;
     if (at >= 0 && (bodyIndex < 0 || at < bodyIndex)) bodyIndex = at;
   }
 
-  const total = weights.totalWeight;
-  const coverage = total > 0 ? hitWeight / total : 0;
-  const score = coverage + (total > 0 ? (titleWeight / total) * TITLE_WEIGHT : 0);
+  // The denominator is what every term would contribute at tf = 1 on an
+  // average-length document, so coverage stays comparable across queries.
+  const total = weights.totalWeight * ((1 * (1.2 + 1)) / (1 + 1.2));
+  const coverage = total > 0 ? Math.min(hitWeight / total, 1) : 0;
+  const score =
+    coverage + (weights.totalWeight > 0 ? (titleWeight / weights.totalWeight) * TITLE_WEIGHT : 0);
 
   return { matched, coverage, bodyIndex, score };
+}
+
+function countOccurrences(haystack: string, needle: string): number {
+  if (needle.length === 0) return 0;
+  let count = 0;
+  let at = haystack.indexOf(needle);
+  while (at >= 0) {
+    count += 1;
+    at = haystack.indexOf(needle, at + needle.length);
+  }
+  return count;
 }
 
 /**
@@ -229,6 +262,58 @@ export function rankAndDedupe<T extends RankableHit>(
     out.push(hit);
   }
   return out;
+}
+
+export interface BodyChunk {
+  text: string;
+  /** Offset of this chunk inside the original body, so snippets stay anchored. */
+  offset: number;
+}
+
+/**
+ * Splits a long body into scoreable chunks.
+ *
+ * Scoring whole documents does not work once one document is much longer than
+ * the rest. Measured 2026-08-30 against the live database: Team Rules is a
+ * single 8798-token row covering every topic the team has, so it took top spot
+ * for seven of eight test queries — including one the corpus has no answer for.
+ * BM25 length normalization did not fix it, because the row genuinely does
+ * contain every term. It is not one document about one thing, it is thirty.
+ *
+ * Splitting on markdown headings restores the thing being ranked: a section
+ * about decisions competes with a wiki page about decisions, on equal terms.
+ * `rankAndDedupe` then keeps one chunk per source so the split cannot turn one
+ * long document into a wall of results.
+ */
+export function chunkBody(body: string, maxChars = 900): BodyChunk[] {
+  if (body.length <= maxChars) return [{ text: body, offset: 0 }];
+
+  const chunks: BodyChunk[] = [];
+  const headingSplit = /\n(?=#{1,4} )/g;
+
+  let cursor = 0;
+  const parts: BodyChunk[] = [];
+  for (const match of body.matchAll(headingSplit)) {
+    const end = match.index! + 1;
+    parts.push({ text: body.slice(cursor, end), offset: cursor });
+    cursor = end;
+  }
+  parts.push({ text: body.slice(cursor), offset: cursor });
+
+  for (const part of parts) {
+    if (part.text.trim().length === 0) continue;
+    if (part.text.length <= maxChars) {
+      chunks.push(part);
+      continue;
+    }
+    for (let i = 0; i < part.text.length; i += maxChars) {
+      const text = part.text.slice(i, i + maxChars);
+      if (text.trim().length === 0) continue;
+      chunks.push({ text, offset: part.offset + i });
+    }
+  }
+
+  return chunks.length > 0 ? chunks : [{ text: body, offset: 0 }];
 }
 
 /** Extracts a snippet around the first match, matching the route's old shape. */

@@ -5,6 +5,17 @@ import { Router, type Request, type Response } from "express";
 import { assertCompanyAccess } from "./authz.js";
 import { badRequest } from "../errors.js";
 import { type AssetKind, adoptionBoost, citedCountsByAsset, recordServed } from "../services/asset-citations.js";
+import {
+  MIN_COVERAGE,
+  buildSnippet,
+  buildTermWeights,
+  chunkBody,
+  rankAndDedupe,
+  scoreCandidate,
+  tokenizeQuery,
+  type RankableHit,
+  type ScorableCandidate,
+} from "../services/recall-ranking.js";
 
 const DEFAULT_BUDGET_CHARS = 2000;
 
@@ -24,8 +35,12 @@ function estimateTokens(text: string): number {
 }
 const MAX_BUDGET_CHARS = 6000;
 const MAX_RESULTS = 8;
+/** How many query terms may reach SQL. Bigrams multiply fast on a long question. */
+const MAX_SQL_TERMS = 12;
+/** Rows pulled per source before in-process ranking narrows them to MAX_RESULTS. */
+const CANDIDATE_LIMIT = 60;
 
-interface RecallHit {
+interface RecallHit extends RankableHit {
   source: "wiki" | "rules";
   space: string | null;
   path: string | null;
@@ -193,32 +208,21 @@ export function workspaceRecallRoutes(db: Db): Router {
     // nobody has ever cited (MUL-133 decision 61891ec2, option b).
     const citedCounts = await citedCountsByAsset(db, companyId);
 
-    // The query is a set of terms, not one literal substring. Matching the
-    // whole string verbatim meant any multi-word query silently missed: "skills
-    // 改内容" found nothing while the page written about exactly that sat in
-    // the wiki, because those characters never appear contiguously. Each term
-    // must appear somewhere in the row (any field), so word order and spacing
-    // stop mattering; a single-term query behaves exactly as before. This is
-    // the cheap fix — semantic recall stays parked per MUL-80's verdict, and
-    // this failure was tokenization, not semantics.
-    const terms = query.split(/\s+/).filter((term) => term.length > 0);
+    // Tokenization and scoring live in `recall-ranking` (MUL-441), shared with
+    // the other recall consumers. The rule this replaced split on whitespace
+    // and required every term to hit. That is correct for English and useless
+    // for Chinese: a Chinese query carries no spaces, so the whole sentence
+    // became one token and went into `ilike '%整句话%'`, which matches nothing.
+    // Measured 2026-08-30 against the real wiki: eight Chinese questions, zero
+    // hits, all eight for that reason.
+    const { terms } = tokenizeQuery(query);
+    // SQL only narrows the candidate set. Ranking happens in-process, where the
+    // corpus-wide term weights are known. Capping the term count keeps a long
+    // question from building a hundred-clause OR.
+    const sqlTerms = terms.slice(0, MAX_SQL_TERMS);
+    if (sqlTerms.length === 0) throw badRequest("q has no searchable terms");
 
-    /** First position of any term in the text, plus how many terms hit it. */
-    const matchIn = (text: string): { idx: number; matched: number } => {
-      const lower = text.toLowerCase();
-      let idx = -1;
-      let matched = 0;
-      for (const term of terms) {
-        const i = lower.indexOf(term.toLowerCase());
-        if (i >= 0) {
-          matched += 1;
-          if (idx < 0 || i < idx) idx = i;
-        }
-      }
-      return { idx, matched };
-    };
-
-    // Team Wiki: every term must hit title, body, or path
+    // Team Wiki: any term hitting title, body, or path makes it a candidate
     const wikiRows = await db
       .select({
         id: teamWikiPages.id,
@@ -231,36 +235,18 @@ export function workspaceRecallRoutes(db: Db): Router {
       .where(
         and(
           eq(teamWikiPages.companyId, companyId),
-          ...terms.map((term) =>
-            or(
+          or(
+            ...sqlTerms.flatMap((term) => [
               ilike(teamWikiPages.title, `%${term}%`),
               ilike(teamWikiPages.body, `%${term}%`),
               ilike(teamWikiPages.path, `%${term}%`),
-            ),
+            ]),
           ),
         ),
       )
-      .limit(30);
+      .limit(CANDIDATE_LIMIT);
 
-    for (const row of wikiRows) {
-      const { idx, matched } = matchIn(row.body);
-      const start = Math.max(0, idx - 100);
-      const snippet = row.body.slice(start, start + Math.min(400, row.body.length - start));
-      const boost = adoptionBoost(citedCounts.get(`wiki:${row.id}`) ?? 0);
-      hits.push({
-        source: "wiki",
-        space: row.space,
-        path: row.path,
-        title: row.title,
-        snippet: idx >= 0 ? (start > 0 ? "…" : "") + snippet : row.body.slice(0, 300) + "…",
-        score: (idx >= 0 ? 1 + matched : 1) + boost,
-        assetKind: "wiki",
-        assetId: row.id,
-        adoptionBoost: boost,
-      });
-    }
-
-    // Team Rules: every term must hit title or body
+    // Team Rules: any term hitting title or body
     const rulesRows = await db
       .select({
         id: teamRuleNotes.id,
@@ -271,36 +257,103 @@ export function workspaceRecallRoutes(db: Db): Router {
       .where(
         and(
           eq(teamRuleNotes.companyId, companyId),
-          ...terms.map((term) =>
-            or(
+          or(
+            ...sqlTerms.flatMap((term) => [
               ilike(teamRuleNotes.title, `%${term}%`),
               ilike(teamRuleNotes.body, `%${term}%`),
-            ),
+            ]),
           ),
         ),
       )
-      .limit(10);
+      .limit(CANDIDATE_LIMIT);
 
-    for (const row of rulesRows) {
-      const { idx, matched } = matchIn(row.body);
-      const start = Math.max(0, idx - 100);
-      const snippet = row.body.slice(start, start + Math.min(400, row.body.length - start));
-      const boost = adoptionBoost(citedCounts.get(`rule:${row.id}`) ?? 0);
-      hits.push({
-        source: "rules",
-        space: null,
-        path: `team-rules/${row.id.slice(0, 8)}`,
-        title: row.title,
-        snippet: idx >= 0 ? (start > 0 ? "…" : "") + snippet : row.body.slice(0, 300) + "…",
-        score: (idx >= 0 ? 1 + matched : 1) + boost,
-        assetKind: "rule",
-        assetId: row.id,
-        adoptionBoost: boost,
-      });
+    // Chunk before scoring. Team Rules is one row covering every topic the team
+    // has, so scored whole it outranks every focused wiki page on every query
+    // (measured 2026-08-30: top spot on seven of eight). Split into sections it
+    // competes section against page, which is the comparison that means
+    // something. `rankAndDedupe` keeps one chunk per source afterwards.
+    interface Chunked {
+      sourceKey: string;
+      candidate: ScorableCandidate;
+      offset: number;
+      row:
+        | { kind: "wiki"; id: string; space: string | null; path: string; title: string; body: string }
+        | { kind: "rule"; id: string; title: string; body: string };
     }
 
-    hits.sort((a, b) => b.score - a.score);
-    const top = hits.slice(0, MAX_RESULTS);
+    const chunked: Chunked[] = [];
+    for (const row of wikiRows) {
+      const sourceKey = `wiki:${row.id}`;
+      for (const chunk of chunkBody(row.body)) {
+        chunked.push({
+          sourceKey,
+          offset: chunk.offset,
+          candidate: { sourceKey, title: row.title, body: chunk.text },
+          row: { kind: "wiki", id: row.id, space: row.space, path: row.path, title: row.title, body: row.body },
+        });
+      }
+    }
+    for (const row of rulesRows) {
+      const sourceKey = `rule:${row.id}`;
+      for (const chunk of chunkBody(row.body)) {
+        chunked.push({
+          sourceKey,
+          offset: chunk.offset,
+          candidate: { sourceKey, title: row.title, body: chunk.text },
+          row: { kind: "rule", id: row.id, title: row.title, body: row.body },
+        });
+      }
+    }
+
+    // Weights are computed over the chunks actually retrieved, so a term that
+    // narrows this result set counts for more than one every chunk shares.
+    const weights = buildTermWeights(
+      chunked.map((entry) => entry.candidate),
+      terms,
+    );
+
+    for (const entry of chunked) {
+      const scored = scoreCandidate(entry.candidate, weights);
+      if (scored.coverage < MIN_COVERAGE) continue;
+      const boost = adoptionBoost(citedCounts.get(entry.sourceKey) ?? 0);
+      // Snippet offsets are chunk-relative; shift them back onto the full body
+      // so the reader gets surrounding context, not a window clipped at the
+      // chunk seam.
+      const bodyIndex = scored.bodyIndex >= 0 ? scored.bodyIndex + entry.offset : -1;
+      const common = {
+        score: scored.score + boost,
+        adoptionBoost: boost,
+        sourceKey: entry.sourceKey,
+        matched: scored.matched,
+        coverage: scored.coverage,
+        bodyIndex,
+      };
+      if (entry.row.kind === "wiki") {
+        hits.push({
+          ...common,
+          source: "wiki",
+          space: entry.row.space,
+          path: entry.row.path,
+          title: entry.row.title,
+          snippet: buildSnippet(entry.row.body, bodyIndex),
+          assetKind: "wiki",
+          assetId: entry.row.id,
+        });
+      } else {
+        hits.push({
+          ...common,
+          source: "rules",
+          space: null,
+          path: `team-rules/${entry.row.id.slice(0, 8)}`,
+          title: entry.row.title,
+          snippet: buildSnippet(entry.row.body, bodyIndex),
+          assetKind: "rule",
+          assetId: entry.row.id,
+        });
+      }
+    }
+
+    const top = rankAndDedupe(hits, { limit: MAX_RESULTS });
 
     // Budget assembly: fit as many full snippets as possible, degrade to
     // title-only lines when the budget runs out (OV's degradation pattern).
