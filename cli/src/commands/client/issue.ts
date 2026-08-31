@@ -276,6 +276,7 @@ type IssuePreflightReport = {
   closeGate: { ready: boolean; missing: string[] };
   claimGate: { claimed: boolean; blocksThisActor: boolean };
   adjudicationGate: { mode: string; canSelfClose: boolean };
+  reviewPathGate: { ready: boolean; blocksThisActor: boolean };
   coverage: string;
 };
 
@@ -288,7 +289,7 @@ type IssuePreflightReport = {
 function formatPreflight(report: IssuePreflightReport): string {
   const lines: string[] = [];
   if (report.blocking.length === 0) {
-    lines.push("三道门禁都不拦你。");
+    lines.push("四道门禁都不拦你。");
   } else {
     lines.push(`${report.blocking.length} 道门禁会拦住你：`);
     for (const blocker of report.blocking) {
@@ -299,7 +300,7 @@ function formatPreflight(report: IssuePreflightReport): string {
     }
   }
   lines.push("");
-  lines.push(`认领：${report.claimGate.claimed ? "已认领" : "未认领"}　收卡三件套：${report.closeGate.ready ? "齐了" : `缺 ${report.closeGate.missing.length} 样`}　裁决模式：${report.adjudicationGate.mode}${report.adjudicationGate.canSelfClose ? "（你可自己置 done）" : "（你不能自己置 done）"}`);
+  lines.push(`认领：${report.claimGate.claimed ? "已认领" : "未认领"}　收卡三件套：${report.closeGate.ready ? "齐了" : `缺 ${report.closeGate.missing.length} 样`}　下一步有人接：${report.reviewPathGate.ready ? "有" : "没有"}　裁决模式：${report.adjudicationGate.mode}${report.adjudicationGate.canSelfClose ? "（你可自己置 done）" : "（你不能自己置 done）"}`);
   lines.push("");
   lines.push(`覆盖范围：${report.coverage}`);
   return lines.join("\n");
