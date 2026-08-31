@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { and, asc, desc, eq, ilike, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, isNotNull, isNull, or, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import { TEAM_WIKI_SPACES, teamWikiPages, teamWikiPageVersions } from "@paperclipai/db";
 import { assertCompanyAccess, assertBoardOrAgent } from "./authz.js";
@@ -131,11 +131,46 @@ export function teamWikiRoutes(db: Db) {
         ilike(teamWikiPages.path, `%${query}%`),
       )
       : undefined;
+    // 归档 (MUL-455): retired pages drop out of the default listing, because a
+    // stale page sitting next to a current one is the failure this exists to
+    // prevent. `?archived=true` is how the archive view asks for them back.
+    const archivedOnly = req.query.archived === "true";
     const pages = await db
       .select()
       .from(teamWikiPages)
-      .where(and(eq(teamWikiPages.companyId, companyId), eq(teamWikiPages.space, space), search))
+      .where(and(
+        eq(teamWikiPages.companyId, companyId),
+        eq(teamWikiPages.space, space),
+        archivedOnly ? isNotNull(teamWikiPages.archivedAt) : isNull(teamWikiPages.archivedAt),
+        search,
+      ))
       .orderBy(asc(teamWikiPages.path));
+    res.json(pages);
+  });
+
+  /**
+   * Every archived page in the company, across spaces (MUL-455).
+   *
+   * The archive is one shelf rather than one per space: someone looking for a
+   * retired page remembers what it said, not which space it lived in. The
+   * `space` field rides along on each row so the view can still label them.
+   */
+  router.get("/companies/:companyId/team-wiki-archive", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    const query = typeof req.query.q === "string" ? req.query.q.trim() : "";
+    const search = query
+      ? or(
+        ilike(teamWikiPages.title, `%${query}%`),
+        ilike(teamWikiPages.body, `%${query}%`),
+        ilike(teamWikiPages.path, `%${query}%`),
+      )
+      : undefined;
+    const pages = await db
+      .select()
+      .from(teamWikiPages)
+      .where(and(eq(teamWikiPages.companyId, companyId), isNotNull(teamWikiPages.archivedAt), search))
+      .orderBy(desc(teamWikiPages.archivedAt));
     res.json(pages);
   });
 
@@ -299,6 +334,62 @@ export function teamWikiRoutes(db: Db) {
       res.json(updated);
     },
   );
+
+  /**
+   * Archive or restore a page (MUL-455).
+   *
+   * One handler for both directions because they are the same write with the
+   * columns set or cleared, and splitting them duplicated the lookup, the
+   * actor resolution and the audit line for no gain.
+   *
+   * Reversible by construction: nothing is deleted, no revision is appended,
+   * and restoring clears exactly the three columns archiving set. That is the
+   * property that made it safe to retire every page at once.
+   */
+  async function setArchived(req: Parameters<Parameters<typeof router.post>[1]>[0], res: Parameters<Parameters<typeof router.post>[1]>[1], archived: boolean) {
+    const companyId = req.params.companyId as string;
+    const pageId = req.params.pageId as string;
+    assertCompanyAccess(req, companyId);
+    assertBoardOrAgent(req);
+    requireSpace(req.params.space as string);
+    const actor = getActorInfo(req);
+    // The check constraint accepts exactly one filled actor slot, so an actor
+    // with neither id would be rejected by the database rather than silently
+    // stored as archived-by-nobody.
+    const [updated] = await db
+      .update(teamWikiPages)
+      .set(archived
+        ? {
+          archivedAt: new Date(),
+          archivedByUserId: actor.actorType === "user" ? actor.actorId : null,
+          archivedByAgentId: actor.actorType === "user" ? null : actor.agentId,
+          updatedAt: new Date(),
+        }
+        : { archivedAt: null, archivedByUserId: null, archivedByAgentId: null, updatedAt: new Date() })
+      .where(and(eq(teamWikiPages.id, pageId), eq(teamWikiPages.companyId, companyId)))
+      .returning();
+    if (!updated) throw notFound("Page not found");
+    await logActivity(db, {
+      companyId,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      agentId: actor.agentId,
+      runId: actor.runId,
+      action: archived ? "team_wiki.page_archived" : "team_wiki.page_restored",
+      entityType: "team_wiki_page",
+      entityId: updated.id,
+      details: { space: updated.space, path: updated.path, title: updated.title },
+    });
+    res.json(updated);
+  }
+
+  router.post("/companies/:companyId/team-wiki/:space/pages/:pageId/archive", async (req, res) => {
+    await setArchived(req, res, true);
+  });
+
+  router.post("/companies/:companyId/team-wiki/:space/pages/:pageId/unarchive", async (req, res) => {
+    await setArchived(req, res, false);
+  });
 
   router.delete("/companies/:companyId/team-wiki/:space/pages/:pageId", async (req, res) => {
     const companyId = req.params.companyId as string;

@@ -30,6 +30,18 @@ export const teamWikiPages = pgTable(
     body: text("body").notNull().default(""),
     createdByUserId: text("created_by_user_id"),
     createdByAgentId: uuid("created_by_agent_id").references(() => agents.id, { onDelete: "set null" }),
+    /**
+     * 归档 (MUL-455): set to retire a page from the default listing. The row,
+     * its body and its whole revision history are untouched, and unarchiving
+     * clears these three columns again.
+     *
+     * A stale page is worse than a missing one because a reader cannot tell it
+     * from a current one, and team knowledge must not be deleted — archiving is
+     * the third option those two constraints leave.
+     */
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+    archivedByUserId: text("archived_by_user_id"),
+    archivedByAgentId: uuid("archived_by_agent_id").references(() => agents.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -48,6 +60,7 @@ export const teamWikiPages = pgTable(
       table.space,
       table.updatedAt,
     ),
+    companyArchivedIdx: index("team_wiki_pages_company_archived_idx").on(table.companyId, table.archivedAt),
     titleSearchIdx: index("team_wiki_pages_title_search_idx").using("gin", table.title.op("gin_trgm_ops")),
     bodySearchIdx: index("team_wiki_pages_body_search_idx").using("gin", table.body.op("gin_trgm_ops")),
   }),

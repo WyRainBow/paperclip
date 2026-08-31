@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { BookOpen, History, Pencil, RotateCcw, Save, Search, Trash2, X } from "lucide-react";
+import { Archive, ArchiveRestore, BookOpen, History, Pencil, RotateCcw, Save, Search, Trash2, X } from "lucide-react";
 import { useNavigate, useParams } from "@/lib/router";
 import { api } from "@/api/client";
 import { agentsApi } from "@/api/agents";
@@ -133,8 +133,9 @@ interface TeamWikiPageVersion {
   createdAt: string;
 }
 
-function pagesKey(companyId: string | null, space: Space, query: string) {
-  return ["team-wiki", "pages", companyId, space, query];
+/** `scope` is a space, or "archived" for the cross-space archive shelf (MUL-455). */
+function pagesKey(companyId: string | null, scope: Space | "archived", query: string) {
+  return ["team-wiki", "pages", companyId, scope, query];
 }
 
 function versionsKey(companyId: string | null, pageId: string) {
@@ -251,6 +252,12 @@ export function TeamWiki({ fixedSpace }: { fixedSpace?: Space } = {}) {
   const toolBrandIcons = useToolBrandIcons(selectedCompanyId);
 
   const space: Space = fixedSpace ?? (isSpace(params.space) ? params.space : "paperclip");
+  /**
+   * 归档 (MUL-455): a third tab beside the two team spaces, showing every
+   * retired page in the company. One shelf rather than one per space, because
+   * someone hunting a retired page remembers what it said, not where it lived.
+   */
+  const isArchive = !fixedSpace && params.space === "archived";
   const [search, setSearch] = useState("");
   const [draft, setDraft] = useState<{ title: string; path: string; body: string } | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
@@ -260,17 +267,34 @@ export function TeamWiki({ fixedSpace }: { fixedSpace?: Space } = {}) {
   const query = search.trim();
 
   const pagesQuery = useQuery({
-    queryKey: pagesKey(selectedCompanyId, space, query),
+    queryKey: pagesKey(selectedCompanyId, isArchive ? "archived" : space, query),
     queryFn: () =>
       api.get<TeamWikiPage[]>(
-        `/companies/${selectedCompanyId}/team-wiki/${space}/pages${query ? `?q=${encodeURIComponent(query)}` : ""}`,
+        isArchive
+          ? `/companies/${selectedCompanyId}/team-wiki-archive${query ? `?q=${encodeURIComponent(query)}` : ""}`
+          : `/companies/${selectedCompanyId}/team-wiki/${space}/pages${query ? `?q=${encodeURIComponent(query)}` : ""}`,
       ),
     enabled: Boolean(selectedCompanyId),
   });
 
   function invalidatePages() {
-    queryClient.invalidateQueries({ queryKey: ["team-wiki", "pages", selectedCompanyId, space] });
+    // Archiving moves a page between two lists, so both have to be dropped or
+    // the row lingers on the shelf it just left.
+    queryClient.invalidateQueries({ queryKey: ["team-wiki", "pages", selectedCompanyId] });
   }
+
+  const setArchived = useMutation({
+    mutationFn: ({ page, archived }: { page: TeamWikiPage; archived: boolean }) =>
+      api.post<TeamWikiPage>(
+        `/companies/${selectedCompanyId}/team-wiki/${page.space}/pages/${page.id}/${archived ? "archive" : "unarchive"}`,
+        {},
+      ),
+    onSuccess: (_data, variables) => {
+      invalidatePages();
+      pushToast({ title: variables.archived ? "已归档" : "已恢复" });
+    },
+    onError: (error: Error) => pushToast({ title: "操作失败", body: error.message, tone: "error" }),
+  });
 
   const createPage = useMutation({
     mutationFn: (payload: { title: string; path: string; body: string }) =>
@@ -347,12 +371,15 @@ export function TeamWiki({ fixedSpace }: { fixedSpace?: Space } = {}) {
       {/* PageTabBar renders Radix triggers, so the change event arrives on the
           surrounding Tabs — wiring only the inner prop leaves the tabs inert. */}
       {fixedSpace ? null : (
-        <Tabs value={space} onValueChange={(next) => navigate(`/${prefix}/team-wiki/${next}`)}>
+        <Tabs value={isArchive ? "archived" : space} onValueChange={(next) => navigate(`/${prefix}/team-wiki/${next}`)}>
           <PageTabBar
             align="start"
-            value={space}
+            value={isArchive ? "archived" : space}
             onValueChange={(next) => navigate(`/${prefix}/team-wiki/${next}`)}
-            items={TEAM_SPACES.map((value) => ({ value, label: SPACE_META[value].label }))}
+            items={[
+              ...TEAM_SPACES.map((value) => ({ value, label: SPACE_META[value].label })),
+              { value: "archived", label: "归档" },
+            ]}
           />
         </Tabs>
       )}
@@ -372,13 +399,17 @@ export function TeamWiki({ fixedSpace }: { fixedSpace?: Space } = {}) {
             className="pl-8"
           />
         </div>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => setDraft({ title: "", path: "", body: "" })}
-        >
-          新建页面
-        </Button>
+        {/* The archive is a shelf, not a space: a new page has to belong to
+            one, so it is created from that space's own tab. */}
+        {isArchive ? null : (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setDraft({ title: "", path: "", body: "" })}
+          >
+            新建页面
+          </Button>
+        )}
       </div>
 
       {draft ? (
@@ -507,6 +538,32 @@ export function TeamWiki({ fixedSpace }: { fixedSpace?: Space } = {}) {
                       <Button size="icon-xs" variant="ghost" aria-label="编辑" onClick={() => setEditing(page.id)}>
                         <Pencil className="h-3.5 w-3.5" aria-hidden />
                       </Button>
+                      {/* 归档 (MUL-455) sits before 删除 on purpose: it is the
+                          reversible neighbour of an irreversible button, and a
+                          reader scanning left to right should meet it first. */}
+                      {isArchive ? (
+                        <Button
+                          size="icon-xs"
+                          variant="ghost"
+                          aria-label="恢复"
+                          title="放回原空间"
+                          disabled={setArchived.isPending}
+                          onClick={() => setArchived.mutate({ page, archived: false })}
+                        >
+                          <ArchiveRestore className="h-3.5 w-3.5" aria-hidden />
+                        </Button>
+                      ) : (
+                        <Button
+                          size="icon-xs"
+                          variant="ghost"
+                          aria-label="归档"
+                          title="归档（正文与历史保留，可恢复）"
+                          disabled={setArchived.isPending}
+                          onClick={() => setArchived.mutate({ page, archived: true })}
+                        >
+                          <Archive className="h-3.5 w-3.5" aria-hidden />
+                        </Button>
+                      )}
                       <Button
                         size="icon-xs"
                         variant="ghost"

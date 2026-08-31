@@ -69,18 +69,29 @@ export function registerTeamWikiCommands(program: Command): void {
     api: { get<T>(path: string): Promise<T | null> },
     companyId: string,
     space: string,
+    archived = false,
   ): Promise<WikiPage[]> {
-    return (await api.get<WikiPage[]>(pagesPath(companyId, space))) ?? [];
+    const suffix = archived ? "?archived=true" : "";
+    return (await api.get<WikiPage[]>(`${pagesPath(companyId, space)}${suffix}`)) ?? [];
   }
 
-  /** Resolve `guides/glossary` (or a UUID) to the page it names, within one space. */
+  /**
+   * Resolve `guides/glossary` (or a UUID) to the page it names, within one space.
+   *
+   * Looks through archived pages too (MUL-455). Restoring one means naming it,
+   * and a resolver that only sees the shelf you are trying to take it off would
+   * make `unarchive` impossible to call.
+   */
   async function resolvePage(
     api: { get<T>(path: string): Promise<T | null> },
     companyId: string,
     space: string,
     ref: string,
   ): Promise<WikiPage> {
-    const pages = await listPages(api, companyId, space);
+    const pages = [
+      ...(await listPages(api, companyId, space)),
+      ...(await listPages(api, companyId, space, true)),
+    ];
     if (UUID_RE.test(ref)) {
       const byId = pages.find((page) => page.id === ref);
       if (byId) return byId;
@@ -106,11 +117,16 @@ export function registerTeamWikiCommands(program: Command): void {
       .option("-C, --company-id <id>", "Company ID")
       .requiredOption("--space <space>", `One of ${SPACES.join(" | ")}`)
       .option("-q, --query <text>", "Substring filter on title, body and path")
-      .action(async (opts: { companyId: string; space: string; query?: string; json?: boolean }) => {
+      .option("--archived", "List the space's archived pages instead of its live ones")
+      .action(async (opts: { companyId: string; space: string; query?: string; archived?: boolean; json?: boolean }) => {
         try {
           const ctx = resolveCommandContext(opts, { requireCompany: true });
           const space = requireSpace(opts.space);
-          const suffix = opts.query ? `?q=${encodeURIComponent(opts.query)}` : "";
+          const params = [
+            opts.query ? `q=${encodeURIComponent(opts.query)}` : "",
+            opts.archived ? "archived=true" : "",
+          ].filter(Boolean);
+          const suffix = params.length > 0 ? `?${params.join("&")}` : "";
           const rows = (await ctx.api.get<WikiPage[]>(
             `${pagesPath(ctx.companyId ?? "", space)}${suffix}`,
           )) ?? [];
@@ -270,6 +286,54 @@ export function registerTeamWikiCommands(program: Command): void {
             {},
           );
           printOutput(updated, { json: ctx.json, label: ctx.json ? undefined : `restored from v${revision}` });
+        } catch (err) {
+          handleCommandError(err);
+        }
+      }),
+  );
+
+  addCommonClientOptions(
+    wiki
+      // 归档 (MUL-455): retiring a page, as opposed to deleting it. Body and
+      // revision history stay put, and `unarchive` is the exact inverse.
+      .command("archive")
+      .description("Retire a page from its space's listing, keeping body and history")
+      .argument("<pathOrId>", "Page path (e.g. guides/glossary) or UUID")
+      .option("-C, --company-id <id>", "Company ID")
+      .requiredOption("--space <space>", `One of ${SPACES.join(" | ")}`)
+      .action(async (ref: string, opts: { companyId: string; space: string; json?: boolean }) => {
+        try {
+          const ctx = resolveCommandContext(opts, { requireCompany: true });
+          const space = requireSpace(opts.space);
+          const page = await resolvePage(ctx.api, ctx.companyId ?? "", space, ref);
+          const updated = await ctx.api.post<WikiPage>(
+            apiPath`/api/companies/${ctx.companyId ?? ""}/team-wiki/${space}/pages/${page.id}/archive`,
+            {},
+          );
+          printOutput(updated, { json: ctx.json, label: ctx.json ? undefined : `archived ${space}/${page.path}` });
+        } catch (err) {
+          handleCommandError(err);
+        }
+      }),
+  );
+
+  addCommonClientOptions(
+    wiki
+      .command("unarchive")
+      .description("Put an archived page back in its space's listing")
+      .argument("<pathOrId>", "Page path (e.g. guides/glossary) or UUID")
+      .option("-C, --company-id <id>", "Company ID")
+      .requiredOption("--space <space>", `One of ${SPACES.join(" | ")}`)
+      .action(async (ref: string, opts: { companyId: string; space: string; json?: boolean }) => {
+        try {
+          const ctx = resolveCommandContext(opts, { requireCompany: true });
+          const space = requireSpace(opts.space);
+          const page = await resolvePage(ctx.api, ctx.companyId ?? "", space, ref);
+          const updated = await ctx.api.post<WikiPage>(
+            apiPath`/api/companies/${ctx.companyId ?? ""}/team-wiki/${space}/pages/${page.id}/unarchive`,
+            {},
+          );
+          printOutput(updated, { json: ctx.json, label: ctx.json ? undefined : `unarchived ${space}/${page.path}` });
         } catch (err) {
           handleCommandError(err);
         }
