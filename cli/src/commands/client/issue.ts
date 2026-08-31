@@ -268,6 +268,44 @@ async function autoClaimIfUnclaimed(ctx: ResolvedClientContext, issue: Issue): P
   }
 }
 
+/** Shape of `GET /api/issues/:id/preflight` (MUL-448). */
+type IssuePreflightReport = {
+  issueId: string;
+  status: string | null;
+  blocking: Array<{ gate: string; code: string; detail: string[]; fix: string }>;
+  closeGate: { ready: boolean; missing: string[] };
+  claimGate: { claimed: boolean; blocksThisActor: boolean };
+  adjudicationGate: { mode: string; canSelfClose: boolean };
+  reviewPathGate: { ready: boolean; blocksThisActor: boolean };
+  coverage: string;
+};
+
+/**
+ * Human rendering of a preflight report. The point of the command is that a
+ * reader takes it in at a glance and knows what to do next, so blockers lead
+ * and each one carries its own fix line; the coverage caveat always prints,
+ * including on a clean card, so "没有拦你的" is never mistaken for a promise.
+ */
+function formatPreflight(report: IssuePreflightReport): string {
+  const lines: string[] = [];
+  if (report.blocking.length === 0) {
+    lines.push("四道门禁都不拦你。");
+  } else {
+    lines.push(`${report.blocking.length} 道门禁会拦住你：`);
+    for (const blocker of report.blocking) {
+      lines.push("");
+      lines.push(`【${blocker.gate}】${blocker.code}`);
+      for (const line of blocker.detail) lines.push(`  · ${line}`);
+      lines.push(`  修法：${blocker.fix}`);
+    }
+  }
+  lines.push("");
+  lines.push(`认领：${report.claimGate.claimed ? "已认领" : "未认领"}　收卡三件套：${report.closeGate.ready ? "齐了" : `缺 ${report.closeGate.missing.length} 样`}　下一步有人接：${report.reviewPathGate.ready ? "有" : "没有"}　裁决模式：${report.adjudicationGate.mode}${report.adjudicationGate.canSelfClose ? "（你可自己置 done）" : "（你不能自己置 done）"}`);
+  lines.push("");
+  lines.push(`覆盖范围：${report.coverage}`);
+  return lines.join("\n");
+}
+
 export function registerIssueCommands(program: Command): void {
   const issue = program.command("issue").description("Issue operations");
 
@@ -644,6 +682,16 @@ export function registerIssueCommands(program: Command): void {
             presentation: { kind: "progress_note", tone: "info" },
           });
           printOutput({ identifier: issue.identifier, status: updated?.status ?? opts.status, drivingAgentId, drivingSession }, { json: ctx.json });
+          // 门禁前置可发现 (MUL-448): the moment the card is taken is the
+          // moment its debts are worth knowing — printing them at close time
+          // is what cost the round trip. Best-effort on stderr so it never
+          // breaks the claim itself or pollutes --json consumers.
+          if (!ctx.json) {
+            const report = await ctx.api
+              .get<IssuePreflightReport>(apiPath`/api/issues/${issue.id}/preflight`)
+              .catch(() => null);
+            if (report) console.error(`\n${formatPreflight(report)}`);
+          }
         } catch (err) {
           handleCommandError(err);
         }
@@ -1199,6 +1247,29 @@ export function registerIssueCommands(program: Command): void {
           const ctx = resolveCommandContext(opts);
           const product = await ctx.api.delete(apiPath`/api/work-products/${workProductId}`);
           printOutput(product, { json: ctx.json });
+        } catch (err) {
+          handleCommandError(err);
+        }
+      }),
+  );
+
+  // 门禁前置可发现 (MUL-448): ask what would block you on this card before
+  // doing the work, instead of learning it from a 409/422 after.
+  addCommonClientOptions(
+    issue
+      .command("preflight")
+      .description("Ask what would block your next write on this issue (claim gate, close gate, adjudication mode)")
+      .argument("<issueId>", "Issue ID")
+      .action(async (issueId: string, opts: BaseClientOptions) => {
+        try {
+          const ctx = resolveCommandContext(opts);
+          const report = await ctx.api.get<IssuePreflightReport>(apiPath`/api/issues/${issueId}/preflight`);
+          if (!report) throw new Error(`Issue not found: ${issueId}`);
+          if (ctx.json) {
+            printOutput(report, { json: true });
+            return;
+          }
+          printOutput(formatPreflight(report), { json: false });
         } catch (err) {
           handleCommandError(err);
         }

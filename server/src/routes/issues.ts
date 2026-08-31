@@ -194,7 +194,7 @@ import {
 import { decisionTrainingService } from "../services/decision-training.js";
 import { feedbackService } from "../services/feedback.js";
 import { noteUnregisteredBranch, recordRetroGate } from "../services/retro-gate.js";
-import { missingIssueClosePrerequisites } from "../services/issue-prerequisites.js";
+import { missingIssueClosePrerequisites, issuePreflight, type IssuePreflightActor } from "../services/issue-prerequisites.js";
 import { instanceSettingsService } from "../services/instance-settings.js";
 import {
   ISSUE_BLOCKER_DIAGNOSTICS_MAX_BLOCKERS,
@@ -3507,6 +3507,44 @@ export function issueRoutes(
     );
   }
 
+  /**
+   * Does this card already hand the next action to someone? Extracted from
+   * assertInReviewReviewPath so the write-time gate and the read-time preflight
+   * (MUL-448) share one judgement instead of drifting apart — the five paths
+   * below are exactly the `validReviewPaths` the 422 names.
+   */
+  async function hasInReviewReviewPath(input: {
+    existing: {
+      id: string;
+      assigneeUserId?: string | null;
+      executionState?: unknown;
+      monitorNextCheckAt?: Date | null;
+    };
+    updateFields: Record<string, unknown>;
+    pendingInteractionCount: number;
+  }): Promise<boolean> {
+    const nextAssigneeUserId = input.updateFields.assigneeUserId === undefined
+      ? input.existing.assigneeUserId
+      : input.updateFields.assigneeUserId;
+    if (typeof nextAssigneeUserId === "string" && nextAssigneeUserId.trim().length > 0) return true;
+
+    const nextExecutionState = input.updateFields.executionState === undefined
+      ? input.existing.executionState
+      : input.updateFields.executionState;
+    if (hasExecutionParticipant(nextExecutionState)) return true;
+
+    if (hasScheduledMonitor({
+      existingMonitorNextCheckAt: input.existing.monitorNextCheckAt ?? null,
+      patchMonitorNextCheckAt: input.updateFields.monitorNextCheckAt,
+      executionPolicy: input.updateFields.executionPolicy,
+    })) return true;
+
+    if (input.pendingInteractionCount > 0) return true;
+
+    const approvals = await issueApprovalsSvc.listApprovalsForIssue(input.existing.id);
+    return approvals.some((approval) => ACTIVE_REVIEW_APPROVAL_STATUSES.has(String(approval.status)));
+  }
+
   async function assertInReviewReviewPath(input: {
     existing: {
       id: string;
@@ -3565,27 +3603,11 @@ export function issueRoutes(
 
     if (input.actorType !== "agent") return null;
 
-    const nextAssigneeUserId = input.updateFields.assigneeUserId === undefined
-      ? input.existing.assigneeUserId
-      : input.updateFields.assigneeUserId;
-    if (typeof nextAssigneeUserId === "string" && nextAssigneeUserId.trim().length > 0) return null;
-
-    const nextExecutionState = input.updateFields.executionState === undefined
-      ? input.existing.executionState
-      : input.updateFields.executionState;
-    if (hasExecutionParticipant(nextExecutionState)) return null;
-
-    const nextExecutionPolicy = input.updateFields.executionPolicy;
-    if (hasScheduledMonitor({
-      existingMonitorNextCheckAt: input.existing.monitorNextCheckAt ?? null,
-      patchMonitorNextCheckAt: input.updateFields.monitorNextCheckAt,
-      executionPolicy: nextExecutionPolicy,
+    if (await hasInReviewReviewPath({
+      existing: input.existing,
+      updateFields: input.updateFields,
+      pendingInteractionCount: pendingInteractions.length,
     })) return null;
-
-    if (pendingInteractions.length > 0) return null;
-
-    const approvals = await issueApprovalsSvc.listApprovalsForIssue(input.existing.id);
-    if (approvals.some((approval) => ACTIVE_REVIEW_APPROVAL_STATUSES.has(String(approval.status)))) return null;
 
     throw unprocessable(INVALID_AGENT_IN_REVIEW_DISPOSITION_MESSAGE, {
       code: "invalid_issue_disposition",
@@ -6973,6 +6995,32 @@ export function issueRoutes(
     }
     await queueTaskWatchdogEvaluation(issue, actor.runId);
     res.json({ ok: true });
+  });
+
+  // 门禁前置可发现 (MUL-448): the read side of the write-time gates, so a
+  // caller can ask "what would stop me on this card" before spending the work
+  // instead of after. Read-only — it never claims, never advances, never
+  // writes.
+  router.get("/issues/:id/preflight", async (req, res) => {
+    const id = req.params.id as string;
+    const issue = await getAccessibleResource(req, res, getIssueById(req, id), "Issue not found");
+    if (!issue) return;
+    if (!(await assertIssueReadAllowed(req, res, issue))) return;
+    const actor: IssuePreflightActor =
+      req.actor.type === "agent"
+        ? { type: "agent", agentId: req.actor.agentId ?? null }
+        : req.actor.type === "board"
+          ? { type: "board" }
+          : { type: "other" };
+    const adjudicationMode = (await instanceSettings.get()).general.adjudicationMode ?? "auto";
+    const pendingInteractionCount = (await issueThreadInteractionService(db).listForIssue(issue.id))
+      .filter((interaction) => interaction.status === "pending").length;
+    const hasReviewPath = await hasInReviewReviewPath({
+      existing: issue,
+      updateFields: {},
+      pendingInteractionCount,
+    });
+    res.json(await issuePreflight(db, issue, actor, adjudicationMode, hasReviewPath));
   });
 
   router.get("/issues/:id/recovery-actions", async (req, res) => {
