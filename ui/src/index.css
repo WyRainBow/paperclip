@@ -34,6 +34,7 @@
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
+  --color-faint-foreground: var(--faint-foreground);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
@@ -84,6 +85,20 @@
   --secondary-foreground: oklch(0.205 0 0);
   --muted: oklch(0.97 0 0);
   --muted-foreground: oklch(0.556 0 0);
+  /* Third text tier (MUL-442). A meta row runs name / timestamp / count, and
+     with only two tiers everything past the name shares one grey and reads
+     flat. This sits between muted-foreground and border: light enough to
+     recede, dark enough to stay legible. Zero chroma, like the rest of the
+     neutral ramp — tinting the whole ramp is a separate, baseline-breaking
+     change and is deliberately not part of this one. */
+  --faint-foreground: oklch(0.646 0 0);
+  /* Static-card lift (MUL-442). Two layers at 4% and 3% — below the
+     threshold where a reader notices a shadow, above the threshold where a
+     card stops looking painted onto the page. Distinct from the
+     --shadow-extract-* family, which is verbatim one-off decoration; this
+     one is semantic and paired light/dark. The Card primitive's
+     `interactive` hover:shadow-md is unaffected. */
+  --surface-shadow: 0 1px 2px oklch(0.145 0 0 / 0.04), 0 1px 1px oklch(0.145 0 0 / 0.03);
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
@@ -304,6 +319,12 @@
   --secondary-foreground: oklch(0.985 0 0);
   --muted: oklch(0.269 0 0);
   --muted-foreground: oklch(0.708 0 0);
+  /* Dark side of the third tier (MUL-442): recedes from muted-foreground
+     downward, the mirror of the light ramp's upward step. */
+  --faint-foreground: oklch(0.585 0 0);
+  /* Dark ground swallows a 4% black shadow, so the dark pair leans on real
+     black at 20%/16% to produce the same barely-there lift (MUL-442). */
+  --surface-shadow: 0 1px 2px oklch(0 0 0 / 0.2), 0 1px 1px oklch(0 0 0 / 0.16);
   --accent: oklch(0.269 0 0);
   --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.637 0.237 25.331); /* Gallery feedback round 1: user preferred master's original dark destructive red over the preset's softer 0.704 0.191 22.216. */
@@ -1531,6 +1552,29 @@ a.paperclip-mention-chip[data-mention-kind="agent"]::before {
   font-family: var(--font-mono);
   font-size: 1em;
 }
+
+/* Tailwind Typography decorates every blockquote with curly quote marks
+   (`content: open-quote`). Issue descriptions render as one blockquote, so
+   every task on the board grew a pair of quotation marks it never wrote.
+   Prose owns the styling; the author owns the punctuation (MUL-442). */
+.paperclip-markdown blockquote p::before,
+.paperclip-markdown blockquote p::after {
+  content: none;
+}
+
+/* Inline code gets a hairline. With a fill alone it reads as a highlight;
+   the border is what makes it read as a token lifted out of the sentence.
+   color-mix off --foreground means one rule serves both themes. */
+.paperclip-markdown :not(pre) > code {
+  border: 1px solid color-mix(in oklch, var(--foreground) 6%, transparent);
+  border-radius: var(--radius-sm);
+}
+
+/* Heading sizes deliberately NOT touched here (MUL-442). Measured against
+   Multica they only look smaller there because its body text is 14px to our
+   15px: 18/14 = 1.29 and 20/15 = 1.33 are the same step. The ramp already
+   lives in one place further down this file; a second definition here would
+   be both wrong and duplicated. */
 
 .paperclip-markdown pre code {
   font-size: inherit;

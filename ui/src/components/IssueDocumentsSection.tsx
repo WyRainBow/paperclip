@@ -1018,7 +1018,10 @@ export function IssueDocumentsSection({
               key={doc.id}
               id={`document-${doc.key}`}
               className={cn(
-                "rounded-lg border border-border p-3 transition-colors duration-1000",
+                // The lift is deliberately below notice: it stops the card
+                // reading as painted onto the page without announcing itself
+                // as a raised surface (MUL-442).
+                "rounded-lg border border-border bg-card p-4 shadow-(--surface-shadow) transition-colors duration-1000",
                 highlightDocumentKey === doc.key && "border-primary/50 bg-primary/5",
               )}
             >
@@ -1154,7 +1157,13 @@ export function IssueDocumentsSection({
 
               {!isFolded ? (
                 <div
-                  className="mt-3 space-y-3"
+                  // pl-7 is the header's own indent (chevron 20px + gap 8px),
+                  // so the body starts on the same vertical line as the title
+                  // instead of opening a second one. With the card's 16px
+                  // padding that leaves the text 44px from the left edge and
+                  // 16px from the right — a measure of roughly 47 CJK
+                  // characters, down from 50 running edge to edge (MUL-446).
+                  className="mt-3 space-y-3 pl-7"
                   onBlurCapture={!isHistoricalPreview
                     ? async (event) => {
                         if (activeDraft) {
