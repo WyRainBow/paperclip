@@ -20,7 +20,7 @@ import type {
   DecisionTargetSnapshot,
 } from "../api/decisions";
 import { t } from "../i18n";
-import { absoluteTimestamp, chineseTimestamp, cn } from "../lib/utils";
+import { chineseTimestamp, cn } from "../lib/utils";
 
 const BRAND_COLORS: Record<string, string> = {
   "Claude（Terminal）": "#D97757",
@@ -70,6 +70,13 @@ export interface DecisionCardProps {
   decidedByAgentName?: string | null;
   decidedByUserName?: string | null;
   originIssue?: DecisionIssueRef | null;
+  /**
+   * The issue whose page is rendering this card. When the decision's only
+   * target is that same issue, the "适用于" segment repeats what the reader
+   * already knows, so it is dropped (MUL-180). Omitted (company-wide surfaces
+   * like the Decisions queue) means every target is worth naming.
+   */
+  currentIssueId?: string | null;
   runHref?: string | null;
   busy?: boolean;
   errorMessage?: string | null;
@@ -257,6 +264,32 @@ function firstBodySection(body: string): string {
   return lines.slice(0, headings[1]!.index).join("\n").trimEnd();
 }
 
+/**
+ * Team Rules require the deciding model on the body's first line, because the
+ * run table carries no model column. That makes it a fact about the record,
+ * not prose — so it is lifted out of the body and rendered as a header chip,
+ * and the line itself is dropped from the markdown (MUL-180). The writing
+ * convention is unchanged; only where it surfaces moved.
+ */
+function splitModelLine(body: string): { model: string | null; rest: string } {
+  const lines = body.split("\n");
+  const index = lines.findIndex((line) => line.trim() !== "");
+  if (index === -1) return { model: null, rest: body };
+  const match = /^\s*(?:\*\*)?模型[:：]\s*(.+?)(?:\*\*)?\s*$/.exec(lines[index]!);
+  if (!match) return { model: null, rest: body };
+  const rest = [...lines.slice(0, index), ...lines.slice(index + 1)].join("\n").trimStart();
+  return { model: match[1]!.trim(), rest };
+}
+
+/** Same wall-clock minute — the resolution at which two stamps read as one. */
+function sameMinute(a: string | Date | null | undefined, b: string | Date | null | undefined): boolean {
+  if (!a || !b) return false;
+  const left = new Date(a).getTime();
+  const right = new Date(b).getTime();
+  if (!Number.isFinite(left) || !Number.isFinite(right)) return false;
+  return Math.floor(left / 60_000) === Math.floor(right / 60_000);
+}
+
 export function DecisionCard({
   decision,
   executions,
@@ -268,6 +301,7 @@ export function DecisionCard({
   decidedByAgentName,
   decidedByUserName,
   originIssue,
+  currentIssueId,
   runHref,
   busy = false,
   errorMessage,
@@ -332,7 +366,11 @@ export function DecisionCard({
   // has to see the whole case before choosing.
   const [collapsed, setCollapsed] = useState(!open);
   const isCollapsed = !open && collapsed;
-  const collapsedBody = useMemo(() => firstBodySection(decision.body ?? ""), [decision.body]);
+  const { model: bodyModel, rest: bodyWithoutModel } = useMemo(
+    () => splitModelLine(decision.body ?? ""),
+    [decision.body],
+  );
+  const collapsedBody = useMemo(() => firstBodySection(bodyWithoutModel), [bodyWithoutModel]);
   const chosenOption = decision.options.find((option) => option.id === decision.chosenOptionId) ?? null;
   const recommendedOption = decision.options.find((option) => option.recommendedByAgentId) ?? null;
   const recommendedBy =
@@ -371,8 +409,18 @@ export function DecisionCard({
       }
     }
     if (originIssue?.id) ids.delete(originIssue.id);
+    if (currentIssueId) ids.delete(currentIssueId);
     return [...ids].map((id) => ({ id, ref: resolveIssue(id) }));
-  }, [decision.options, originIssue?.id, resolveIssue]);
+  }, [decision.options, originIssue?.id, currentIssueId, resolveIssue]);
+
+  // Facts that are identical collapse into one rendering; only a real
+  // difference earns a second line (MUL-180). Delegated mode has agents decide
+  // their own proposals in the same turn, so "proposer === decider, same
+  // instant" is the common card, not the exception.
+  const sameActor =
+    Boolean(decision.originAgentId)
+    && decision.originAgentId === decision.decidedByAgentId;
+  const sameInstant = sameMinute(decision.createdAt, decision.decidedAt);
 
   return (
     <div
@@ -399,15 +447,25 @@ export function DecisionCard({
         </div>
       </div>
 
-      {/* Provenance */}
-      <p className="mt-1 flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-muted-foreground">
+      {/* Provenance. One line of chips and facts: id, who, model, when — plus
+          the targets only when they are not the page the card sits on. */}
+      <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
         {/* The id is the handle the CLI and API address this decision by, so a
-            reader can act on the card they are looking at without a lookup. */}
-        <span className="font-mono" title={decision.id}>decision:{decision.id.slice(0, 8)}</span>
+            reader can act on the card they are looking at without a lookup.
+            Same chip recipe as the document row's docID — the tinted block
+            says "identifier", so it needs no `decision:` prefix (MUL-180). */}
+        <span
+          className="rounded-sm border border-border bg-muted/40 px-1.5 font-mono text-muted-foreground"
+          title={decision.id}
+        >
+          {decision.id.slice(0, 8)}
+        </span>
         {/* Segments carry their own tight inner spacing so the wide gap-x only
             separates whole facts, not the words inside one. */}
         <span className="inline-flex items-center gap-1.5">
-          提案人
+          {/* The label only earns its space when there is a second party to
+              tell this one apart from (MUL-180). */}
+          {sameActor ? null : "提案"}
           {(() => {
             const name = originAgentName ?? "";
             const agent = resolveAgent?.(decision.originAgentId);
@@ -428,6 +486,11 @@ export function DecisionCard({
             </>
           )}
         </span>
+        {bodyModel && (
+          <span className="rounded-sm border border-border bg-muted/40 px-1.5 text-muted-foreground">
+            {bodyModel}
+          </span>
+        )}
         {decision.createdAt && (
           <span className="tabular-nums">{chineseTimestamp(decision.createdAt)}</span>
         )}
@@ -458,12 +521,18 @@ export function DecisionCard({
           line is exactly what a reader scanning decision history wants. */}
       {isCollapsed && (chosenOption || recommendedOption) && (
         <div className="mt-2">
+          {/* The decider and the decision time only appear when they differ
+              from the proposer and the proposal time — otherwise the header
+              line above already said both (MUL-180). */}
           {chosenOption && (
             <p className="text-sm">
-              {decidedByAgentName ? (
-                <span className="font-medium text-foreground">{decidedByAgentName}</span>
+              {!sameActor && decidedByAgentName ? (
+                <>
+                  <span className="text-muted-foreground">裁决 </span>
+                  <span className="font-medium text-foreground">{decidedByAgentName}</span>
+                </>
               ) : null}
-              <span className="text-muted-foreground">{decidedByAgentName ? " 选了 " : "选了 "}</span>
+              <span className="text-muted-foreground">{!sameActor && decidedByAgentName ? " 选了 " : "选了 "}</span>
               <span className="font-medium text-foreground">「{chosenOption.label}」</span>
               {recommendedOption && (
                 chosenOption.id === recommendedOption.id ? (
@@ -472,8 +541,8 @@ export function DecisionCard({
                   <span className="ml-2 text-amber-700 dark:text-amber-300">未采纳推荐（{recommendedBy?.name ?? "提案 agent"} 推荐 {recommendedOption.label}）</span>
                 )
               )}
-              {decision.decidedAt && (
-                <span className="ml-5 tabular-nums text-muted-foreground">{absoluteTimestamp(decision.decidedAt)}</span>
+              {decision.decidedAt && !sameInstant && (
+                <span className="ml-5 tabular-nums text-muted-foreground">{chineseTimestamp(decision.decidedAt)}</span>
               )}
             </p>
           )}
@@ -484,7 +553,7 @@ export function DecisionCard({
       {/* Body */}
       {decision.body?.trim() && (
         <div className="mt-3 text-sm leading-6 text-foreground/90">
-          <MarkdownBody>{isCollapsed ? collapsedBody : decision.body}</MarkdownBody>
+          <MarkdownBody>{isCollapsed ? collapsedBody : bodyWithoutModel}</MarkdownBody>
         </div>
       )}
 
@@ -758,7 +827,7 @@ export function DecisionCard({
                 {decision.decidedAt && (
                   <>
                     <span className="text-muted-foreground" aria-hidden>·</span>
-                    <span className="tabular-nums text-muted-foreground">{absoluteTimestamp(decision.decidedAt)}</span>
+                    <span className="tabular-nums text-muted-foreground">{chineseTimestamp(decision.decidedAt)}</span>
                   </>
                 )}
                 {/* A board-policy decision belongs to the board but is still

@@ -91,9 +91,13 @@ export function IssueDecisionsPanel({
           <p className="mb-1 text-xs text-muted-foreground">
             {relation === "origin" ? "在本卡发起" : "效果指向本卡"}
           </p>
+          {/* The caption above already states the card's relation to this
+              issue, so the card itself drops its own "适用于 <本卡>" segment
+              (MUL-180 currentIssueId) instead of saying it twice. */}
           <DecisionResolver
             companyId={companyId}
             decisionId={decision.id}
+            currentIssueId={issueId}
             agentMap={mergedAgentMap}
             initialDecision={{ ...decision, executions: decision.executions ?? [] }}
           />

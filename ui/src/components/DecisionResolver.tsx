@@ -17,6 +17,8 @@ interface DecisionResolverProps {
   decisionId: string;
   /** Origin issue subject from the attention row (already carries identifier/href). */
   originIssue?: AttentionSubject | null;
+  /** The issue page hosting this card, so it can drop a self-referential "适用于". */
+  currentIssueId?: string | null;
   agentMap?: Map<string, Agent>;
   /** Complete terminal list item used to avoid one detail request per history row. */
   initialDecision?: DecisionOutcome;
@@ -44,7 +46,7 @@ export function signedCancelTreePreviewIds(targetIssueId: string, snapshot: { de
  * dismiss mutations, and invalidates the attention feed + target-issue keys on
  * success — same conventions as {@link AttentionInteractionResolver}.
  */
-export function DecisionResolver({ companyId, decisionId, originIssue, agentMap, initialDecision, onResolved }: DecisionResolverProps) {
+export function DecisionResolver({ companyId, decisionId, originIssue, currentIssueId, agentMap, initialDecision, onResolved }: DecisionResolverProps) {
   const queryClient = useQueryClient();
   const { selectedCompany } = useCompany();
   const prefix = selectedCompany?.issuePrefix ?? "";
@@ -229,6 +231,7 @@ export function DecisionResolver({ companyId, decisionId, originIssue, agentMap,
       executions={decision.executions}
       targetChanged={targetChanged}
       resolveIssue={resolveIssue}
+      currentIssueId={currentIssueId}
       cancelTreePreview={cancelTreePreview}
       originAgentName={mergedAgentMap.get(decision.originAgentId)?.name ?? null}
       resolveAgent={(agentId) => {
