@@ -114,8 +114,16 @@ export const PROPERTIES_PANE_HEADER_SLOT_ID = "properties-pane-header-slot";
 export const PROPERTIES_PANE_FOOTER_SLOT_ID = "properties-pane-footer-slot";
 
 const WIDTH_STORAGE_KEY = "taskChatRedesign.propertiesPaneWidth";
-const DEFAULT_PANE_WIDTH = 322;
-const MIN_PANE_WIDTH = 260;
+const DEFAULT_PANE_WIDTH = 344;
+/**
+ * Drag floor = the narrowest width where the four pane tabs
+ * (Properties | Plan | Artifacts | Progress) still fit on one row in the
+ * classic strip: 301px intrinsic strip width + 39px panel padding/grip,
+ * measured 2026-08-31, plus a small buffer. Below that the strip has to
+ * wrap, which is exactly the squeeze the user asked the floor to prevent
+ * (MUL-164); the strip's flex-wrap stays as a safety net for longer labels.
+ */
+const MIN_PANE_WIDTH = 344;
 /** ~236px sidebar + ~420px minimum center column stay usable while resizing. */
 const RESERVED_LAYOUT_WIDTH = 656;
 /** Content cap while maximized so text doesn't span the full viewport. */
