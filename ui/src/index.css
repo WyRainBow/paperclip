@@ -282,14 +282,6 @@
      with the Multica reference — fuller column,重心左移，两侧留白更小。 */
   --tc-shell-max-w: 88rem;
 
-  /* Cap of the classic issue page column (MUL-176): documents need more than
-     the 3xl reading width — their header packs key, revision, docID, author,
-     and timestamp into one row, which truncates at 48rem — so the page column
-     widens to this cap and centers, while narrow sections re-center at 3xl
-     inside it. 64rem keeps the document rows readable without stretching the
-     page (user 2026-08-31). */
-  --tc-documents-max-w: 64rem;
-
   /* Mobile pinned-composer bottom offset (PAP-495). Default clears just the
      safe-area inset (+20px); Layout raises it to the bottom-nav height
      (--sz-calc-14) while the auto-hiding mobile nav is on screen, so the
