@@ -1653,11 +1653,11 @@ function buildIssueSubtreeDiagnosticsResponse(input: {
 const ACTIVE_REVIEW_APPROVAL_STATUSES = new Set(["pending", "revision_requested"]);
 
 const INVALID_AGENT_IN_REVIEW_DISPOSITION_MESSAGE =
-  "invalid_issue_disposition: Agent-authored updates that move an issue to in_review must include a real review path. " +
-  "This request would leave the issue in_review without anyone or anything owning the next action. " +
-  "Keep working instead of moving to review, create a request_confirmation or ask_user_questions interaction, " +
-  "link or request a pending approval, assign a human reviewer with assigneeUserId, set a typed executionState.currentParticipant through an execution policy, " +
-  "or schedule an issue monitor for an external review/check. After creating one of those review paths, retry the status update.";
+  "invalid_issue_disposition: This issue has nobody owning the next action, so moving it to in_review would park it where no one is looking. " +
+  "The cheapest fix is to claim it — `issue claim <id>` — because the claimant counts as its own reviewer (MUL-451). " +
+  "Otherwise assign a human with assigneeUserId, create a request_confirmation or ask_user_questions interaction, " +
+  "link or request a pending approval, set a typed executionState.currentParticipant through an execution policy, " +
+  "or schedule an issue monitor for an external review/check. After that, retry the status update.";
 
 function executionPrincipalsEqual(
   left: ParsedExecutionState["currentParticipant"] | null,
@@ -3517,12 +3517,30 @@ export function issueRoutes(
     existing: {
       id: string;
       assigneeUserId?: string | null;
+      assigneeAgentId?: string | null;
+      drivingAgentId?: string | null;
       executionState?: unknown;
       monitorNextCheckAt?: Date | null;
     };
     updateFields: Record<string, unknown>;
     pendingInteractionCount: number;
   }): Promise<boolean> {
+    // 接卡人即验收人 (MUL-451, 老板令 2026-08-31: 不要设置那么多权限，直接
+    // 开放). The gate exists so a card never sits in in_review with nobody
+    // owning the next action — and a claimed card has an owner. In 委托 mode
+    // that owner may close the card outright, so refusing them the more
+    // cautious "done but not closed yet" stop was friction pointing the wrong
+    // way. A genuinely ownerless card is still refused: that is the case the
+    // gate was written for.
+    const nextAssigneeAgentId = input.updateFields.assigneeAgentId === undefined
+      ? input.existing.assigneeAgentId
+      : input.updateFields.assigneeAgentId;
+    const nextDrivingAgentId = input.updateFields.drivingAgentId === undefined
+      ? input.existing.drivingAgentId
+      : input.updateFields.drivingAgentId;
+    if (typeof nextAssigneeAgentId === "string" && nextAssigneeAgentId.trim().length > 0) return true;
+    if (typeof nextDrivingAgentId === "string" && nextDrivingAgentId.trim().length > 0) return true;
+
     const nextAssigneeUserId = input.updateFields.assigneeUserId === undefined
       ? input.existing.assigneeUserId
       : input.updateFields.assigneeUserId;

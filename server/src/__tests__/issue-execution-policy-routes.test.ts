@@ -293,12 +293,48 @@ describe("issue execution policy routes", () => {
     expect(mockIssueService.update).not.toHaveBeenCalled();
   });
 
-  it("rejects an agent-authored in_review transition without a review path", async () => {
+  // 接卡人即验收人 (MUL-451): a claimed card has an owner, so it passes. This
+  // test used to assert the opposite while handing the issue an
+  // assigneeAgentId — that was the friction 老板 removed on 2026-08-31.
+  it("allows an agent-authored in_review transition on a card it has claimed", async () => {
     const issue = {
       id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
       companyId: "company-1",
       status: "todo",
       assigneeAgentId: "33333333-3333-4333-8333-333333333333",
+      assigneeUserId: null,
+      createdByUserId: "local-board",
+      identifier: "PAP-1003",
+      title: "Claimed, so its claimant reviews it",
+      executionPolicy: null,
+      executionState: null,
+    };
+    mockIssueService.getById.mockResolvedValue(issue);
+    mockIssueService.getByIdForUpdate.mockResolvedValue(issue);
+    mockIssueService.update.mockResolvedValue({ ...issue, status: "in_review" });
+
+    const res = await request(await createApp({
+      type: "agent",
+      agentId: "33333333-3333-4333-8333-333333333333",
+      companyId: "company-1",
+      runId: "55555555-5555-4555-8555-555555555555",
+    }))
+      .patch("/api/issues/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+      .send({ status: "in_review" });
+
+    expect(res.status).toBe(200);
+    expect(mockIssueService.update).toHaveBeenCalled();
+  });
+
+  it("still rejects an agent-authored in_review transition on a card nobody owns", async () => {
+    const issue = {
+      id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      companyId: "company-1",
+      status: "todo",
+      // No assignee, no Driving: this is the case the gate was written for —
+      // in_review here parks the card where nobody is looking.
+      assigneeAgentId: null,
+      drivingAgentId: null,
       assigneeUserId: null,
       createdByUserId: "local-board",
       identifier: "PAP-1003",
@@ -319,7 +355,7 @@ describe("issue execution policy routes", () => {
 
     expect(res.status).toBe(422);
     expect(res.body.error).toContain("invalid_issue_disposition");
-    expect(res.body.error).toContain("request_confirmation");
+    expect(res.body.error).toContain("issue claim");
     expect(res.body.details).toMatchObject({
       code: "invalid_issue_disposition",
       missing: "review_path",

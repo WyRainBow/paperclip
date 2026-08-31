@@ -166,8 +166,8 @@ export async function issuePreflight(
     blocking.push({
       gate: "交接门禁",
       code: "invalid_issue_disposition",
-      detail: ["这张卡推 in_review 时没有人也没有机制接下一步动作，会被 422 挡回"],
-      fix: `五条路任选一条，最省的是指个人：paperclipai issue update ${issue.id} --assignee-user-id local-board --status in_review。另四条是挂 pending interaction、关联待批 approval、设 executionState 参与者、排一个 issue monitor`,
+      detail: ["这张卡没有人也没有机制接下一步动作，推 in_review 会被 422 挡回"],
+      fix: `认领它就行，接卡人算自己的验收人（MUL-451）：paperclipai issue claim ${issue.id}`,
     });
   }
 
