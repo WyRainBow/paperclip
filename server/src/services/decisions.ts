@@ -296,7 +296,8 @@ export function decisionService(db: Db, options: DecisionServiceOptions) {
     if (filter.bundleId) conditions.push(eq(decisions.bundleId, filter.bundleId));
     if (filter.originAgentId) conditions.push(eq(decisions.originAgentId, filter.originAgentId));
     // Origin, not target: "which decisions were raised while working this
-    // issue", which is what an issue's own decision tab shows.
+    // issue". An issue's decision tab queries this and targetIssueId
+    // separately, merging the two relations client-side.
     if (filter.originIssueId) conditions.push(eq(decisions.originIssueId, filter.originIssueId));
     if (filter.targetIssueId) {
       const links = await db.select({ id: decisionTargetIssues.decisionId }).from(decisionTargetIssues).where(and(eq(decisionTargetIssues.companyId, companyId), eq(decisionTargetIssues.issueId, filter.targetIssueId)));
