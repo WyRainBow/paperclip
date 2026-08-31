@@ -20,11 +20,24 @@ interface RecallResult {
     title: string;
     snippet: string;
     degraded: boolean;
-    assetKind: string;
+    /** Null for cards and documents: they are not Team assets and cannot be cited. */
+    assetKind: string | null;
     assetId: string;
     adoptionBoost: number;
+    /** Cosine similarity from the semantic leg, 0 when it contributed nothing. */
+    similarity: number;
   }>;
   references: string;
+}
+
+interface ReindexResult {
+  model: string;
+  provider: string;
+  scannedChunks: number;
+  embeddedChunks: number;
+  deletedRows: number;
+  tokens: number;
+  stoppedBecause?: string;
 }
 
 interface AssetHealthRow {
@@ -52,7 +65,7 @@ export function registerWorkspaceRecallCommands(program: Command): void {
   addCommonClientOptions(
     existing
       .command("recall")
-      .description("Search Team Wiki + Team Rules within a token budget; returns snippets with reference declarations")
+      .description("Search Team Wiki, Team Rules, cards, their documents and decisions within a token budget; natural-language questions work, not only keywords")
       .option("-C, --company-id <id>", "Company ID (falls back to PAPERCLIP_COMPANY_ID env or context profile)")
       .requiredOption("--query <query>", "What to search for")
       .option("--budget <chars>", "Character budget for results (default 2000, max 6000)")
@@ -76,16 +89,64 @@ export function registerWorkspaceRecallCommands(program: Command): void {
           for (const hit of resp.results) {
             const loc = hit.space ? `[${hit.source}/${hit.space}]` : `[${hit.source}]`;
             const adopted = hit.adoptionBoost > 0 ? ` ·已被采纳过(+${hit.adoptionBoost})` : "";
+            // Says which leg found this. A hit the keyword leg could never have
+            // reached is worth flagging: it tells the reader the wording of
+            // their question is not what matched, so a follow-up query should
+            // not lean on those exact words.
+            const semantic = hit.similarity > 0 ? ` ·语义命中(${hit.similarity.toFixed(2)})` : "";
             if (hit.degraded) {
-              console.log(`${loc} ${hit.title}${adopted} — 预算不足，仅标题`);
+              console.log(`${loc} ${hit.title}${adopted}${semantic} — 预算不足，仅标题`);
             } else {
-              console.log(`${loc} ${hit.title} (${hit.path})${adopted}`);
+              console.log(`${loc} ${hit.title} (${hit.path})${adopted}${semantic}`);
               console.log(`  ${hit.snippet.replace(/\n/g, "\n  ")}`);
             }
             console.log();
           }
           console.log(`引用声明：\n${resp.references}`);
-          console.log(`\n用上哪几条，收尾时声明一次：paperclipai workspace cite --asset <上面的 kind:id> [--issue <卡 id>]`);
+          // Only Team assets get a citable ref, so the reminder is skipped when
+          // nothing in this batch can be cited.
+          if (resp.results.some((hit) => hit.assetKind)) {
+            console.log(`\n用上哪几条，收尾时声明一次：paperclipai workspace cite --asset <上面的 kind:id> [--issue <卡 id>]`);
+          }
+        } catch (err) {
+          handleCommandError(err);
+        }
+      }),
+  );
+
+  addCommonClientOptions(
+    existing
+      .command("recall:reindex")
+      .description("Rebuild the semantic recall vector index — incremental, only re-embeds chunks whose text changed")
+      .option("-C, --company-id <id>", "Company ID (falls back to PAPERCLIP_COMPANY_ID env or context profile)")
+      .option("--max-chunks <n>", "Cap how many chunks this pass may embed (default 2000)")
+      .action(async (opts: { companyId?: string; maxChunks?: string; json?: boolean }) => {
+        try {
+          const ctx = resolveCommandContext(opts, { requireCompany: true });
+          const params = new URLSearchParams();
+          if (opts.maxChunks) params.set("maxChunks", opts.maxChunks);
+          const base = apiPath`/api/companies/${ctx.companyId}/workspace/recall/reindex`;
+          const resp = await ctx.api.post<ReindexResult>(
+            params.toString() ? `${base}?${params}` : base,
+            {},
+          );
+          if (!resp) throw new Error("reindex returned no data");
+          if (opts.json) {
+            printOutput(resp, { json: true });
+            return;
+          }
+          console.error(`索引刷新（${resp.provider} / ${resp.model}）`);
+          console.log(
+            `扫描 ${resp.scannedChunks} 块，重嵌 ${resp.embeddedChunks} 块，清理 ${resp.deletedRows} 条，消耗 ${resp.tokens} token`,
+          );
+          if (resp.stoppedBecause) {
+            // Never silent: a capped or aborted pass leaves the index partly
+            // stale, and a caller who does not know that will read the next
+            // recall as if it were complete.
+            console.log(`本轮提前停止：${resp.stoppedBecause}。再跑一次继续。`);
+          } else if (resp.embeddedChunks === 0) {
+            console.log("语料没有变化，本轮没有花费。");
+          }
         } catch (err) {
           handleCommandError(err);
         }
