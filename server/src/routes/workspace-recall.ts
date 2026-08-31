@@ -1,6 +1,15 @@
-import { and, asc, eq, ilike, or, sql } from "drizzle-orm";
+import { and, asc, eq, ilike, isNull, or, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { teamWikiPages, teamRuleNotes, agents, issues } from "@paperclipai/db";
+import {
+  teamWikiPages,
+  teamRuleNotes,
+  agents,
+  issues,
+  issueDocuments,
+  documents,
+  decisions,
+  cases,
+} from "@paperclipai/db";
 import { Router, type Request, type Response } from "express";
 import { assertCompanyAccess } from "./authz.js";
 import { badRequest } from "../errors.js";
@@ -40,8 +49,37 @@ const MAX_SQL_TERMS = 12;
 /** Rows pulled per source before in-process ranking narrows them to MAX_RESULTS. */
 const CANDIDATE_LIMIT = 60;
 
+/**
+ * Per-source multiplier applied to the keyword score.
+ *
+ * Recall's job is to hand a session the team's settled knowledge. Rules and
+ * wiki pages are that: someone decided they were worth writing down and keeping
+ * current. Cards and their documents are the raw record the knowledge was
+ * distilled from — useful, far more numerous, and written once and left alone.
+ * Ranking them flat means the raw record buries the distilled version, because
+ * there is simply much more of it.
+ *
+ * This is a statement about what recall is for, not a tuning knob. Equal
+ * relevance goes to the page someone maintains.
+ */
+const SOURCE_WEIGHT: Record<RecallSource, number> = {
+  rules: 1,
+  wiki: 1,
+  document: 0.85,
+  decision: 0.8,
+  case: 0.8,
+  issue: 0.75,
+};
+
+/**
+ * Where a hit came from. `wiki` and `rules` are Team assets and can be cited;
+ * the rest are the company's own work, added in MUL-441 so a session asking
+ * about something the team already did is not told it does not exist.
+ */
+type RecallSource = "wiki" | "rules" | "issue" | "document" | "decision" | "case";
+
 interface RecallHit extends RankableHit {
-  source: "wiki" | "rules";
+  source: RecallSource;
   space: string | null;
   path: string | null;
   title: string;
@@ -53,8 +91,12 @@ interface RecallHit extends RankableHit {
    * path moves when a page is renamed, and the rules path here is a truncated
    * id built for display. Adoption has to be keyed on something that does not
    * change under the citation.
+   *
+   * Null for the non-asset sources. An issue is not a Team asset, so citing one
+   * would put rows into the adoption ledger that its ranking signal was never
+   * meant to carry.
    */
-  assetKind: AssetKind;
+  assetKind: AssetKind | null;
   assetId: string;
   /** How much of this hit's score came from prior adoption, not from the query. */
   adoptionBoost: number;
@@ -222,7 +264,24 @@ export function workspaceRecallRoutes(db: Db): Router {
     const sqlTerms = terms.slice(0, MAX_SQL_TERMS);
     if (sqlTerms.length === 0) throw badRequest("q has no searchable terms");
 
-    // Team Wiki: any term hitting title, body, or path makes it a candidate
+    // Every source flattens to this shape, so scoring, chunking, dedupe and
+    // budget assembly are written once instead of once per table.
+    interface SourceRow {
+      sourceKey: string;
+      source: RecallSource;
+      space: string | null;
+      path: string;
+      title: string;
+      body: string;
+      /** Only Team assets carry citation identity; issues and cards are not assets. */
+      assetKind: AssetKind | null;
+      assetId: string;
+    }
+
+    const rows: SourceRow[] = [];
+    const anyTerm = (...columns: Array<Parameters<typeof ilike>[0]>) =>
+      or(...sqlTerms.flatMap((term) => columns.map((column) => ilike(column, `%${term}%`))));
+
     const wikiRows = await db
       .select({
         id: teamWikiPages.id,
@@ -235,75 +294,175 @@ export function workspaceRecallRoutes(db: Db): Router {
       .where(
         and(
           eq(teamWikiPages.companyId, companyId),
-          or(
-            ...sqlTerms.flatMap((term) => [
-              ilike(teamWikiPages.title, `%${term}%`),
-              ilike(teamWikiPages.body, `%${term}%`),
-              ilike(teamWikiPages.path, `%${term}%`),
-            ]),
-          ),
+          anyTerm(teamWikiPages.title, teamWikiPages.body, teamWikiPages.path),
         ),
       )
       .limit(CANDIDATE_LIMIT);
+    for (const row of wikiRows) {
+      rows.push({
+        sourceKey: `wiki:${row.id}`,
+        source: "wiki",
+        space: row.space,
+        path: row.path,
+        title: row.title,
+        body: row.body,
+        assetKind: "wiki",
+        assetId: row.id,
+      });
+    }
 
-    // Team Rules: any term hitting title or body
     const rulesRows = await db
-      .select({
-        id: teamRuleNotes.id,
-        title: teamRuleNotes.title,
-        body: teamRuleNotes.body,
-      })
+      .select({ id: teamRuleNotes.id, title: teamRuleNotes.title, body: teamRuleNotes.body })
       .from(teamRuleNotes)
       .where(
         and(
           eq(teamRuleNotes.companyId, companyId),
-          or(
-            ...sqlTerms.flatMap((term) => [
-              ilike(teamRuleNotes.title, `%${term}%`),
-              ilike(teamRuleNotes.body, `%${term}%`),
-            ]),
-          ),
+          anyTerm(teamRuleNotes.title, teamRuleNotes.body),
         ),
       )
       .limit(CANDIDATE_LIMIT);
+    for (const row of rulesRows) {
+      rows.push({
+        sourceKey: `rule:${row.id}`,
+        source: "rules",
+        space: null,
+        path: `team-rules/${row.id.slice(0, 8)}`,
+        title: row.title,
+        body: row.body,
+        assetKind: "rule",
+        assetId: row.id,
+      });
+    }
+
+    // Cards and their documents (MUL-441). Recall used to see only Team Wiki
+    // and Team Rules, so a session asking about work the team had already done
+    // was told nothing existed — 411 cards, none of them reachable through this
+    // channel. Archived and hidden cards stay out: recall answers "what do we
+    // know", and a card someone deliberately filed away is not that.
+    const issueRows = await db
+      .select({
+        id: issues.id,
+        identifier: issues.identifier,
+        title: issues.title,
+        description: issues.description,
+      })
+      .from(issues)
+      .where(
+        and(
+          eq(issues.companyId, companyId),
+          isNull(issues.archivedAt),
+          isNull(issues.hiddenAt),
+          anyTerm(issues.title, issues.description),
+        ),
+      )
+      .limit(CANDIDATE_LIMIT);
+    for (const row of issueRows) {
+      rows.push({
+        sourceKey: `issue:${row.id}`,
+        source: "issue",
+        space: null,
+        // identifier is assigned asynchronously, so a just-created card can
+        // still be null here. Falling back to a short id keeps the line usable.
+        path: row.identifier ?? `issue/${row.id.slice(0, 8)}`,
+        title: row.title,
+        body: row.description ?? "",
+        assetKind: null,
+        assetId: row.id,
+      });
+    }
+
+    const documentRows = await db
+      .select({
+        id: documents.id,
+        title: documents.title,
+        body: documents.latestBody,
+        key: issueDocuments.key,
+        identifier: issues.identifier,
+      })
+      .from(documents)
+      .innerJoin(issueDocuments, eq(issueDocuments.documentId, documents.id))
+      .innerJoin(issues, eq(issues.id, issueDocuments.issueId))
+      .where(
+        and(
+          eq(issueDocuments.companyId, companyId),
+          isNull(issues.archivedAt),
+          isNull(issues.hiddenAt),
+          anyTerm(documents.title, documents.latestBody),
+        ),
+      )
+      .limit(CANDIDATE_LIMIT);
+    for (const row of documentRows) {
+      rows.push({
+        sourceKey: `document:${row.id}`,
+        source: "document",
+        space: null,
+        path: `${row.identifier}/${row.key}`,
+        title: row.title ?? row.key,
+        body: row.body,
+        assetKind: null,
+        assetId: row.id,
+      });
+    }
+
+    const decisionRows = await db
+      .select({ id: decisions.id, title: decisions.title, body: decisions.body })
+      .from(decisions)
+      .where(
+        and(eq(decisions.companyId, companyId), anyTerm(decisions.title, decisions.body)),
+      )
+      .limit(CANDIDATE_LIMIT);
+    for (const row of decisionRows) {
+      rows.push({
+        sourceKey: `decision:${row.id}`,
+        source: "decision",
+        space: null,
+        path: `decision/${row.id.slice(0, 8)}`,
+        title: row.title,
+        body: row.body,
+        assetKind: null,
+        assetId: row.id,
+      });
+    }
+
+    const caseRows = await db
+      .select({
+        id: cases.id,
+        identifier: cases.identifier,
+        title: cases.title,
+        summary: cases.summary,
+      })
+      .from(cases)
+      .where(and(eq(cases.companyId, companyId), anyTerm(cases.title, cases.summary)))
+      .limit(CANDIDATE_LIMIT);
+    for (const row of caseRows) {
+      rows.push({
+        sourceKey: `case:${row.id}`,
+        source: "case",
+        space: null,
+        path: row.identifier,
+        title: row.title,
+        body: row.summary ?? "",
+        assetKind: null,
+        assetId: row.id,
+      });
+    }
 
     // Chunk before scoring. Team Rules is one row covering every topic the team
     // has, so scored whole it outranks every focused wiki page on every query
     // (measured 2026-08-30: top spot on seven of eight). Split into sections it
     // competes section against page, which is the comparison that means
     // something. `rankAndDedupe` keeps one chunk per source afterwards.
-    interface Chunked {
-      sourceKey: string;
-      candidate: ScorableCandidate;
-      offset: number;
-      row:
-        | { kind: "wiki"; id: string; space: string | null; path: string; title: string; body: string }
-        | { kind: "rule"; id: string; title: string; body: string };
-    }
-
-    const chunked: Chunked[] = [];
-    for (const row of wikiRows) {
-      const sourceKey = `wiki:${row.id}`;
-      for (const chunk of chunkBody(row.body)) {
-        chunked.push({
-          sourceKey,
-          offset: chunk.offset,
-          candidate: { sourceKey, title: row.title, body: chunk.text },
-          row: { kind: "wiki", id: row.id, space: row.space, path: row.path, title: row.title, body: row.body },
-        });
-      }
-    }
-    for (const row of rulesRows) {
-      const sourceKey = `rule:${row.id}`;
-      for (const chunk of chunkBody(row.body)) {
-        chunked.push({
-          sourceKey,
-          offset: chunk.offset,
-          candidate: { sourceKey, title: row.title, body: chunk.text },
-          row: { kind: "rule", id: row.id, title: row.title, body: row.body },
-        });
-      }
-    }
+    const chunked = rows.flatMap((row) =>
+      chunkBody(row.body).map((chunk) => ({
+        row,
+        offset: chunk.offset,
+        candidate: {
+          sourceKey: row.sourceKey,
+          title: row.title,
+          body: chunk.text,
+        } satisfies ScorableCandidate,
+      })),
+    );
 
     // Weights are computed over the chunks actually retrieved, so a term that
     // narrows this result set counts for more than one every chunk shares.
@@ -315,42 +474,31 @@ export function workspaceRecallRoutes(db: Db): Router {
     for (const entry of chunked) {
       const scored = scoreCandidate(entry.candidate, weights);
       if (scored.coverage < MIN_COVERAGE) continue;
-      const boost = adoptionBoost(citedCounts.get(entry.sourceKey) ?? 0);
+      const boost = entry.row.assetKind
+        ? adoptionBoost(citedCounts.get(entry.row.sourceKey) ?? 0)
+        : 0;
       // Snippet offsets are chunk-relative; shift them back onto the full body
       // so the reader gets surrounding context, not a window clipped at the
       // chunk seam.
       const bodyIndex = scored.bodyIndex >= 0 ? scored.bodyIndex + entry.offset : -1;
-      const common = {
-        score: scored.score + boost,
+      hits.push({
+        source: entry.row.source,
+        space: entry.row.space,
+        path: entry.row.path,
+        title: entry.row.title,
+        snippet: buildSnippet(entry.row.body, bodyIndex),
+        // Adoption boost is added after the source weight, not scaled by it:
+        // it is evidence a session actually used the asset, and that evidence
+        // should not be discounted for being attached to one source or another.
+        score: scored.score * SOURCE_WEIGHT[entry.row.source] + boost,
+        assetKind: entry.row.assetKind,
+        assetId: entry.row.assetId,
         adoptionBoost: boost,
-        sourceKey: entry.sourceKey,
+        sourceKey: entry.row.sourceKey,
         matched: scored.matched,
         coverage: scored.coverage,
         bodyIndex,
-      };
-      if (entry.row.kind === "wiki") {
-        hits.push({
-          ...common,
-          source: "wiki",
-          space: entry.row.space,
-          path: entry.row.path,
-          title: entry.row.title,
-          snippet: buildSnippet(entry.row.body, bodyIndex),
-          assetKind: "wiki",
-          assetId: entry.row.id,
-        });
-      } else {
-        hits.push({
-          ...common,
-          source: "rules",
-          space: null,
-          path: `team-rules/${entry.row.id.slice(0, 8)}`,
-          title: entry.row.title,
-          snippet: buildSnippet(entry.row.body, bodyIndex),
-          assetKind: "rule",
-          assetId: entry.row.id,
-        });
-      }
+      });
     }
 
     const top = rankAndDedupe(hits, { limit: MAX_RESULTS });
@@ -374,8 +522,15 @@ export function workspaceRecallRoutes(db: Db): Router {
     // screen is the whole trick: teamai-cli's equivalent asks the model to
     // reconstruct doc ids from memory at the end of a long session, and
     // documents that models simply skip it.
+    //
+    // Only Team assets get a citable ref. The card-shaped sources are listed
+    // with their identifier instead, so the caller can still find what it read
+    // without being handed a ref that `workspace cite` would reject.
     const references = results
-      .map((hit) => `[${hit.source}${hit.space ? `/${hit.space}` : ""}] ${hit.path ?? hit.title} → ${hit.assetKind}:${hit.assetId}`)
+      .map((hit) => {
+        const label = `[${hit.source}${hit.space ? `/${hit.space}` : ""}] ${hit.path ?? hit.title}`;
+        return hit.assetKind ? `${label} → ${hit.assetKind}:${hit.assetId}` : label;
+      })
       .join("\n");
 
     // The served half of the ledger. Written after the response is assembled
@@ -414,7 +569,12 @@ export function workspaceRecallRoutes(db: Db): Router {
         sessionId: servedSessionId,
       },
       query,
-      results.map((hit) => ({ kind: hit.assetKind, id: hit.assetId, score: hit.score })),
+      // Non-asset sources are left out of the ledger entirely. The served/cited
+      // ratio drives asset adoption ranking (MUL-133), and an issue that can
+      // never be cited would sit in it as permanent dead weight.
+      results
+        .filter((hit): hit is typeof hit & { assetKind: AssetKind } => hit.assetKind !== null)
+        .map((hit) => ({ kind: hit.assetKind, id: hit.assetId, score: hit.score })),
     );
 
     res.json({
