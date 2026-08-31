@@ -448,14 +448,16 @@ export function DecisionCard({
       </div>
 
       {/* Provenance. One line of chips and facts: id, who, model, when — plus
-          the targets only when they are not the page the card sits on. */}
-      <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+          the targets only when they are not the page the card sits on. The
+          whole line sits on a tinted block so the record's metadata reads as
+          one band, separate from the title above and the case below. */}
+      <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md bg-muted/50 px-2.5 py-1.5 text-xs text-muted-foreground">
         {/* The id is the handle the CLI and API address this decision by, so a
             reader can act on the card they are looking at without a lookup.
             Same chip recipe as the document row's docID — the tinted block
             says "identifier", so it needs no `decision:` prefix (MUL-180). */}
         <span
-          className="rounded-sm border border-border bg-muted/40 px-1.5 font-mono text-muted-foreground"
+          className="rounded-sm border border-border bg-background px-1.5 font-mono text-foreground/80"
           title={decision.id}
         >
           {decision.id.slice(0, 8)}
@@ -487,7 +489,7 @@ export function DecisionCard({
           )}
         </span>
         {bodyModel && (
-          <span className="rounded-sm border border-border bg-muted/40 px-1.5 text-muted-foreground">
+          <span className="rounded-sm border border-border bg-background px-1.5 text-foreground/80">
             {bodyModel}
           </span>
         )}
