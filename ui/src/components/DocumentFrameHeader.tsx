@@ -1,5 +1,5 @@
-import type { ReactNode } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { Check, ChevronDown, ChevronRight, Copy } from "lucide-react";
 import { cn, relativeTime } from "../lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -46,19 +46,22 @@ export type DocumentFrameHeaderRevisionMenu = {
 
 export interface DocumentFrameHeaderProps {
   documentKey: string;
+  /** Document title — the primary scan anchor, rendered as the first line. */
   documentLabel?: string;
   folded: boolean;
   onToggleFolded: () => void;
   revisionMenu?: DocumentFrameHeaderRevisionMenu;
   updatedAt?: string | Date | null;
   updatedHref?: string;
-  /** Short document id — the handle the CLI addresses this document by. */
+  /** The handle the CLI addresses this document by. Kept out of the folded
+      row (MUL-177): it renders in the meta line only while unfolded, as a
+      click-to-copy chip. */
   documentId?: string | null;
-  /** Who filed it. Shown here so the Artifacts panel need not repeat it. */
+  /** Who filed it. Avatar only in the meta line; the name lives in the
+      hover title (MUL-177). */
   createdBy?: DocumentFrameHeaderRevisionActor | null;
   sourceTrustSlot?: ReactNode;
   annotationSlot?: ReactNode;
-  titleSlot?: ReactNode;
   actionsSlot?: ReactNode;
 }
 
@@ -79,6 +82,14 @@ function RevisionActorAvatar({ actor }: { actor: DocumentFrameHeaderRevisionActo
   );
 }
 
+function DocumentKeyBadge({ documentKey }: { documentKey: string }) {
+  return (
+    <Badge variant="outline" className="border-border font-mono text-(length:--text-nano) uppercase tracking-(--tracking-eyebrow) text-muted-foreground">
+      {documentKey}
+    </Badge>
+  );
+}
+
 export function DocumentFrameHeader({
   documentKey,
   documentLabel,
@@ -91,16 +102,23 @@ export function DocumentFrameHeader({
   createdBy,
   sourceTrustSlot,
   annotationSlot,
-  titleSlot,
   actionsSlot,
 }: DocumentFrameHeaderProps) {
+  const [copiedDocumentId, setCopiedDocumentId] = useState(false);
+  const copyDocumentId = () => {
+    if (!documentId) return;
+    void navigator.clipboard?.writeText(documentId).then(() => {
+      setCopiedDocumentId(true);
+      window.setTimeout(() => setCopiedDocumentId(false), 1500);
+    });
+  };
+
   return (
     <div className="flex items-start justify-between gap-3">
-      <div className="min-w-0">
-        {/* gap-4, not gap-2: the row runs key, revision, docID, author, and
-            timestamp together, and at the tighter gap they read as one string
-            of text rather than five separate fields. */}
-        <div className="flex items-center gap-4 min-w-0">
+      <div className="min-w-0 flex-1">
+        {/* Primary line: the title is the scan anchor (MUL-177). Documents
+            without a display title lead with the key badge instead. */}
+        <div className="flex items-center gap-2 min-w-0">
           <button
             type="button"
             className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
@@ -111,17 +129,16 @@ export function DocumentFrameHeader({
             {folded ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
           </button>
           {documentLabel ? (
-            <>
-              <span className="truncate text-sm font-semibold text-foreground">{documentLabel}</span>
-              <Badge variant="outline" className="border-border font-mono text-(length:--text-nano) uppercase tracking-(--tracking-eyebrow) text-muted-foreground">
-                {documentKey}
-              </Badge>
-            </>
+            <span className="truncate text-sm font-medium text-foreground">{documentLabel}</span>
           ) : (
-            <Badge variant="outline" className="border-border font-mono text-(length:--text-nano) uppercase tracking-(--tracking-eyebrow) text-muted-foreground">
-              {documentKey}
-            </Badge>
+            <DocumentKeyBadge documentKey={documentKey} />
           )}
+        </div>
+        {/* Meta line, indented under the title. Labels are gone: the avatar
+            carries the author (name on hover) and the bare relative time
+            carries freshness (MUL-177). */}
+        <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 pl-7">
+          {documentLabel ? <DocumentKeyBadge documentKey={documentKey} /> : null}
           {sourceTrustSlot}
           {revisionMenu ? (
             <DropdownMenu open={revisionMenu.open} onOpenChange={revisionMenu.onOpenChange}>
@@ -179,32 +196,36 @@ export function DocumentFrameHeader({
               </DropdownMenuContent>
             </DropdownMenu>
           ) : null}
-          {documentId ? (
-            <span
-              className="shrink-0 font-mono text-(length:--text-micro) text-muted-foreground"
-              title={documentId}
-            >
-              docID: {documentId.slice(0, 8)}
-            </span>
-          ) : null}
           {createdBy ? (
-            <span className="flex shrink-0 items-center gap-1 text-(length:--text-micro) text-muted-foreground">
-              创建人：
+            <span
+              className="inline-flex shrink-0 items-center"
+              title={`创建人：${createdBy.name}`}
+            >
               <RevisionActorAvatar actor={createdBy} />
-              <span className="truncate">{createdBy.name}</span>
             </span>
           ) : null}
           {updatedAt ? (
             <a
               href={updatedHref ?? `#document-${encodeURIComponent(documentKey)}`}
+              title={`更新时间：${relativeTime(updatedAt)}`}
               className="truncate text-(length:--text-micro) text-muted-foreground transition-colors hover:text-foreground hover:underline"
             >
-              更新时间：{relativeTime(updatedAt)}
+              {relativeTime(updatedAt)}
             </a>
+          ) : null}
+          {!folded && documentId ? (
+            <button
+              type="button"
+              onClick={copyDocumentId}
+              title={copiedDocumentId ? "已复制" : `复制 docID：${documentId}`}
+              className="inline-flex shrink-0 items-center gap-1 font-mono text-(length:--text-micro) text-muted-foreground transition-colors hover:text-foreground"
+            >
+              docID: {documentId.slice(0, 8)}
+              {copiedDocumentId ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+            </button>
           ) : null}
           {annotationSlot}
         </div>
-        {titleSlot}
       </div>
       {actionsSlot ? <div className="flex items-center gap-1 shrink-0">{actionsSlot}</div> : null}
     </div>

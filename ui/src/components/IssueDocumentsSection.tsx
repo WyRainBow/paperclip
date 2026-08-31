@@ -1024,6 +1024,7 @@ export function IssueDocumentsSection({
             >
               <DocumentFrameHeader
                 documentKey={doc.key}
+                documentLabel={showTitle ? displayedTitle : undefined}
                 documentId={doc.id ?? null}
                 createdBy={getRevisionActor(
                   { createdByAgentId: doc.createdByAgentId, createdByUserId: doc.createdByUserId } as DocumentRevision,
@@ -1058,7 +1059,6 @@ export function IssueDocumentsSection({
                     onToggle={() => toggleAnnotationPanel(doc.key)}
                   />
                 ) : null}
-                titleSlot={showTitle ? <p className="mt-2 text-sm font-medium">{displayedTitle}</p> : null}
                 actionsSlot={
                   <>
                     {canManageDocumentLocks ? (
@@ -1122,6 +1122,14 @@ export function IssueDocumentsSection({
                           <Download className="h-3.5 w-3.5" />
                           Download document
                         </DropdownMenuItem>
+                        {doc.id ? (
+                          <DropdownMenuItem
+                            onClick={() => void navigator.clipboard?.writeText(doc.id)}
+                          >
+                            <Copy className="h-3.5 w-3.5" />
+                            复制 docID
+                          </DropdownMenuItem>
+                        ) : null}
                         {doc.latestRevisionNumber > 1 ? (
                           <DropdownMenuItem onClick={() => setDiffViewKey(doc.key)}>
                             <Diff className="h-3.5 w-3.5" />
