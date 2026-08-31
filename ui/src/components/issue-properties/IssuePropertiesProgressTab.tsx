@@ -9,6 +9,7 @@ import { AgentIcon, agentCustomIcon } from "@/components/AgentIconPicker";
 import { MarkdownBody } from "@/components/MarkdownBody";
 import { SystemActorAvatar, SystemNoticeTag } from "@/components/SystemActorAvatar";
 import { buildCompanyUserLabelMap } from "@/lib/company-members";
+import { relativeTime } from "@/lib/utils";
 import type { Agent, IssueComment } from "@paperclipai/shared";
 
 interface IssuePropertiesProgressTabProps {
@@ -18,17 +19,6 @@ interface IssuePropertiesProgressTabProps {
 
 export function isProgressNoteComment(comment: IssueComment): boolean {
   return comment.presentation?.kind === "progress_note";
-}
-
-function relativeTime(at: string | Date): string {
-  const ms = Date.now() - new Date(at).getTime();
-  const minutes = Math.floor(ms / 60_000);
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
 }
 
 /**
