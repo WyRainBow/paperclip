@@ -5,6 +5,7 @@ import type {
   AgentRole,
   AgentStatus,
 } from "../constants.js";
+import type { SessionLocator } from "../session-locator.js";
 import type {
   CompanyMembership,
   PrincipalPermissionGrant,
@@ -103,6 +104,12 @@ export interface Agent {
   lastHeartbeatAt: Date | null;
   metadata: Record<string, unknown> | null;
   orgChainHealth?: AgentOrgChainHealth;
+  /**
+   * Where this agent's sessions live, joined onto the read model from
+   * `runtimeConfig.terminalSlug` (MUL-175). Null for anything that is not a
+   * terminal agent. Read-only — writing it means setting terminalSlug.
+   */
+  sessionLocator?: SessionLocator | null;
   createdAt: Date;
   updatedAt: Date;
 }

@@ -39,10 +39,14 @@ import {
   resolveCommandContext,
   resolveSessionId,
   resolveSessionIdVerbose,
+  detectTerminalSlug,
   type BaseClientOptions,
   type ResolvedClientContext,
   assertDecisionBodyTemplate,
 } from "./common.js";
+import { sessionLocatorForSlug } from "@paperclipai/shared/session-locator";
+import { displayModelName } from "@paperclipai/shared/model-signature";
+import { readLocalModelSignature } from "./local-model.js";
 import {
   buildFeedbackTraceQuery,
   normalizeFeedbackTraceExportFormat,
@@ -267,6 +271,36 @@ async function autoClaimIfUnclaimed(ctx: ResolvedClientContext, issue: Issue): P
   } catch (err) {
     console.error(`auto-claim failed for ${issue.identifier ?? issue.id}: ${err instanceof Error ? err.message : String(err)}`);
   }
+}
+
+/**
+ * Model and effort for the question side of a QA archive (MUL-444).
+ *
+ * The asker is whichever terminal is running this command, so its own harness
+ * already recorded both facts — an explicit flag still wins, for the case where
+ * the archive is filed on someone else's behalf. When the read comes up empty
+ * the reason goes to stderr and the fields stay blank: the bubble showing no
+ * model is a visible gap, while a guessed one would read as fact.
+ */
+async function resolveQuestionModelSide(
+  explicitModel?: string,
+  explicitEffort?: string,
+): Promise<{ model: string | null; effort: string | null }> {
+  if (explicitModel?.trim() && explicitEffort?.trim()) {
+    return { model: explicitModel.trim(), effort: explicitEffort.trim() };
+  }
+  let slug: string | null = null;
+  try {
+    slug = detectTerminalSlug();
+  } catch {
+    slug = null;
+  }
+  const { sessionId } = resolveSessionId();
+  const reading = await readLocalModelSignature(slug, sessionId, process.cwd());
+  if (reading.reason) console.error(`question model not read from this terminal: ${reading.reason}`);
+  const model = explicitModel?.trim() || displayModelName(reading.model, sessionLocatorForSlug(slug)?.modelNaming ?? "verbatim");
+  const effort = explicitEffort?.trim() || reading.effort;
+  return { model: model ?? null, effort: effort ?? null };
 }
 
 export function registerIssueCommands(program: Command): void {
@@ -741,8 +775,12 @@ export function registerIssueCommands(program: Command): void {
       // Which model asked shapes the answer as much as which model answered, and
       // Team Rules already require the model in the archive label — the CLI just
       // had no slot for the asking half (MUL-123).
-      .requiredOption("--question-model <model>", "Model that asked (e.g. claude-opus-5) — structured, not label text")
-      .requiredOption("--question-effort <effort>", "Reasoning effort of the question (e.g. high/medium/low)")
+      // The question side is THIS terminal, so it is read off this harness's
+      // own transcript rather than typed (MUL-444). Hand-typed model names are
+      // what MUL-22 already tried and what drifted. Still overridable, and
+      // still required if the read comes up empty.
+      .option("--question-model <model>", "Model that asked — defaults to what this terminal is actually running")
+      .option("--question-effort <effort>", "Reasoning effort of the question — defaults to what this terminal is actually running")
       .requiredOption("--answer-effort <effort>", "Reasoning effort of the answer (e.g. high/medium/low)")
       .action(async (issueId: string, opts: IssueQaOptions) => {
         try {
@@ -796,6 +834,9 @@ export function registerIssueCommands(program: Command): void {
           } else if (opts.answerFile) {
             throw new Error("--answer-file needs --answer-doc-key: without a document to hold it, the full text would land in the bubble");
           }
+          // 问侧就是本终端，读它自己的记录而不是让人手打（MUL-444）。答侧是
+          // 另一台终端的事实，这里读不到，仍然必填。
+          const questionSide = await resolveQuestionModelSide(opts.questionModel, opts.questionEffort);
           const qComment = await ctx.api.post<{ id: string } & IssueComment>(
             apiPath`/api/issues/${issue.id}/comments`,
             {
@@ -806,8 +847,8 @@ export function registerIssueCommands(program: Command): void {
                 role: "question",
                 label: opts.label ?? null,
                 ...(questionAgentId ? { questionAgentId } : {}),
-                ...(opts.questionModel ? { questionModel: opts.questionModel } : {}),
-                ...(opts.questionEffort ? { questionEffort: opts.questionEffort } : {}),
+                ...(questionSide.model ? { questionModel: questionSide.model } : {}),
+                ...(questionSide.effort ? { questionEffort: questionSide.effort } : {}),
               },
             },
           );

@@ -48,6 +48,23 @@ export interface SessionLocator {
   indexPath: string | null;
   /** Where the real working directory is recorded inside the transcript. */
   cwdField: string;
+  /**
+   * Where the model name and the reasoning effort are recorded (MUL-444).
+   *
+   * Neither is available as an environment variable on any harness — only
+   * Claude publishes effort (`CLAUDE_EFFORT`), and no harness publishes the
+   * model at all — so both have to be read out of the transcript or the index.
+   * `record` names the record type to scan for; `null` fields mean the harness
+   * does not record that value.
+   */
+  modelField: { record: string; path: string } | null;
+  effortField: { record: string; path: string } | null;
+  /**
+   * How the harness's raw model string becomes the name a person recognises.
+   * `verbatim` means the recorded value already is the display name.
+   * `alias` means it is an internal code and needs MODEL_ALIASES.
+   */
+  modelNaming: "verbatim" | "alias";
   /** One line on anything a reader would otherwise get wrong. */
   note: string;
 }
@@ -61,6 +78,11 @@ export const SESSION_LOCATORS: Record<TerminalSlug, SessionLocator> = {
     slugRule: "claude-style",
     indexPath: null,
     cwdField: "cwd",
+    // Every assistant record carries both; effort sits at the top level, not
+    // inside message. CLAUDE_EFFORT holds the same value in the environment.
+    modelField: { record: "assistant", path: "message.model" },
+    effortField: { record: "assistant", path: "effort" },
+    modelNaming: "verbatim",
     note: "The transcript follows the session's current working directory and leaves no copy behind: a session that moves into a worktree has its jsonl relocated under the new cwd's slug, so a path built from an older cwd finds nothing. Hook payloads carry session_id and transcript_path directly, which is why they beat rebuilding the path.",
   },
   "codex-terminal": {
@@ -73,6 +95,11 @@ export const SESSION_LOCATORS: Record<TerminalSlug, SessionLocator> = {
     slugRule: "none",
     indexPath: null,
     cwdField: "session_meta.payload.cwd",
+    // One turn_context record per turn, so the last one is the current setting
+    // — a session whose model was switched mid-run has both values on record.
+    modelField: { record: "turn_context", path: "payload.model" },
+    effortField: { record: "turn_context", path: "payload.effort" },
+    modelNaming: "verbatim",
     note: "Filename embeds an ISO timestamp before the id, so match on the id suffix rather than building the whole name.",
   },
   "zcode-terminal": {
@@ -83,6 +110,13 @@ export const SESSION_LOCATORS: Record<TerminalSlug, SessionLocator> = {
     slugRule: "none",
     indexPath: "~/.zcode/v2/tasks-index.sqlite",
     cwdField: "tasks.workspace_path",
+    // Two model strings exist and disagree: the rollout writes a short display
+    // name ("GLM-5.3") while the index writes the full provider-qualified id
+    // ("builtin:bigmodel/GLM-5.3-Flash"). The index wins — it is the complete
+    // identifier, and effort only lives there anyway.
+    modelField: { record: "tasks-index", path: "tasks.model" },
+    effortField: { record: "tasks-index", path: "tasks.meta_json.thoughtLevel" },
+    modelNaming: "verbatim",
     note: "Session ids look like sess_<uuid>. The rollout directory is flat across projects, so the sqlite index is the only way to scope by workspace.",
   },
   qoder: {
@@ -93,6 +127,11 @@ export const SESSION_LOCATORS: Record<TerminalSlug, SessionLocator> = {
     slugRule: "claude-style",
     indexPath: null,
     cwdField: "workspace-directories.directories[0]",
+    // One runtime-config record near the top of the file. The model is an
+    // internal code ("qmodel_38max"), so it needs MODEL_ALIASES to be readable.
+    modelField: { record: "runtime-config", path: "model" },
+    effortField: { record: "runtime-config", path: "reasoningEffort" },
+    modelNaming: "alias",
     note: "No environment variable at all; the id appears only inside the transcript, so a Qoder session must be located by directory listing.",
   },
 };
