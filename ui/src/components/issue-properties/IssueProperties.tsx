@@ -2735,8 +2735,13 @@ export function IssueProperties({
           // controls (MUL-164).
           ? "min-w-0 w-full! h-fit! flex-wrap items-stretch justify-start gap-1 p-0"
           // The inline (classic interface) strip gets the same narrow-pane
-          // treatment: wrap instead of clipping (MUL-164 rework).
-          : "w-full h-fit flex-wrap justify-start gap-1"
+          // treatment: wrap instead of clipping (MUL-164 rework). h-fit needs
+          // the important flag exactly like the pane branch above: the
+          // TabsList base carries group-data-[orientation=horizontal]:h-9,
+          // whose group selector outranks a bare h-fit — without ! the box
+          // stays one row tall and a wrapped tab paints over the content
+          // below (TRIAGE).
+          : "w-full h-fit! flex-wrap justify-start gap-1"
       }
     >
       <TabsTrigger value="properties" className={paneTabTriggerClass}>
