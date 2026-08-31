@@ -194,7 +194,7 @@ import {
 import { decisionTrainingService } from "../services/decision-training.js";
 import { feedbackService } from "../services/feedback.js";
 import { noteUnregisteredBranch, recordRetroGate } from "../services/retro-gate.js";
-import { missingIssueClosePrerequisites } from "../services/issue-prerequisites.js";
+import { missingIssueClosePrerequisites, issuePreflight, type IssuePreflightActor } from "../services/issue-prerequisites.js";
 import { instanceSettingsService } from "../services/instance-settings.js";
 import {
   ISSUE_BLOCKER_DIAGNOSTICS_MAX_BLOCKERS,
@@ -6973,6 +6973,25 @@ export function issueRoutes(
     }
     await queueTaskWatchdogEvaluation(issue, actor.runId);
     res.json({ ok: true });
+  });
+
+  // 门禁前置可发现 (MUL-448): the read side of the write-time gates, so a
+  // caller can ask "what would stop me on this card" before spending the work
+  // instead of after. Read-only — it never claims, never advances, never
+  // writes.
+  router.get("/issues/:id/preflight", async (req, res) => {
+    const id = req.params.id as string;
+    const issue = await getAccessibleResource(req, res, getIssueById(req, id), "Issue not found");
+    if (!issue) return;
+    if (!(await assertIssueReadAllowed(req, res, issue))) return;
+    const actor: IssuePreflightActor =
+      req.actor.type === "agent"
+        ? { type: "agent", agentId: req.actor.agentId ?? null }
+        : req.actor.type === "board"
+          ? { type: "board" }
+          : { type: "other" };
+    const adjudicationMode = (await instanceSettings.get()).general.adjudicationMode ?? "auto";
+    res.json(await issuePreflight(db, issue, actor, adjudicationMode));
   });
 
   router.get("/issues/:id/recovery-actions", async (req, res) => {
