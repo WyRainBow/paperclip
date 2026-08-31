@@ -248,6 +248,8 @@ import {
   type IssueThreadInteractionResolverRestriction,
 } from "../services/issue-thread-interaction-resolution.js";
 import { resolveSelectedSuggestedTasks } from "../services/issue-thread-interactions.js";
+import { resolveEmbeddingConfig } from "../services/recall-embedding-config.js";
+import { semanticSearch } from "../services/recall-semantic.js";
 import {
   crossIssueInfluenceLimitError,
   crossIssueInfluenceRunContextError,
@@ -5985,6 +5987,43 @@ export function issueRoutes(
       .orderBy(desc(issueRows.updatedAt))
       .limit(200);
 
+    // The semantic half MUL-154 left room for: it wrote "swap the seam's
+    // implementation for embeddings when the card count passes a thousand,
+    // without touching the interface". This is that swap, added alongside the
+    // token overlap rather than replacing it.
+    //
+    // Token overlap cannot see a card that says the same thing in different
+    // words, which is exactly the duplicate worth catching before someone files
+    // it. Everything about this degrades to "no extra candidates": switch off,
+    // no key, no index, provider down.
+    const embeddingConfig = await resolveEmbeddingConfig(db, companyId).catch(() => null);
+    const semanticHits = embeddingConfig
+      ? await semanticSearch(db, companyId, embeddingConfig, title, limit * 3, ["issue"])
+      : [];
+    const similarityById = new Map<string, number>();
+    for (const hit of semanticHits) {
+      const best = similarityById.get(hit.sourceId);
+      if (best === undefined || hit.similarity > best) similarityById.set(hit.sourceId, hit.similarity);
+    }
+
+    // Cards the token query missed entirely. Fetching them is the point: a
+    // paraphrased duplicate shares no tokens, so it can only arrive this way.
+    const knownIds = new Set(rows.map((row) => row.id));
+    const missingIds = [...similarityById.keys()].filter((id) => !knownIds.has(id));
+    if (missingIds.length > 0) {
+      const extra = await db
+        .select({ id: issueRows.id, identifier: issueRows.identifier, title: issueRows.title, status: issueRows.status, parentId: issueRows.parentId })
+        .from(issueRows)
+        .where(and(
+          eq(issueRows.companyId, companyId),
+          isNull(issueRows.hiddenAt),
+          notInArray(issueRows.status, ["done", "cancelled"]),
+          inArray(issueRows.id, missingIds),
+        ))
+        .limit(limit * 3);
+      rows.push(...extra);
+    }
+
     const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
     const strip = (s: string) => norm(s).replace(/[^\p{L}\p{N}]/gu, "");
     const newNorm = norm(title);
@@ -5994,6 +6033,11 @@ export function issueRoutes(
       .map((row) => {
         const lower = (row.title ?? "").toLowerCase();
         const overlap = [...tokenSet].filter((token) => lower.includes(token)).length;
+        const similarity = similarityById.get(row.id) ?? 0;
+        // `score` stays the token-overlap fraction the CLI already prints, so
+        // an existing caller reads the same number it always did. A semantic
+        // match lifts it toward 1 without ever exceeding it.
+        const overlapScore = overlap / tokenSet.size;
         return {
           id: row.id,
           identifier: row.identifier,
@@ -6001,12 +6045,16 @@ export function issueRoutes(
           status: row.status,
           parentId: row.parentId,
           overlap,
-          score: Math.round((overlap / tokenSet.size) * 100) / 100,
+          score: Math.round(Math.max(overlapScore, similarity) * 100) / 100,
+          similarity: Math.round(similarity * 100) / 100,
           exact: norm(row.title ?? "") === newNorm
             || (newStrip.length >= 4 && strip(row.title ?? "") === newStrip),
         };
       })
-      .filter((row) => row.exact || row.overlap >= 2 || row.score >= 0.5)
+      // A card qualifies on either leg. The semantic threshold is enforced
+      // upstream in `semanticSearch`, so any similarity that arrives here has
+      // already cleared it.
+      .filter((row) => row.exact || row.overlap >= 2 || row.score >= 0.5 || row.similarity > 0)
       .sort((a, b) => (b.exact ? 1 : 0) - (a.exact ? 1 : 0) || b.score - a.score)
       .slice(0, limit);
     res.json({ issues: scored, tokens });

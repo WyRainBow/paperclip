@@ -123,6 +123,8 @@ export async function semanticSearch(
   config: EmbeddingConfig,
   query: string,
   limit: number,
+  /** Restricts the scan to these source kinds. Omit to search everything. */
+  kinds?: readonly string[],
 ): Promise<SemanticHit[]> {
   let index: CacheEntry;
   try {
@@ -143,8 +145,10 @@ export async function semanticSearch(
     return [];
   }
 
+  const kindFilter = kinds ? new Set(kinds) : null;
   const scored: SemanticHit[] = [];
   for (const row of index.rows) {
+    if (kindFilter && !kindFilter.has(row.sourceKind)) continue;
     const similarity = dot(queryVector, row.vector);
     if (similarity < MIN_SIMILARITY) continue;
     scored.push({
