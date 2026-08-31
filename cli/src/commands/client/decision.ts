@@ -1,6 +1,6 @@
 import type { Command } from "commander";
 import { readFile as fsReadFile } from "node:fs/promises";
-import { addCommonClientOptions, apiPath, assertDecisionBodyTemplate, handleCommandError, printOutput, resolveCommandContext, type BaseClientOptions } from "./common.js";
+import { addCommonClientOptions, apiPath, assertDecisionBodyTemplate, autoClaimIfUnclaimed, handleCommandError, printOutput, resolveCommandContext, type BaseClientOptions, type ClaimableIssue } from "./common.js";
 
 interface DecisionOptionRow { id: string; label: string; description?: string | null; recommendedByAgentId?: string | null; recommendationReason?: string | null }
 interface DecisionRow {
@@ -104,8 +104,11 @@ export function registerDecisionCommands(program: Command): void {
       .action(async (opts: DecisionCreateOptions) => {
         try {
           const ctx = resolveCommandContext(opts, { requireCompany: true });
-          const issue = await ctx.api.get<{ id: string }>(apiPath`/api/issues/${opts.originIssue}`);
+          const issue = await ctx.api.get<ClaimableIssue>(apiPath`/api/issues/${opts.originIssue}`);
           if (!issue?.id) throw new Error(`Issue not found: ${opts.originIssue}`);
+          // 认领门禁扩面 (MUL-443): opening a decision is taking the card, so
+          // the CLI takes it rather than making the caller discover the 409.
+          await autoClaimIfUnclaimed(ctx, issue);
           if (opts.option.length === 0) {
             throw new Error('at least one --option "<id>|<label>" is required');
           }

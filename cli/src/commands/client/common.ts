@@ -282,6 +282,45 @@ export function terminalKeyPath(slug: string): string {
   return path.join(os.homedir(), ".paperclip", "keys", slug);
 }
 
+/** Just the fields the claim check reads, so callers can pass any issue shape. */
+export interface ClaimableIssue {
+  id: string;
+  identifier?: string | null;
+  assigneeAgentId?: string | null;
+  drivingAgentId?: string | null;
+}
+
+/**
+ * 认领防漏（MUL-72）扩面到成果写入（MUL-443）: an agent writing a progress
+ * note, advancing status, writing a document or opening a decision on an
+ * unclaimed card (no assignee AND no Driving) auto-claims it first — the server
+ * 409s all four, and this keeps the CLI path frictionless. Board callers (no
+ * /api/agents/me) are untouched.
+ *
+ * Lives here rather than in issue.ts because the decision command needs it too,
+ * and two copies of a claim rule is exactly how the two would drift.
+ */
+export async function autoClaimIfUnclaimed(ctx: ResolvedClientContext, issue: ClaimableIssue): Promise<void> {
+  if (issue.assigneeAgentId || issue.drivingAgentId) return;
+  const me = await ctx.api.get<{ id: string } | null>(apiPath`/api/agents/me`).catch(() => null);
+  if (!me?.id) return;
+  const drivingSession =
+    process.env.CLAUDE_CODE_SESSION_ID?.trim() || process.env.CODEX_SESSION_ID?.trim() || process.env.ZCODE_SESSION_ID?.trim() || null;
+  // Driving alone is the claim marker (same as the claim command's normal
+  // path); assigneeAgentId is left untouched because cards default to
+  // assigneeUserId=local-board and setting both trips the one-assignee rule.
+  try {
+    await ctx.api.patch(apiPath`/api/issues/${issue.id}`, {
+      drivingAgentId: me.id,
+      ...(drivingSession ? { drivingSession } : {}),
+    });
+    console.error(`auto-claimed ${issue.identifier ?? issue.id}（Driving 记为本 agent）`);
+    issue.drivingAgentId = me.id;
+  } catch (err) {
+    console.error(`auto-claim failed for ${issue.identifier ?? issue.id}: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
 /**
  * Resolves this terminal's key from ~/.paperclip/keys/<slug> with no
  * configuration at all.

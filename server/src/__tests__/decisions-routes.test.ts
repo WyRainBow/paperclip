@@ -18,6 +18,7 @@ import {
 import { getEmbeddedPostgresTestSupport, startEmbeddedPostgresTestDatabase } from "./helpers/embedded-postgres.js";
 import { errorHandler } from "../middleware/index.js";
 import { decisionRoutes } from "../routes/decisions.js";
+import { withIssueDeleteAllowed } from "../services/issue-delete-guard.js";
 
 const support = await getEmbeddedPostgresTestSupport();
 const describePg = support.supported ? describe : describe.skip;
@@ -59,7 +60,10 @@ describePg("decision create routes", () => {
       { id: agentId, companyId, ...agentRow },
       { id: foreignAgentId, companyId: otherCompanyId, ...agentRow },
     ]);
-    await db.insert(issues).values({ id: issueId, companyId, identifier: "DR-1", title: "Origin", status: "in_progress", priority: "medium" });
+    // drivingAgentId is what makes the card claimed: an agent opening a
+    // decision on an unclaimed card is 409'd (认领门禁扩面, MUL-443), and every
+    // test here except the gate's own is about something else.
+    await db.insert(issues).values({ id: issueId, companyId, identifier: "DR-1", title: "Origin", status: "in_progress", priority: "medium", drivingAgentId: agentId });
     await db.insert(heartbeatRuns).values({ id: runId, companyId, agentId, status: "running", contextSnapshot: { issueId } });
   });
 
@@ -70,7 +74,16 @@ describePg("decision create routes", () => {
     await db.delete(activityLog);
     await db.delete(issueComments);
     await db.delete(heartbeatRuns);
-    await db.delete(issues);
+    // Issues are archive-only (MUL-109): the trigger refuses every DELETE, so
+    // this teardown had been silently leaving rows behind and every rerun died
+    // on `DR-1` already existing. The escape hatch the migration ships for
+    // exactly this is scoped to one transaction; reuse it rather than
+    // sprinkling unique identifiers through the fixtures.
+    await db.transaction(async (tx) => {
+      await withIssueDeleteAllowed(tx, async () => {
+        await tx.delete(issues);
+      });
+    });
     await db.delete(agents);
     await db.delete(companies);
   });
@@ -91,9 +104,23 @@ describePg("decision create routes", () => {
 
   const payload = (extra: Record<string, unknown> = {}) => ({
     title: "Backfill?",
-    body: "背景 / 判断标准 / 方案",
+    // 三段死模板 (MUL-86) needs each heading at the start of its own line;
+    // this fixture used to be the single line "背景 / 判断标准 / 方案", which
+    // passed before that gate landed and has 422'd every run since.
+    body: ["## 背景", "记不记这一笔。", "## 判断标准", "看有没有人会回头查。", "## 方案", "**A · 记** 代价是多一条噪音。", "**B · 不记** 代价是查不到。"].join("\n"),
     originIssueId: issueId,
-    options: [{ id: "yes", label: "记下来", effects: [{ type: "comment_on_issue", targetIssueId: issueId, staleness: "lenient", bodyMarkdown: "采纳" }] }],
+    // 推荐必填: exactly one option carries recommendedByAgentId plus a
+    // non-empty reason. Another gate that landed after this fixture was written.
+    options: [
+      {
+        id: "yes",
+        label: "记下来",
+        recommendedByAgentId: agentId,
+        recommendationReason: "查得到比省一条噪音重要。",
+        effects: [{ type: "comment_on_issue", targetIssueId: issueId, staleness: "lenient", bodyMarkdown: "采纳" }],
+      },
+      { id: "no", label: "不记", effects: [] },
+    ],
     ...extra,
   });
 
@@ -147,5 +174,51 @@ describePg("decision create routes", () => {
     expect(decided.body).toMatchObject({ status: "decided", chosenOptionId: "yes", decidedByUserId: "board-user", decidedByAgentId: agentId });
     expect(decided.body.executionStatus).toBe("succeeded");
     expect(await db.select().from(issueComments).where(eq(issueComments.issueId, issueId))).toHaveLength(1);
+  });
+
+  describe("认领门禁扩面 (MUL-443)", () => {
+    /** Undo the fixture's claim so the card reads as nobody's. */
+    const unclaim = async () => {
+      await db.update(issues).set({ drivingAgentId: null, assigneeAgentId: null }).where(eq(issues.id, issueId));
+    };
+
+    it("409s an agent opening a decision on an unclaimed card", async () => {
+      await unclaim();
+      const response = await request(app(agentActor()))
+        .post(`/api/companies/${companyId}/decisions`)
+        .send(payload())
+        .expect(409);
+      expect(response.body.details).toMatchObject({ code: "issue_unclaimed", issueId, deliverable: "decision" });
+      expect(response.body.error).toContain("issue claim");
+      // Nothing was filed: a rejected create must not leave a half-decision.
+      expect(await db.select().from(decisions)).toHaveLength(0);
+    });
+
+    it("lets the board open one on the same unclaimed card", async () => {
+      await unclaim();
+      await request(app(boardActor()))
+        .post(`/api/companies/${companyId}/decisions`)
+        .send(payload({ createdByAgentId: agentId }))
+        .expect(201);
+    });
+
+    it("lets an agent through once the card carries Driving", async () => {
+      await unclaim();
+      await db.update(issues).set({ drivingAgentId: agentId }).where(eq(issues.id, issueId));
+      await request(app(agentActor()))
+        .post(`/api/companies/${companyId}/decisions`)
+        .send(payload())
+        .expect(201);
+    });
+
+    it("rejects a whole bundle when one item's origin card is unclaimed", async () => {
+      await unclaim();
+      const response = await request(app(agentActor()))
+        .post(`/api/companies/${companyId}/decision-bundles`)
+        .send({ title: "两条一起提", summary: "都挂在同一张未认领的卡上", decisions: [payload(), payload()] })
+        .expect(409);
+      expect(response.body.details).toMatchObject({ code: "issue_unclaimed", deliverable: "decision" });
+      expect(await db.select().from(decisions)).toHaveLength(0);
+    });
   });
 });
