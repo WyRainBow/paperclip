@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { Pencil } from "lucide-react";
 import { cn } from "../lib/utils";
 import { MarkdownBody, type MarkdownExternalReferenceMap } from "./MarkdownBody";
 import { MarkdownEditor, type MarkdownEditorRef, type MentionOption } from "./MarkdownEditor";
@@ -31,6 +32,18 @@ interface InlineEditorProps {
   defaultEditing?: boolean;
   /** Notified when the multiline editor swaps between display and edit mode. */
   onEditingChange?: (editing: boolean) => void;
+  /**
+   * Require an explicit pencil press to start editing, instead of treating any
+   * click on the content as one (MUL-461).
+   *
+   * Click-to-edit reads well on a short single-line field, where there is
+   * nothing to select anyway. On a long body it fights the reader: selecting a
+   * sentence, or missing a link, swaps the rendered markdown for a textarea
+   * mid-gesture. The task-chat description bubble already worked this way, so
+   * this brings the classic layout in line with it rather than inventing a
+   * second interaction.
+   */
+  explicitEdit?: boolean;
 }
 
 /** Shared padding so display and edit modes occupy the exact same box. */
@@ -70,6 +83,7 @@ export function InlineEditor({
   externalReferences,
   defaultEditing = false,
   onEditingChange,
+  explicitEdit = false,
 }: InlineEditorProps) {
   const [editing, setEditing] = useState(false);
   const [multilineEditing, setMultilineEditing] = useState(multiline && defaultEditing);
@@ -282,28 +296,57 @@ export function InlineEditor({
         setMultilineEditing(true);
         onEditingChange?.(true);
       };
-      return (
-        <div
-          className={cn(markdownPad, "rounded transition-colors hover:bg-accent/20")}
-          onClick={(event) => {
+      // 显式编辑 (MUL-461): the body is read and copied far more often than it
+      // is edited, and click-to-edit turned every text selection and every
+      // missed link into an accidental edit. Under `explicitEdit` the preview
+      // is inert — no click, no drag, no keyboard activation, and no textbox
+      // role, because announcing an editable box that cannot be typed into is
+      // worse than announcing nothing.
+      const previewInteractions = explicitEdit
+        ? {}
+        : {
+          onClick: (event: React.MouseEvent<HTMLDivElement>) => {
             if (event.defaultPrevented) return;
             const target = event.target as HTMLElement | null;
             if (target && target.closest("a,button,[data-mention-kind],[data-radix-popper-content-wrapper]")) {
               return;
             }
             enterEditMode();
-          }}
-          onDragEnter={() => enterEditMode()}
-          onKeyDown={(event) => {
+          },
+          onDragEnter: () => enterEditMode(),
+          onKeyDown: (event: React.KeyboardEvent<HTMLDivElement>) => {
             if (event.key !== "Enter" && event.key !== " ") return;
             event.preventDefault();
             enterEditMode();
-          }}
-          role="textbox"
-          aria-multiline="true"
-          aria-label={placeholder}
-          tabIndex={0}
+          },
+          role: "textbox" as const,
+          "aria-multiline": "true" as const,
+          "aria-label": placeholder,
+          tabIndex: 0,
+        };
+      return (
+        <div
+          className={cn(
+            markdownPad,
+            "rounded",
+            explicitEdit ? "group/inline-editor relative" : "transition-colors hover:bg-accent/20",
+          )}
+          {...previewInteractions}
         >
+          {explicitEdit ? (
+            // Dimmed rather than hidden: hover-only would hide the only way in
+            // on touch, and this is now the only way in.
+            <button
+              type="button"
+              className="absolute right-0 top-0 z-10 rounded-md bg-background/80 p-1 text-muted-foreground opacity-40 transition-opacity hover:bg-accent/50 hover:text-foreground hover:opacity-100 focus-visible:opacity-100 group-hover/inline-editor:opacity-100"
+              onClick={enterEditMode}
+              aria-label="编辑正文"
+              title="编辑正文"
+              data-testid="inline-editor-edit"
+            >
+              <Pencil className="h-3.5 w-3.5" aria-hidden />
+            </button>
+          ) : null}
           {foldable ? (
             // An issue's own description is the point of the screen, so it
             // opens read; the curtain stays available to collapse it.
