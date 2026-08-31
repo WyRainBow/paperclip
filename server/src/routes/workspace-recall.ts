@@ -25,6 +25,10 @@ import {
   type RankableHit,
   type ScorableCandidate,
 } from "../services/recall-ranking.js";
+import { SOURCE_WEIGHT, fetchSourceRows, type RecallSource } from "../services/recall-corpus.js";
+import { EMBEDDING_SECRET_NAME, resolveEmbeddingConfig } from "../services/recall-embedding-config.js";
+import { reindexCompany } from "../services/recall-indexer.js";
+import { semanticSearch } from "../services/recall-semantic.js";
 
 const DEFAULT_BUDGET_CHARS = 2000;
 
@@ -50,33 +54,25 @@ const MAX_SQL_TERMS = 12;
 const CANDIDATE_LIMIT = 60;
 
 /**
- * Per-source multiplier applied to the keyword score.
+ * How many semantic hits the vector leg may contribute before merging.
  *
- * Recall's job is to hand a session the team's settled knowledge. Rules and
- * wiki pages are that: someone decided they were worth writing down and keeping
- * current. Cards and their documents are the raw record the knowledge was
- * distilled from — useful, far more numerous, and written once and left alone.
- * Ranking them flat means the raw record buries the distilled version, because
- * there is simply much more of it.
- *
- * This is a statement about what recall is for, not a tuning knob. Equal
- * relevance goes to the page someone maintains.
+ * Larger than MAX_RESULTS on purpose: dedupe by source and the coverage floor
+ * both drop entries afterwards, so the leg needs headroom to still have
+ * something left to offer.
  */
-const SOURCE_WEIGHT: Record<RecallSource, number> = {
-  rules: 1,
-  wiki: 1,
-  document: 0.85,
-  decision: 0.8,
-  case: 0.8,
-  issue: 0.75,
-};
+const SEMANTIC_LIMIT = 24;
 
 /**
- * Where a hit came from. `wiki` and `rules` are Team assets and can be cited;
- * the rest are the company's own work, added in MUL-441 so a session asking
- * about something the team already did is not told it does not exist.
+ * Weight of a semantic match relative to a keyword one.
+ *
+ * Below 1 because the vector leg is the less reliable of the two. Measured
+ * 2026-08-30 on the real wiki: of eight questions it got four exactly right and
+ * two wrong, while the keyword leg after the MUL-441 fixes got five right. The
+ * legs are complementary rather than ranked — this weight keeps a confident
+ * vector guess from displacing a literal match, without discarding the case
+ * where the wording shares nothing and only the vector leg can answer.
  */
-type RecallSource = "wiki" | "rules" | "issue" | "document" | "decision" | "case";
+const SEMANTIC_WEIGHT = 0.8;
 
 interface RecallHit extends RankableHit {
   source: RecallSource;
@@ -100,6 +96,8 @@ interface RecallHit extends RankableHit {
   assetId: string;
   /** How much of this hit's score came from prior adoption, not from the query. */
   adoptionBoost: number;
+  /** Cosine similarity from the vector leg, 0 when it contributed nothing. */
+  similarity: number;
 }
 
 /**
@@ -264,197 +262,70 @@ export function workspaceRecallRoutes(db: Db): Router {
     const sqlTerms = terms.slice(0, MAX_SQL_TERMS);
     if (sqlTerms.length === 0) throw badRequest("q has no searchable terms");
 
-    // Every source flattens to this shape, so scoring, chunking, dedupe and
-    // budget assembly are written once instead of once per table.
-    interface SourceRow {
-      sourceKey: string;
-      source: RecallSource;
-      space: string | null;
-      path: string;
-      title: string;
-      body: string;
-      /** Only Team assets carry citation identity; issues and cards are not assets. */
-      assetKind: AssetKind | null;
-      assetId: string;
+    // Keyword candidates. The corpus definition lives in `recall-corpus` so the
+    // indexer embeds exactly the set recall searches — defining it here meant
+    // the two could drift apart silently.
+    const rows = await fetchSourceRows(db, companyId, {
+      terms: sqlTerms,
+      limitPerSource: CANDIDATE_LIMIT,
+    });
+
+    // Semantic leg. Everything about it degrades to "no extra rows": switch
+    // off, no key, no index yet, provider down, rate limited. The keyword leg
+    // answers the query in every one of those states, which is why none of them
+    // is treated as an error.
+    const embeddingConfig = await resolveEmbeddingConfig(db, companyId).catch(() => null);
+    const semanticHits = embeddingConfig
+      ? await semanticSearch(db, companyId, embeddingConfig, query, SEMANTIC_LIMIT)
+      : [];
+
+    // Similarity is keyed per chunk, not per source. Keying it per source would
+    // hand every chunk of a long document the score its best chunk earned, so
+    // one relevant section would drag thirty irrelevant ones in with it — and
+    // the snippet would have no idea which section to point at.
+    //
+    // The chunk index lines up because both sides call `chunkBody` with the
+    // same defaults on the same text. A body that changed since indexing gets a
+    // new content hash and is re-embedded, so the two cannot drift apart
+    // without the indexer noticing.
+    const semanticByChunk = new Map<string, number>();
+    for (const hit of semanticHits) {
+      semanticByChunk.set(
+        `${hit.sourceKind}:${hit.sourceId}:${hit.chunkIndex}`,
+        hit.similarity,
+      );
     }
 
-    const rows: SourceRow[] = [];
-    const anyTerm = (...columns: Array<Parameters<typeof ilike>[0]>) =>
-      or(...sqlTerms.flatMap((term) => columns.map((column) => ilike(column, `%${term}%`))));
+    // Rows the keyword leg never saw.
+    //
+    // Fetching those is the entire point of the semantic leg: a page that
+    // shares no wording with the query cannot appear in the SQL candidates, so
+    // without this second fetch a vector hit on it would have nothing to attach
+    // to and would be silently dropped.
 
-    const wikiRows = await db
-      .select({
-        id: teamWikiPages.id,
-        space: teamWikiPages.space,
-        path: teamWikiPages.path,
-        title: teamWikiPages.title,
-        body: teamWikiPages.body,
-      })
-      .from(teamWikiPages)
-      .where(
-        and(
-          eq(teamWikiPages.companyId, companyId),
-          anyTerm(teamWikiPages.title, teamWikiPages.body, teamWikiPages.path),
-        ),
-      )
-      .limit(CANDIDATE_LIMIT);
-    for (const row of wikiRows) {
-      rows.push({
-        sourceKey: `wiki:${row.id}`,
-        source: "wiki",
-        space: row.space,
-        path: row.path,
-        title: row.title,
-        body: row.body,
-        assetKind: "wiki",
-        assetId: row.id,
+    const knownIds = new Set(rows.map((row) => `${row.sourceKind}:${row.sourceId}`));
+    const missingByKind: Partial<Record<RecallSource, string[]>> = {};
+    for (const hit of semanticHits) {
+      if (knownIds.has(`${hit.sourceKind}:${hit.sourceId}`)) continue;
+      const kind = hit.sourceKind as RecallSource;
+      (missingByKind[kind] ??= []).push(hit.sourceId);
+    }
+    if (Object.keys(missingByKind).length > 0) {
+      const extra = await fetchSourceRows(db, companyId, {
+        limitPerSource: SEMANTIC_LIMIT,
+        idsByKind: missingByKind,
       });
+      rows.push(...extra);
     }
-
-    const rulesRows = await db
-      .select({ id: teamRuleNotes.id, title: teamRuleNotes.title, body: teamRuleNotes.body })
-      .from(teamRuleNotes)
-      .where(
-        and(
-          eq(teamRuleNotes.companyId, companyId),
-          anyTerm(teamRuleNotes.title, teamRuleNotes.body),
-        ),
-      )
-      .limit(CANDIDATE_LIMIT);
-    for (const row of rulesRows) {
-      rows.push({
-        sourceKey: `rule:${row.id}`,
-        source: "rules",
-        space: null,
-        path: `team-rules/${row.id.slice(0, 8)}`,
-        title: row.title,
-        body: row.body,
-        assetKind: "rule",
-        assetId: row.id,
-      });
-    }
-
-    // Cards and their documents (MUL-441). Recall used to see only Team Wiki
-    // and Team Rules, so a session asking about work the team had already done
-    // was told nothing existed — 411 cards, none of them reachable through this
-    // channel. Archived and hidden cards stay out: recall answers "what do we
-    // know", and a card someone deliberately filed away is not that.
-    const issueRows = await db
-      .select({
-        id: issues.id,
-        identifier: issues.identifier,
-        title: issues.title,
-        description: issues.description,
-      })
-      .from(issues)
-      .where(
-        and(
-          eq(issues.companyId, companyId),
-          isNull(issues.archivedAt),
-          isNull(issues.hiddenAt),
-          anyTerm(issues.title, issues.description),
-        ),
-      )
-      .limit(CANDIDATE_LIMIT);
-    for (const row of issueRows) {
-      rows.push({
-        sourceKey: `issue:${row.id}`,
-        source: "issue",
-        space: null,
-        // identifier is assigned asynchronously, so a just-created card can
-        // still be null here. Falling back to a short id keeps the line usable.
-        path: row.identifier ?? `issue/${row.id.slice(0, 8)}`,
-        title: row.title,
-        body: row.description ?? "",
-        assetKind: null,
-        assetId: row.id,
-      });
-    }
-
-    const documentRows = await db
-      .select({
-        id: documents.id,
-        title: documents.title,
-        body: documents.latestBody,
-        key: issueDocuments.key,
-        identifier: issues.identifier,
-      })
-      .from(documents)
-      .innerJoin(issueDocuments, eq(issueDocuments.documentId, documents.id))
-      .innerJoin(issues, eq(issues.id, issueDocuments.issueId))
-      .where(
-        and(
-          eq(issueDocuments.companyId, companyId),
-          isNull(issues.archivedAt),
-          isNull(issues.hiddenAt),
-          anyTerm(documents.title, documents.latestBody),
-        ),
-      )
-      .limit(CANDIDATE_LIMIT);
-    for (const row of documentRows) {
-      rows.push({
-        sourceKey: `document:${row.id}`,
-        source: "document",
-        space: null,
-        path: `${row.identifier}/${row.key}`,
-        title: row.title ?? row.key,
-        body: row.body,
-        assetKind: null,
-        assetId: row.id,
-      });
-    }
-
-    const decisionRows = await db
-      .select({ id: decisions.id, title: decisions.title, body: decisions.body })
-      .from(decisions)
-      .where(
-        and(eq(decisions.companyId, companyId), anyTerm(decisions.title, decisions.body)),
-      )
-      .limit(CANDIDATE_LIMIT);
-    for (const row of decisionRows) {
-      rows.push({
-        sourceKey: `decision:${row.id}`,
-        source: "decision",
-        space: null,
-        path: `decision/${row.id.slice(0, 8)}`,
-        title: row.title,
-        body: row.body,
-        assetKind: null,
-        assetId: row.id,
-      });
-    }
-
-    const caseRows = await db
-      .select({
-        id: cases.id,
-        identifier: cases.identifier,
-        title: cases.title,
-        summary: cases.summary,
-      })
-      .from(cases)
-      .where(and(eq(cases.companyId, companyId), anyTerm(cases.title, cases.summary)))
-      .limit(CANDIDATE_LIMIT);
-    for (const row of caseRows) {
-      rows.push({
-        sourceKey: `case:${row.id}`,
-        source: "case",
-        space: null,
-        path: row.identifier,
-        title: row.title,
-        body: row.summary ?? "",
-        assetKind: null,
-        assetId: row.id,
-      });
-    }
-
     // Chunk before scoring. Team Rules is one row covering every topic the team
     // has, so scored whole it outranks every focused wiki page on every query
     // (measured 2026-08-30: top spot on seven of eight). Split into sections it
     // competes section against page, which is the comparison that means
     // something. `rankAndDedupe` keeps one chunk per source afterwards.
     const chunked = rows.flatMap((row) =>
-      chunkBody(row.body).map((chunk) => ({
+      chunkBody(row.body).map((chunk, chunkIndex) => ({
         row,
+        chunkIndex,
         offset: chunk.offset,
         candidate: {
           sourceKey: row.sourceKey,
@@ -473,14 +344,28 @@ export function workspaceRecallRoutes(db: Db): Router {
 
     for (const entry of chunked) {
       const scored = scoreCandidate(entry.candidate, weights);
-      if (scored.coverage < MIN_COVERAGE) continue;
+      const similarity =
+        semanticByChunk.get(
+          `${entry.row.sourceKind}:${entry.row.sourceId}:${entry.chunkIndex}`,
+        ) ?? 0;
+      // A row reaches the results if either leg wants it. Requiring both would
+      // throw away exactly the cases each leg exists to cover: the literal
+      // match on wording the vectors find unremarkable, and the paraphrase that
+      // shares no characters with the query.
+      if (scored.coverage < MIN_COVERAGE && similarity <= 0) continue;
       const boost = entry.row.assetKind
         ? adoptionBoost(citedCounts.get(entry.row.sourceKey) ?? 0)
         : 0;
       // Snippet offsets are chunk-relative; shift them back onto the full body
       // so the reader gets surrounding context, not a window clipped at the
       // chunk seam.
-      const bodyIndex = scored.bodyIndex >= 0 ? scored.bodyIndex + entry.offset : -1;
+      //
+      // A pure semantic hit has no keyword offset to shift, and falling back to
+      // the head of the body would show the reader the document's opening
+      // instead of the section that actually matched. The chunk's own start is
+      // the right anchor there: it is the text the vector scored.
+      const bodyIndex =
+        scored.bodyIndex >= 0 ? scored.bodyIndex + entry.offset : similarity > 0 ? entry.offset : -1;
       hits.push({
         source: entry.row.source,
         space: entry.row.space,
@@ -490,14 +375,16 @@ export function workspaceRecallRoutes(db: Db): Router {
         // Adoption boost is added after the source weight, not scaled by it:
         // it is evidence a session actually used the asset, and that evidence
         // should not be discounted for being attached to one source or another.
-        score: scored.score * SOURCE_WEIGHT[entry.row.source] + boost,
+        score:
+          (scored.score + similarity * SEMANTIC_WEIGHT) * SOURCE_WEIGHT[entry.row.source] + boost,
         assetKind: entry.row.assetKind,
-        assetId: entry.row.assetId,
+        assetId: entry.row.sourceId,
         adoptionBoost: boost,
         sourceKey: entry.row.sourceKey,
         matched: scored.matched,
         coverage: scored.coverage,
         bodyIndex,
+        similarity,
       });
     }
 
@@ -586,6 +473,39 @@ export function workspaceRecallRoutes(db: Db): Router {
       results,
       references,
     });
+  });
+
+  /**
+   * Rebuilds this company's vector index (MUL-441).
+   *
+   * Explicit rather than automatic on write. Embedding costs money and reaches
+   * an external provider, so it happens when someone asks for it, and the reply
+   * says exactly what it did: how many chunks were scanned, how many were
+   * actually re-embedded, how many tokens that cost. Incremental by content
+   * hash, so the second call over an unchanged corpus embeds nothing.
+   */
+  r.post("/companies/:companyId/workspace/recall/reindex", async (req: Request, res: Response) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+
+    const config = await resolveEmbeddingConfig(db, companyId);
+    if (!config) {
+      // Which of the three reasons applies is deliberately not reported: the
+      // caller's next step is the same for all of them, and naming them would
+      // tell an unauthorized reader whether a key exists.
+      res.status(409).json({
+        error:
+          "semantic recall is not configured: set PAPERCLIP_RECALL_SEMANTIC and store a "
+          + `${EMBEDDING_SECRET_NAME} company secret`,
+      });
+      return;
+    }
+
+    const maxChunksRaw = Number.parseInt(String(req.query.maxChunks ?? ""), 10);
+    const result = await reindexCompany(db, companyId, config, {
+      maxChunks: Number.isInteger(maxChunksRaw) && maxChunksRaw > 0 ? maxChunksRaw : undefined,
+    });
+    res.json({ model: config.model, provider: config.provider, ...result });
   });
 
   // Direct Team Rules access: full text, no search/budget — for agents
