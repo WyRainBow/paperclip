@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Command } from "commander";
 import { readFile, writeFile } from "node:fs/promises";
+import { ApiRequestError } from "../../client/http.js";
 import {
   addIssueCommentSchema,
   acceptIssueThreadInteractionSchema,
@@ -315,6 +316,21 @@ async function resolveQuestionModelSide(
   const model = explicitModel?.trim() || displayModelName(reading.model, sessionLocatorForSlug(slug)?.modelNaming ?? "verbatim");
   const effort = explicitEffort?.trim() || reading.effort;
   return { model: model ?? null, effort: effort ?? null };
+}
+
+/**
+ * The revision to re-base on when the server refused a document write only
+ * because no `baseRevisionId` was named (MUL-453).
+ *
+ * Returns null for every other rejection, including "Document was updated by
+ * someone else" — that one carries a currentRevisionId too, but re-basing onto
+ * it would silently discard whatever the other writer just saved.
+ */
+function missingBaseRevisionId(err: unknown): string | null {
+  if (!(err instanceof ApiRequestError) || err.status !== 409) return null;
+  if (!err.message.includes("requires baseRevisionId")) return null;
+  const current = (err.details as { currentRevisionId?: unknown } | null)?.currentRevisionId;
+  return typeof current === "string" && current.trim() ? current : null;
 }
 
 export function registerIssueCommands(program: Command): void {
@@ -817,7 +833,16 @@ export function registerIssueCommands(program: Command): void {
           // side may be Codex today and Grok tomorrow, so resolve the label to
           // a real agent id and store that. Both bubbles need this — filing a
           // review on behalf makes board the writer on the question too.
-          const questionAgentRef = opts.questionAgent?.trim() || process.env.PAPERCLIP_AGENT_ID?.trim() || null;
+          // 机械门禁自修 (MUL-453): the asker is whoever is running this
+          // command, and the API key already answers that — so the third
+          // fallback is this terminal's own identity rather than an error
+          // telling the caller to name themselves. The two explicit sources
+          // still win, for archives filed on someone else's behalf.
+          const questionAgentRef =
+            opts.questionAgent?.trim()
+            || process.env.PAPERCLIP_AGENT_ID?.trim()
+            || (await ctx.api.get<{ id: string } | null>(apiPath`/api/agents/me`).catch(() => null))?.id
+            || null;
           // The issue knows its company, so `qa` does not need -C just to
           // resolve an agent name.
           const resolveAgentId = agentIdResolver(ctx, (issue as { companyId?: string }).companyId ?? ctx.companyId);
@@ -1347,7 +1372,24 @@ export function registerIssueCommands(program: Command): void {
           // the CLI takes it rather than making the caller discover the 409.
           const existing = await ctx.api.get<Issue>(apiPath`/api/issues/${issueId}`).catch(() => null);
           if (existing) await autoClaimIfUnclaimed(ctx, existing);
-          const doc = await ctx.api.put(apiPath`/api/issues/${issueId}/documents/${key}`, payload);
+          const path = apiPath`/api/issues/${issueId}/documents/${key}`;
+          let doc: unknown;
+          try {
+            doc = await ctx.api.put(path, payload);
+          } catch (err) {
+            // 机械门禁自修 (MUL-453): "this document already exists, name the
+            // revision you are editing" is a fact the CLI can look up, not a
+            // decision the caller has to make, so it looks it up. The server
+            // hands the current revision back in the rejection precisely so
+            // this is possible.
+            //
+            // Only the missing-id case retries. A STALE id means somebody
+            // else's revision landed in between, and blindly re-basing would
+            // erase their edit — that one stays the caller's call.
+            const revisionId = missingBaseRevisionId(err);
+            if (!revisionId) throw err;
+            doc = await ctx.api.put(path, { ...payload, baseRevisionId: revisionId });
+          }
           printOutput(doc, { json: ctx.json });
         } catch (err) {
           handleCommandError(err);
