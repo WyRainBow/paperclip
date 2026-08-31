@@ -1718,9 +1718,12 @@ export function IssueDetail() {
   // Chat-style: the page wrapper spans the full center pane so the thread's
   // scroll viewport (and its scrollbar) reaches the properties-pane border;
   // every non-thread section re-centers itself at the 60rem shell cap instead.
+  // Classic: the page wrapper widens to the documents cap so wide sections can
+  // center instead of overflowing right (MUL-176); every narrow section
+  // re-centers itself at the 3xl reading width via this same class.
   const shellSectionClass = taskChatShellEnabled
     ? "mx-auto w-full max-w-(--tc-shell-max-w)"
-    : undefined;
+    : "mx-auto w-full max-w-3xl";
   const { openNewIssue } = useDialogActions();
   const { openPanel, closePanel, panelVisible, setPanelVisible } = usePanel();
   const { setBreadcrumbs, setMobileToolbar } = useBreadcrumbs();
@@ -4955,7 +4958,10 @@ export function IssueDetail() {
             : // Fill main exactly so the outer page never scrolls — the
               // thread's own viewport is the only scroll surface.
               "flex h-full min-h-0 w-full flex-col gap-6"
-          : "mx-auto w-full max-w-3xl space-y-6"
+          : // Classic: the column caps at the documents width and centers in
+            // whatever main leaves over, so the panel opening reflows content
+            // instead of covering it (MUL-176).
+            "mx-auto w-full max-w-(--tc-documents-max-w) space-y-6"
       }
     >
       {/* Parent chain breadcrumb (redesign: rendered inside the thread viewport) */}
@@ -5048,7 +5054,7 @@ export function IssueDetail() {
       {taskChatShellEnabled ? null : pluginOutletsBlock}
 
       {taskChatShellEnabled ? null : showRichSubIssuesSection ? (
-        <div className="space-y-3">
+        <div className={cn("space-y-3", shellSectionClass)}>
           <div className="flex items-center justify-between gap-2">
             <h3 className="text-sm font-medium text-muted-foreground">Sub-tasks</h3>
           </div>
@@ -5074,7 +5080,7 @@ export function IssueDetail() {
           />
         </div>
       ) : (
-        <div className="flex flex-wrap items-center justify-end gap-2 min-w-0">
+        <div className={cn("flex flex-wrap items-center justify-end gap-2 min-w-0", shellSectionClass)}>
           <Button variant="outline" size="sm" onClick={openNewSubIssue} className="shrink-0 shadow-none">
             <Plus className="mr-1.5 h-3.5 w-3.5" />
             New Sub-task
@@ -5083,21 +5089,23 @@ export function IssueDetail() {
       )}
 
       {!taskChatShellEnabled && showPlanDecompositionsSection ? (
-        <IssuePlanDecompositionsSection
-          issueId={issue.id}
-          issueIdentifier={issue.identifier}
-          agentMap={agentMap}
-        />
+        <div className={shellSectionClass}>
+          <IssuePlanDecompositionsSection
+            issueId={issue.id}
+            issueIdentifier={issue.identifier}
+            agentMap={agentMap}
+          />
+        </div>
       ) : null}
 
       {/* Flag ON: attachments/work products/workspace live in the properties
           pane (Artifacts tab) — the center column belongs to the thread. */}
       {taskChatShellEnabled ? null : (
-      // Documents overflow the page's 3xl column to the right, where `main`
-      // already has unused width. Stepped by breakpoint rather than a flat
-      // width so the overflow can never outrun the viewport and introduce a
-      // horizontal page scroll on smaller screens.
-      <div className="w-full xl:w-[56rem] 2xl:w-(--tc-documents-max-w)">
+      // Documents fill the widened page column (documents cap, MUL-176):
+      // wider than the 3xl reading sections, yet always shrinking with the
+      // column when the properties panel takes width — no fixed width, so no
+      // horizontal overflow for the panel to cover.
+      <div className="w-full">
       <IssueDocumentsSection
         issue={issue}
         canDeleteDocuments={Boolean(session?.user?.id)}
@@ -5129,6 +5137,7 @@ export function IssueDetail() {
       )}
 
       {taskChatShellEnabled ? null : (
+      <div className={shellSectionClass}>
       <IssueOutputSection
         workProducts={workProducts}
         onMediaClick={(item) => {
@@ -5143,11 +5152,15 @@ export function IssueDetail() {
           setGalleryOpen(true);
         }}
       />
+      </div>
       )}
 
       {taskChatShellEnabled ? null : attachmentsInitialLoading ? (
-        <IssueSectionSkeleton titleWidth="w-24" rows={2} />
+        <div className={shellSectionClass}>
+          <IssueSectionSkeleton titleWidth="w-24" rows={2} />
+        </div>
       ) : hasAttachments ? (
+        <div className={shellSectionClass}>
         <IssueAttachmentsSection
           attachments={attachmentList}
           uploadButton={attachmentUploadButton}
@@ -5174,6 +5187,7 @@ export function IssueDetail() {
           }}
           onDrop={(evt) => void handleAttachmentDrop(evt)}
         />
+        </div>
       ) : null}
 
       <ImageGalleryModal
@@ -5184,6 +5198,7 @@ export function IssueDetail() {
       />
 
       {taskChatShellEnabled ? null : (
+      <div className={shellSectionClass}>
       <IssueWorkspaceCard
         issue={issue}
         project={resolvedProject}
@@ -5191,6 +5206,7 @@ export function IssueDetail() {
         onBrowseFiles={fileViewerEnabled ? () => setFileViewerPromptOpen(true) : undefined}
         onOpenFileByPath={fileViewerEnabled ? () => setFileViewerPromptOpen(true) : undefined}
       />
+      </div>
       )}
 
       {!taskChatShellEnabled && fileViewerEnabled && issue.workProducts && issue.workProducts.length > 0 && (() => {
@@ -5201,7 +5217,7 @@ export function IssueDetail() {
         if (workProductsWithFileRefs.length === 0) return null;
 
         return (
-          <div className="space-y-3">
+          <div className={cn("space-y-3", shellSectionClass)}>
             <div className="flex items-center justify-between gap-2">
               <h3 className="text-sm font-medium text-muted-foreground">Artifacts</h3>
             </div>
@@ -5223,7 +5239,7 @@ export function IssueDetail() {
       <Tabs
         value={resolvedDetailTab}
         onValueChange={setDetailTab}
-        className={taskChatShellEnabled ? (isMobile ? undefined : "min-h-0 flex-1") : "space-y-3"}
+        className={taskChatShellEnabled ? (isMobile ? undefined : "min-h-0 flex-1") : cn("space-y-3", shellSectionClass)}
       >
         {/* Redesign: the chat IS the page — the Chat/Activity/Related-work tab
             strip is hidden and the thread renders as the only surface. */}
