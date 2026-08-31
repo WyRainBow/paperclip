@@ -2258,6 +2258,29 @@ export function IssueProperties({
             <span className="text-sm text-muted-foreground">{t("Unclaimed")}</span>
           )}
         </PropertyRow>
+        {/* 评审会话 (MUL-456): review usually runs on another terminal, so this
+            is the session hardest to find again later and the only one the card
+            had nowhere to record. Always rendered, like 分支 below: "nobody has
+            reviewed this" is a real answer and has to look different from
+            "wrong section". */}
+        <PropertyRow label={t("Reviewer Session")}>
+          {issue.reviewerSession || issue.reviewerAgentId ? (
+            <SessionIdentity
+              agentId={issue.reviewerAgentId ?? null}
+              agentName={(agentById.get(issue.reviewerAgentId ?? "") ?? null)?.name ?? null}
+              agentIcon={(agentById.get(issue.reviewerAgentId ?? "") ?? null)?.icon ?? null}
+              agentCustomIconUrl={(() => {
+                const reviewer = agentById.get(issue.reviewerAgentId ?? "") ?? null;
+                return reviewer ? agentCustomIcon(reviewer) : null;
+              })()}
+              agentAdapterType={(agentById.get(issue.reviewerAgentId ?? "") ?? null)?.adapterType ?? null}
+              userId={null}
+              sessionId={issue.reviewerSession ?? null}
+            />
+          ) : (
+            <span className="text-sm text-muted-foreground">未评审</span>
+          )}
+        </PropertyRow>
         {/* A default field, not a conditional one: a card with no branch should
             say so. Hiding the row made "never registered" and "you are looking
             at the wrong section" look identical. Empty state matches the

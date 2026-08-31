@@ -50,6 +50,19 @@ export const issues = pgTable(
     workingBranch: text("working_branch"),
     drivingAgentId: uuid("driving_agent_id").references(() => agents.id, { onDelete: "set null" }),
     drivingSessionAt: timestamp("driving_session_at", { withTimezone: true }),
+    /**
+     * 评审会话 (MUL-456): who reviewed this card and in which session.
+     *
+     * Written when a review is archived, not claimed up front. Review is the
+     * step most likely to run on another terminal, so it is the one whose
+     * context is hardest to find again, and it had nowhere to be recorded.
+     *
+     * One slot, overwritten by the latest pass. Earlier rounds stay in the
+     * discussion thread.
+     */
+    reviewerAgentId: uuid("reviewer_agent_id").references(() => agents.id, { onDelete: "set null" }),
+    reviewerSession: text("reviewer_session"),
+    reviewerSessionAt: timestamp("reviewer_session_at", { withTimezone: true }),
     responsibleUserId: text("responsible_user_id"),
     issueNumber: integer("issue_number"),
     identifier: text("identifier"),
