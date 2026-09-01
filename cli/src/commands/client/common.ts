@@ -669,7 +669,7 @@ export function handleCommandError(error: unknown): never {
 export const DOCUMENT_SKELETONS: Record<string, string> = {
   "decision-log": `# decision-log · <卡号>
 
-> 用 v1 模板记录。旧条目不删，就地在状态行标注被谁覆盖。
+> 用 v1 模板记录。旧条目不删，就地在状态行标注被谁覆盖。推翻旧决策时，改旧条目的状态行和追加新条目必须放进同一次 document:put，分两次做很容易只做后一半。漏改状态行，decisions:pull 就会把已经作废的条目也算成已定。
 
 ---
 
