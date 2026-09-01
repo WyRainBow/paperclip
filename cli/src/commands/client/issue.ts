@@ -45,6 +45,7 @@ import {
   type BaseClientOptions,
   type ResolvedClientContext,
   assertDecisionBodyTemplate,
+  documentSkeleton,
 } from "./common.js";
 import { sessionLocatorForSlug } from "@paperclipai/shared/session-locator";
 import { displayModelName } from "@paperclipai/shared/model-signature";
@@ -1353,7 +1354,24 @@ export function registerIssueCommands(program: Command): void {
       .action(async (issueId: string, key: string, opts: BaseClientOptions) => {
         try {
           const ctx = resolveCommandContext(opts);
-          const doc = await ctx.api.get(apiPath`/api/issues/${issueId}/documents/${key}`);
+          let doc: unknown;
+          try {
+            doc = await ctx.api.get(apiPath`/api/issues/${issueId}/documents/${key}`);
+          } catch (err) {
+            // MUL-467: a key with a known shape hands back its skeleton instead
+            // of only a 404, so the writer sees the template at the one moment
+            // it is missing — the first write. Appends already carry it, since
+            // put is destructive and forces a read-back first.
+            const skeleton = err instanceof ApiRequestError && err.status === 404 ? documentSkeleton(key) : undefined;
+            if (!skeleton) throw err;
+            if (ctx.json) {
+              printOutput({ exists: false, key, skeleton }, { json: true });
+            } else {
+              console.error(`文档 ${key} 还不存在。下面是它的骨架，填完用 document:put 写入：`);
+              console.log(skeleton);
+            }
+            return;
+          }
           printOutput(doc, { json: ctx.json });
         } catch (err) {
           handleCommandError(err);

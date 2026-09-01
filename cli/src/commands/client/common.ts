@@ -657,6 +657,46 @@ export function handleCommandError(error: unknown): never {
 
 
 /**
+ * 文档骨架（MUL-467）：`document:get` 读一个还不存在的键时，返回模板而不是
+ * 只报 404。落点选 get 不选 put，是因为追加流程本来就必须先 get 读回全文
+ * （put 是覆盖式，不读会丢数据），所以新建那一次也会先 get —— 骨架在这里
+ * 出现，写入方不需要记得任何额外动作。put 侧预填则要求先想起来发一次空
+ * put，那仍然靠记忆，正是要治的东西。
+ *
+ * 只做 CLI 侧：服务端 GET 路由保持 404 语义，别的消费方（UI、issue
+ * discussion 归档的 answerDocKey 读取）靠它判存在性，不动。
+ */
+export const DOCUMENT_SKELETONS: Record<string, string> = {
+  "decision-log": `# decision-log · <卡号>
+
+> 用 v1 模板记录。旧条目不删，就地在状态行标注被谁覆盖。
+
+---
+
+## 1 · YYYY-MM-DD · 待定 / 已定 / 已被第 N 条推翻
+
+**老板说**
+
+> 原话照抄，不转述、不截断
+
+**我推荐**
+
+1.
+2.
+
+**老板采纳**：全部 / 只 ① / ①③，其余未表态 —— 「我推荐」非空时此格必填
+
+**落点**：文件 + 章节 + 那一段的加粗导语（不写行号，行号会漂）
+
+**推翻原因**：仅在状态为「已被第 N 条推翻」时出现
+`,
+};
+
+export function documentSkeleton(key: string): string | undefined {
+  return DOCUMENT_SKELETONS[key];
+}
+
+/**
  * 决策正文死模板（MUL-49 收口，MUL-86 升级为 CLI+服务端双层强制）：背景 /
  * 判断标准 / 方案 三节缺一不可。The section matcher lives in shared
  * (missingDecisionBodySections) so the CLI check and the server's create-route
