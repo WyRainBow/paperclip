@@ -52,7 +52,10 @@ function estimateTokens(text: string): number {
   }
   return Math.ceil(cjk * 1.5 + other * 0.25);
 }
-const MAX_BUDGET_CHARS = 6000;
+// 注入预算的上限，单位是 estimateTokens 估出来的 token 不是字符——CJK×1.5 +
+// 其他×0.25，同样 100 字符纯中文 150 token、纯英文 25 token，用字符数当指标会
+// 让中文规则被严重低估。超预算不截断只警告，理由见下方 directory 分支。
+const MAX_BUDGET_TOKENS = 6000;
 const MAX_RESULTS = 8;
 /** How many query terms may reach SQL. Bigrams multiply fast on a long question. */
 const MAX_SQL_TERMS = 12;
@@ -135,7 +138,7 @@ export function workspaceRecallRoutes(db: Db): Router {
     // the SessionStart injection hook; no body search needed.
     const budgetRaw = Number.parseInt(String(req.query.budget ?? ""), 10);
     const budget = Number.isInteger(budgetRaw)
-      ? Math.min(Math.max(budgetRaw, 200), MAX_BUDGET_CHARS)
+      ? Math.min(Math.max(budgetRaw, 200), MAX_BUDGET_TOKENS)
       : DEFAULT_BUDGET_CHARS;
 
     if (mode === "directory") {
