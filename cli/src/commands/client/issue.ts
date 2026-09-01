@@ -262,6 +262,7 @@ type IssuePreflightReport = {
   claimGate: { claimed: boolean; blocksThisActor: boolean };
   adjudicationGate: { mode: string; canSelfClose: boolean };
   reviewPathGate: { ready: boolean; blocksThisActor: boolean };
+  startGate?: { started: boolean; workingBranch: string | null };
   coverage: string;
 };
 
@@ -285,7 +286,12 @@ function formatPreflight(report: IssuePreflightReport): string {
     }
   }
   lines.push("");
-  lines.push(`认领：${report.claimGate.claimed ? "已认领" : "未认领"}　收卡三件套：${report.closeGate.ready ? "齐了" : `缺 ${report.closeGate.missing.length} 样`}　下一步有人接：${report.reviewPathGate.ready ? "有" : "没有"}　裁决模式：${report.adjudicationGate.mode}${report.adjudicationGate.canSelfClose ? "（你可自己置 done）" : "（你不能自己置 done）"}`);
+  const start = report.startGate
+    ? report.startGate.started
+      ? `已登记 ${report.startGate.workingBranch}`
+      : "未登记（issue start 没跑）"
+    : "未知";
+  lines.push(`认领：${report.claimGate.claimed ? "已认领" : "未认领"}　开工：${start}　收卡三件套：${report.closeGate.ready ? "齐了" : `缺 ${report.closeGate.missing.length} 样`}　下一步有人接：${report.reviewPathGate.ready ? "有" : "没有"}　裁决模式：${report.adjudicationGate.mode}${report.adjudicationGate.canSelfClose ? "（你可自己置 done）" : "（你不能自己置 done）"}`);
   lines.push("");
   lines.push(`覆盖范围：${report.coverage}`);
   return lines.join("\n");

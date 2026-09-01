@@ -107,6 +107,13 @@ export type IssuePreflight = {
   };
   adjudicationGate: { mode: string; canSelfClose: boolean };
   reviewPathGate: { ready: boolean; blocksThisActor: boolean };
+  /**
+   * 开工登记 (MUL-465)：not a gate — nothing rejects a card for missing it.
+   * It rides along because "开工前把讨论提炼成决策卡" has no moment to fire
+   * when `issue start` never ran, so the answer to "why is the card always
+   * short a decision at close time" is usually here.
+   */
+  startGate: { started: boolean; workingBranch: string | null };
   coverage: string;
 };
 
@@ -119,6 +126,7 @@ export async function issuePreflight(
     status: string | null;
     assigneeAgentId: string | null;
     drivingAgentId: string | null;
+    workingBranch?: string | null;
   },
   actor: IssuePreflightActor,
   adjudicationMode: string,
@@ -184,7 +192,8 @@ export async function issuePreflight(
     },
     adjudicationGate: { mode: adjudicationMode, canSelfClose },
     reviewPathGate: { ready: hasReviewPath, blocksThisActor: reviewPathBlocks },
+    startGate: { started: issue.workingBranch != null, workingBranch: issue.workingBranch ?? null },
     coverage:
-      "只覆盖收卡门禁、认领门禁、裁决模式、交接门禁四道。文档修订冲突、正文防旧覆盖、决策三段校验等要到写入那一刻才判得出来，blocking 为空不等于一定写得进去。",
+      "只覆盖收卡门禁、认领门禁、裁决模式、交接门禁四道。开工登记不是门禁，只随报。文档修订冲突、正文防旧覆盖、决策三段校验等要到写入那一刻才判得出来，blocking 为空不等于一定写得进去。",
   };
 }
