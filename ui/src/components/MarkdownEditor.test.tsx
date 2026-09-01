@@ -441,6 +441,33 @@ describe("MarkdownEditor", () => {
     });
   });
 
+  // 回退高度跟随用途 (MUL-477): the same fallback serves document editors and
+  // chat composers, and 12rem of empty box above a Send button is dead space.
+  it("gives the raw fallback a chat-sized floor under compact, a document floor without it", async () => {
+    mdxEditorMockState.emitMountParseError = true;
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(<MarkdownEditor value="a <= b" onChange={() => {}} compact />);
+    });
+    await flush();
+    await vi.waitFor(() => {
+      expect(container.querySelector("textarea")).not.toBeNull();
+    });
+    expect(container.querySelector("textarea")?.className).toContain("min-h-(--sz-60px)");
+    expect(container.querySelector("textarea")?.className).not.toContain("min-h-(--sz-12rem)");
+
+    await act(async () => {
+      root.render(<MarkdownEditor value="a <= b" onChange={() => {}} />);
+    });
+    await flush();
+    expect(container.querySelector("textarea")?.className).toContain("min-h-(--sz-12rem)");
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
   it("falls back to a raw textarea when the rich parser rejects the markdown", async () => {
     mdxEditorMockState.emitMountParseError = true;
     const handleChange = vi.fn();

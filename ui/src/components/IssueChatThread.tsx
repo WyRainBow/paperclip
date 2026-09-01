@@ -4181,6 +4181,9 @@ const IssueChatComposer = forwardRef<IssueChatComposerHandle, IssueChatComposerP
         imageUploadHandler={onImageUpload}
         fileDropTarget="parent"
         bordered={false}
+        // 回复框按聊天尺寸开 (MUL-477): the raw-source fallback used to open at
+        // the document floor, leaving ~192px of empty box above Send.
+        compact
         contentClassName="max-h-(--sz-28dvh) overflow-y-auto pr-1 pb-2 text-sm scrollbar-auto-hide"
       />
 

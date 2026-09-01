@@ -87,6 +87,14 @@ interface MarkdownEditorProps {
   /** When set to `parent`, a wrapper owns drag/drop behavior and visuals. */
   fileDropTarget?: "editor" | "parent";
   bordered?: boolean;
+  /**
+   * Size this as a chat composer rather than a document surface (MUL-477).
+   *
+   * Only affects the empty-state height floor. A document editor opens tall
+   * because the space itself says "write here"; a reply box opening that tall
+   * is dead space above the Send button. Autosize grows both as you type.
+   */
+  compact?: boolean;
   /** List of mentionable entities. Enables @-mention autocomplete. */
   mentions?: MentionOption[];
   /** Called on Cmd/Ctrl+Enter */
@@ -642,6 +650,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>
   onDropFile,
   fileDropTarget = "editor",
   bordered = true,
+  compact = false,
   mentions,
   onSubmit,
   readOnly = false,
@@ -1218,7 +1227,22 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>
             }
           }}
           className={cn(
-            "min-h-(--sz-12rem) w-full resize-none bg-transparent px-3 pb-3 pt-2 font-mono text-sm leading-6 outline-none",
+            // 回退高度跟随用途 (MUL-477). The 12rem floor is right for editing a
+            // document, where an empty box that size reads as "there is room to
+            // write". In a chat composer the same floor is dead space: the reply
+            // area stood ~192px tall holding one placeholder line.
+            //
+            // Driven by its own prop rather than by `bordered`: eight callers
+            // pass `bordered={false}`, and most of them are document surfaces
+            // that still want the tall floor. Borderless says how it is drawn,
+            // not what it is for.
+            //
+            // 60px is the floor CommentThread's own composer already uses, so
+            // the product's two reply boxes match instead of a third number
+            // appearing here. The autosize effect above grows either one as you
+            // type.
+            compact ? "min-h-(--sz-60px)" : "min-h-(--sz-12rem)",
+            "w-full resize-none bg-transparent px-3 pb-3 pt-2 font-mono text-sm leading-6 outline-none",
             contentClassName,
           )}
         />
