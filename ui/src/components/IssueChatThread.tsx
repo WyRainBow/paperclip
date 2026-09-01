@@ -5229,7 +5229,7 @@ export function IssueChatThread({
             )}
               {showComposer ? (
                 <div data-testid="issue-chat-thread-notices" className="space-y-2">
-                  <IssueDoneNotice issueStatus={issueStatus} />
+                  <IssueDoneNotice issueStatus={issueStatus} issueId={issueId} />
                   <IssueAssignedBacklogNotice
                     issueStatus={issueStatus ?? ""}
                     assigneeAgent={assignedAgent}
