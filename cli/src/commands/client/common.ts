@@ -673,7 +673,7 @@ export const DOCUMENT_SKELETONS: Record<string, string> = {
 
 ---
 
-## 1 · YYYY-MM-DD · 待定 / 已定 / 已被第 N 条推翻
+## 1 · YYYY-MM-DD HH:MM · 待定 / 已定 / 已被第 N 条推翻
 
 **老板说**
 
@@ -694,7 +694,9 @@ export const DOCUMENT_SKELETONS: Record<string, string> = {
 
 /**
  * decision-log 条目切分 (MUL-465)：开决策卡前的第一步是「拉」——把这一段所有
- * 已定的条目原样列出来。它是机械的：认 `## <编号> · <日期> · <状态>` 这行标题，
+ * 已定的条目原样列出来。它是机械的：认 `## <编号> · <日期时间> · <状态>` 这行标题，
+ * 日期段为 `YYYY-MM-DD`，时分 `HH:MM` 可选（MUL-465：新条目带时分，存量纯日期
+ * 33 条仍须认；日期段含空格，故不能再用 `\S+` 匹配），
  * 状态段里带「已定」就收，带「已被」就不收（「已被第 N 条推翻」也含「已定」二字
  * 之外的形，故先判推翻再判已定）。
  *
@@ -711,7 +713,7 @@ export type DecisionLogEntry = {
   body: string;
 };
 
-const DECISION_LOG_HEADING = /^##\s+(\d+)\s+·\s+(\S+)\s+·\s+(.+)$/;
+const DECISION_LOG_HEADING = /^##\s+(\d+)\s+·\s+(\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2})?)\s+·\s+(.+)$/;
 
 export function parseDecisionLogEntries(markdown: string): DecisionLogEntry[] {
   const lines = markdown.split("\n");

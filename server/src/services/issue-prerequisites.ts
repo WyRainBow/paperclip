@@ -22,7 +22,7 @@ import { decisions, documents, issueDocuments } from "@paperclipai/db";
 /** 与 cli/src/commands/client/common.ts 的 DECISION_LOG_HEADING + isSettledDecisionLogEntry 同一判据（先判「已被」再判「已定」），两处需同步改。 */
 function hasSettledDecisionLogEntry(body: string): boolean {
   for (const line of body.split("\n")) {
-    const m = /^##\s+(\d+)\s+·\s+(\S+)\s+·\s+(.+)$/.exec(line);
+    const m = /^##\s+(\d+)\s+·\s+(\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2})?)\s+·\s+(.+)$/.exec(line);
     if (!m) continue;
     if (m[3].includes("已被")) continue;
     if (m[3].includes("已定")) return true;
