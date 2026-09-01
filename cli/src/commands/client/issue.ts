@@ -46,6 +46,7 @@ import {
   type ResolvedClientContext,
   assertDecisionBodyTemplate,
   documentSkeleton,
+  findUnwrittenOverturns,
   isSettledDecisionLogEntry,
   parseDecisionLogEntries,
 } from "./common.js";
@@ -1868,6 +1869,14 @@ export function registerIssueCommands(program: Command): void {
           }
           const all = parseDecisionLogEntries(doc.body ?? "");
           const picked = opts.all ? all : all.filter(isSettledDecisionLogEntry);
+          const unwritten = findUnwrittenOverturns(all);
+          if (unwritten.length > 0) {
+            console.error(
+              `⚠ 有 ${unwritten.length} 处推翻没回写状态行，下面的条目会被当成仍然有效：\n` +
+                unwritten.map((u) => `  第 ${u.by} 条说推翻了第 ${u.target} 条，但第 ${u.target} 条状态还是「已定」`).join("\n") +
+                `\n修法：把第 N 条的状态行改成「已被第 M 条推翻」，与追加新条目放进同一次 document:put。\n`,
+            );
+          }
           if (ctx.json) {
             printOutput({ total: all.length, settled: all.filter(isSettledDecisionLogEntry).length, entries: picked }, { json: true });
             return;

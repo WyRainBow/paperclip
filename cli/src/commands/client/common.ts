@@ -735,6 +735,39 @@ export function parseDecisionLogEntries(markdown: string): DecisionLogEntry[] {
   });
 }
 
+/**
+ * 漏回写检测 (MUL-489)：某条正文写着「推翻第 N 条」，而第 N 条的状态行还是
+ * 「已定」。骨架要求这两件事在同一次 put 里完成，但它只是一句话没有检查，实测
+ * MUL-485 写到 22 条时回写 0 次，作废条目一直被 `decisions:pull` 算成有效。
+ *
+ * 只认带编号的写法（`推翻第 N 条` / `推翻本卡第 N 条`）。正文里「推翻原因」这类
+ * 字段名、以及「推翻本卡技术方案的一处边界」这种不指向条目的说法都不该命中，
+ * 所以编号是必须的，不做模糊匹配。
+ *
+ * 只报不拦：它读的是已经写下来的两处自相矛盾，属客观事实；而「你没写术语表」
+ * 那类要判断该不该写的事，不在这里管。
+ */
+export function findUnwrittenOverturns(
+  entries: DecisionLogEntry[],
+): Array<{ by: number; target: number }> {
+  const byNumber = new Map(entries.map((e) => [e.number, e]));
+  const seen = new Set<string>();
+  const out: Array<{ by: number; target: number }> = [];
+  for (const entry of entries) {
+    for (const m of entry.body.matchAll(/推翻(?:本卡)?第\s*(\d+)\s*条/g)) {
+      const target = Number(m[1]);
+      const hit = byNumber.get(target);
+      if (!hit || hit.number === entry.number) continue;
+      if (hit.status.includes("已被")) continue;
+      const key = `${entry.number}->${target}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({ by: entry.number, target });
+    }
+  }
+  return out;
+}
+
 /** 「已定」判定：被推翻的条目状态里同样出现「已定」，故先排除推翻。 */
 export function isSettledDecisionLogEntry(entry: DecisionLogEntry): boolean {
   if (entry.status.includes("已被")) return false;
