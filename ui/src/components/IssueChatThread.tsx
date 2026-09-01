@@ -183,6 +183,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Activity, AlertTriangle, ArrowRight, Brain, Check, ChevronDown, Copy, Hammer, Loader2, MoreHorizontal, Paperclip, PauseCircle, Search, Square, ThumbsDown, ThumbsUp, Trash2, User } from "lucide-react";
 import { IssueBlockedNotice } from "./IssueBlockedNotice";
 import { IssueAssignedBacklogNotice } from "./IssueAssignedBacklogNotice";
+import { IssueDoneNotice } from "./IssueDoneNotice";
 import {
   IssueRecoveryActionCard,
   type RecoveryReissueRequest,
@@ -5228,6 +5229,7 @@ export function IssueChatThread({
             )}
               {showComposer ? (
                 <div data-testid="issue-chat-thread-notices" className="space-y-2">
+                  <IssueDoneNotice issueStatus={issueStatus} />
                   <IssueAssignedBacklogNotice
                     issueStatus={issueStatus ?? ""}
                     assigneeAgent={assignedAgent}
