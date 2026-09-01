@@ -46,6 +46,8 @@ import {
   type ResolvedClientContext,
   assertDecisionBodyTemplate,
   documentSkeleton,
+  isSettledDecisionLogEntry,
+  parseDecisionLogEntries,
 } from "./common.js";
 import { sessionLocatorForSlug } from "@paperclipai/shared/session-locator";
 import { displayModelName } from "@paperclipai/shared/model-signature";
@@ -1844,6 +1846,44 @@ export function registerIssueCommands(program: Command): void {
         }),
     );
   }
+
+  addCommonClientOptions(
+    issue
+      .command("decisions:pull")
+      .description("Pull the settled entries out of this card's decision-log — step 1 of 拉 + 提炼 + 给老板审 (MUL-465)")
+      .argument("<issueId>", "Issue ID")
+      .option("--all", "Include unsettled and overturned entries, tagged with their status")
+      .action(async (issueId: string, opts: BaseClientOptions & { all?: boolean }) => {
+        try {
+          const ctx = resolveCommandContext(opts);
+          const doc = await ctx.api
+            .get<{ body?: string }>(apiPath`/api/issues/${issueId}/documents/decision-log`)
+            .catch((err) => {
+              if (err instanceof ApiRequestError && err.status === 404) return null;
+              throw err;
+            });
+          if (!doc) {
+            console.error("这张卡还没有 decision-log。开决策卡前先把讨论记下来：issue document:get <卡> decision-log 会给你骨架。");
+            return;
+          }
+          const all = parseDecisionLogEntries(doc.body ?? "");
+          const picked = opts.all ? all : all.filter(isSettledDecisionLogEntry);
+          if (ctx.json) {
+            printOutput({ total: all.length, settled: all.filter(isSettledDecisionLogEntry).length, entries: picked }, { json: true });
+            return;
+          }
+          if (all.length === 0) {
+            console.error("decision-log 里没有认得出的条目。模板是 `## <编号> · <日期> · <状态>`，见 MUL-467 的 spec。");
+            return;
+          }
+          // 计数先行：提炼前要知道自己在拿几条里的几条，漏了才看得出来。
+          console.error(`decision-log 共 ${all.length} 条，其中已定 ${all.filter(isSettledDecisionLogEntry).length} 条。下面是${opts.all ? "全部" : "已定的"}原料，提炼路线选项时以它为准：\n`);
+          console.log(picked.map((e) => e.body).join("\n\n---\n\n"));
+        } catch (err) {
+          handleCommandError(err);
+        }
+      }),
+  );
 
   addCommonClientOptions(
     issue

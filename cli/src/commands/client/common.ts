@@ -692,6 +692,53 @@ export const DOCUMENT_SKELETONS: Record<string, string> = {
 `,
 };
 
+/**
+ * decision-log 条目切分 (MUL-465)：开决策卡前的第一步是「拉」——把这一段所有
+ * 已定的条目原样列出来。它是机械的：认 `## <编号> · <日期> · <状态>` 这行标题，
+ * 状态段里带「已定」就收，带「已被」就不收（「已被第 N 条推翻」也含「已定」二字
+ * 之外的形，故先判推翻再判已定）。
+ *
+ * 纯正则、不调模型：这一步不需要理解语义，需要的是不漏。人工翻文档会跳读——
+ * MUL-463 那份 40 条时就没逐条看过。
+ */
+export type DecisionLogEntry = {
+  number: number;
+  date: string;
+  status: string;
+  /** 标题行本身，原样 */
+  heading: string;
+  /** 该条目全文（含标题行），到下一个条目标题或文末为止，尾部空行已裁 */
+  body: string;
+};
+
+const DECISION_LOG_HEADING = /^##\s+(\d+)\s+·\s+(\S+)\s+·\s+(.+)$/;
+
+export function parseDecisionLogEntries(markdown: string): DecisionLogEntry[] {
+  const lines = markdown.split("\n");
+  const starts: Array<{ index: number; number: number; date: string; status: string; heading: string }> = [];
+  lines.forEach((line, index) => {
+    const m = DECISION_LOG_HEADING.exec(line);
+    if (m) starts.push({ index, number: Number(m[1]), date: m[2], status: m[3].trim(), heading: line });
+  });
+  return starts.map((start, i) => {
+    const end = i + 1 < starts.length ? starts[i + 1].index : lines.length;
+    // 条目之间常有 `---` 分隔，它属于版式不属于任何一条，裁掉尾部的分隔与空行。
+    let slice = lines.slice(start.index, end);
+    while (slice.length > 0) {
+      const last = slice[slice.length - 1].trim();
+      if (last === "" || last === "---") slice = slice.slice(0, -1);
+      else break;
+    }
+    return { number: start.number, date: start.date, status: start.status, heading: start.heading, body: slice.join("\n") };
+  });
+}
+
+/** 「已定」判定：被推翻的条目状态里同样出现「已定」，故先排除推翻。 */
+export function isSettledDecisionLogEntry(entry: DecisionLogEntry): boolean {
+  if (entry.status.includes("已被")) return false;
+  return entry.status.includes("已定");
+}
+
 export function documentSkeleton(key: string): string | undefined {
   return DOCUMENT_SKELETONS[key];
 }
