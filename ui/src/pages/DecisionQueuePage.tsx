@@ -221,7 +221,10 @@ export function DecisionQueuePage() {
   const isEmpty = activeItems.length === 0;
 
   return (
-    <div className="max-w-3xl space-y-4">
+    // 居中 (MUL-475): matches the decisions desk. Leaving the queue page
+    // left-hugged while the desk centres would make the two jump sideways as
+    // you navigate between them.
+    <div className="mx-auto max-w-3xl space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0">
           <h1 className="text-xl font-bold">{queue?.title ?? queueKey}</h1>

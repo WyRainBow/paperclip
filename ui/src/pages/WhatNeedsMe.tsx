@@ -518,7 +518,10 @@ export function WhatNeedsMe() {
   const hasAnything = activeItems.length > 0 || snoozedItems.length > 0 || dismissedItems.length > 0;
 
   return (
-    <div ref={rootRef} className="max-w-3xl space-y-4">
+    // 居中 (MUL-475): the column was capped but never centred, so on a wide
+    // screen it hugged the sidebar and left the whole right half empty. Same
+    // `mx-auto max-w-3xl` the other reading surfaces already use.
+    <div ref={rootRef} className="mx-auto max-w-3xl space-y-4">
       <div className="flex items-center justify-between gap-2">
         <h1 className="text-xl font-bold">Decisions</h1>
         <div className="flex items-center gap-2">
