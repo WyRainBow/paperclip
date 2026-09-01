@@ -30,8 +30,7 @@ import {
   Scale,
   Webhook,
   UserRoundPen,
-  LayoutTemplate,
-} from "lucide-react";
+  } from "lucide-react";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { SidebarSection } from "./SidebarSection";
@@ -293,7 +292,6 @@ export function Sidebar() {
           <SidebarNavItem to="/team-rules" label={t("Team Rules")} icon={Scale} />
           <SidebarNavItem to="/team-wiki" label={t("Team Wiki")} icon={BookOpen} />
           <SidebarNavItem to="/team-skills" label="Team Skills" icon={Boxes} />
-          <SidebarNavItem to="/team-templates" label={t("Team Templates")} icon={LayoutTemplate} />
           <SidebarNavItem to="/hooks" label={t("Hooks")} icon={Webhook} />
         </SidebarSection>
 

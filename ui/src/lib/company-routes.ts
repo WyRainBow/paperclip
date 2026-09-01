@@ -7,7 +7,6 @@ const BOARD_ROUTE_ROOTS = new Set([
   "team-wiki",
   "team-skills",
   "hooks",
-  "team-templates",
   "personal-assets",
   "teams-catalog",
   "org",
