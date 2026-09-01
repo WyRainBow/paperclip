@@ -345,6 +345,28 @@ function missingBaseRevisionId(err: unknown): string | null {
   return typeof current === "string" && current.trim() ? current : null;
 }
 
+/**
+ * done = 过去时（MUL-490）：读卡的人和 agent 该在读到的那一刻就知道内容可能过期，
+ * 而不是自己去翻 status —— 实测 `issue get` 的 `status: "done"` 埋在 JSON 第 10 行，
+ * `document:get` 的输出连状态都不带。
+ *
+ * 形状跟 `decisions:pull` 的警告一致：非 JSON 模式走 stderr，JSON 模式一个字不加，
+ * stdout 只放数据。
+ */
+function noteDoneIsPast(status: unknown, json: boolean): void {
+  if (json || status !== "done") return;
+  console.error(
+    "⚠ 这张卡已经 done 了。里面写的是当时的事实，现在可能已经不成立，一切以当前为准；发现过期也不用回头改它。\n",
+  );
+}
+
+/** document 自己不带卡的状态，只能回头取一次 issue。取不到就不提示，读文档本身不受影响。 */
+async function noteDoneIsPastForIssue(ctx: ResolvedClientContext, issueId: string): Promise<void> {
+  if (ctx.json) return;
+  const issue = await ctx.api.get<Issue>(apiPath`/api/issues/${issueId}`).catch(() => null);
+  noteDoneIsPast(issue?.status, false);
+}
+
 export function registerIssueCommands(program: Command): void {
   const issue = program.command("issue").description("Issue operations");
 
@@ -409,6 +431,7 @@ export function registerIssueCommands(program: Command): void {
         try {
           const ctx = resolveCommandContext(opts);
           const row = await ctx.api.get<Issue>(apiPath`/api/issues/${idOrIdentifier}`);
+          noteDoneIsPast(row?.status, ctx.json);
           printOutput(row, { json: ctx.json });
         } catch (err) {
           handleCommandError(err);
@@ -1347,6 +1370,7 @@ export function registerIssueCommands(program: Command): void {
           const ctx = resolveCommandContext(opts);
           const query = opts.includeSystem ? "?includeSystem=true" : "";
           const docs = await ctx.api.get(`${apiPath`/api/issues/${issueId}/documents`}${query}`);
+          await noteDoneIsPastForIssue(ctx, issueId);
           printOutput(docs, { json: ctx.json });
         } catch (err) {
           handleCommandError(err);
@@ -1381,6 +1405,7 @@ export function registerIssueCommands(program: Command): void {
             }
             return;
           }
+          await noteDoneIsPastForIssue(ctx, issueId);
           printOutput(doc, { json: ctx.json });
         } catch (err) {
           handleCommandError(err);
