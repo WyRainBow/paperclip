@@ -97,8 +97,12 @@ export class PaperclipApiClient {
     }, opts);
   }
 
-  delete<T>(path: string, opts?: RequestOptions): Promise<T | null> {
-    return this.request<T>(path, { method: "DELETE" }, opts);
+  /** body 可选：多数 DELETE 用路径定位，少数（如 skill 文件删除）由服务端从 body 读目标。 */
+  delete<T>(path: string, body?: unknown, opts?: RequestOptions): Promise<T | null> {
+    return this.request<T>(path, {
+      method: "DELETE",
+      body: body === undefined ? undefined : JSON.stringify(body),
+    }, opts);
   }
 
   setApiKey(apiKey: string | undefined) {

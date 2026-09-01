@@ -80,6 +80,31 @@ export function registerSkillCommands(program: Command): void {
     { includeCompany: false },
   );
 
+  addCommonClientOptions(
+    skill
+      .command("file:delete")
+      .description("Delete a company skill file or folder")
+      .argument("<skillId>", "Skill ID")
+      .option("-C, --company-id <id>", "Company ID")
+      .requiredOption("--path <path>", "Skill-relative path, e.g. references/foo.md")
+      .option("--target <target>", "file | folder", "file")
+      .action(async (skillId: string, opts: SkillOptions & { path: string; target?: string }) => {
+        try {
+          const ctx = resolveCommandContext(opts, { requireCompany: true });
+          printOutput(
+            await ctx.api.delete(apiPath`/api/companies/${ctx.companyId}/skills/${skillId}/files`, {
+              path: opts.path,
+              target: opts.target ?? "file",
+            }),
+            { json: ctx.json },
+          );
+        } catch (err) {
+          handleCommandError(err);
+        }
+      }),
+    { includeCompany: false },
+  );
+
   addSkillAction(skill, "update-status", "Get company skill update status", "update-status", "GET");
   addSkillAction(skill, "install-update", "Install available company skill update", "install-update", "POST");
   addSkillAction(skill, "delete", "Delete a company skill", "", "DELETE");
