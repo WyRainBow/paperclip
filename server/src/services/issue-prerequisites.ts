@@ -1,22 +1,35 @@
 import { and, eq, inArray } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { decisions, issueDocuments } from "@paperclipai/db";
+import { decisions, documents, issueDocuments } from "@paperclipai/db";
 
 /**
  * The close-out prerequisite check (MUL-137, 老板令 2026-08-28).
  *
- * 一个 issue 必须起码有需求底稿、技术方案、决策卡——决策卡必须关联
- * issue。That rule existed as the MUL-37 convention (documents keyed
+ * 一个 issue 必须起码有需求底稿、技术方案，以及决策依据。决策依据二选一
+ * （MUL-465 放宽，老板令 2026-09-01）：decision-log 文档至少一条「已定」条目，
+ * 或一张 decided 状态的关联决策卡——决策卡降级后，亲审场景只记 decision-log，
+ * 不再强制开卡。That rule started as the MUL-37 convention (documents keyed
  * requirements / tech-proposal / spec plus a thin body); this check is the
  * enforcement half, consulted when a card tries to enter in_review or done.
  *
  * The decision linkage itself is already welded at the schema level
- * (`decisions.originIssueId` is a NOT NULL FK), so the check only has to
- * confirm one exists — nothing to enforce there, just to verify.
+ * (`decisions.originIssueId` is a NOT NULL FK); here we additionally require
+ * status "decided" so a draft decision no longer satisfies the gate by itself.
  *
  * Missing pieces are returned as lines that each name the fix, so the 422
  * tells the caller exactly what to put where instead of a bare "not allowed".
  */
+/** 与 cli/src/commands/client/common.ts 的 DECISION_LOG_HEADING + isSettledDecisionLogEntry 同一判据（先判「已被」再判「已定」），两处需同步改。 */
+function hasSettledDecisionLogEntry(body: string): boolean {
+  for (const line of body.split("\n")) {
+    const m = /^##\s+(\d+)\s+·\s+(\S+)\s+·\s+(.+)$/.exec(line);
+    if (!m) continue;
+    if (m[3].includes("已被")) continue;
+    if (m[3].includes("已定")) return true;
+  }
+  return false;
+}
+
 export async function missingIssueClosePrerequisites(
   db: Pick<Db, "select">,
   companyId: string,
@@ -29,12 +42,13 @@ export async function missingIssueClosePrerequisites(
   }
 
   const docRows = await db
-    .select({ key: issueDocuments.key })
+    .select({ key: issueDocuments.key, body: documents.latestBody })
     .from(issueDocuments)
+    .innerJoin(documents, eq(documents.id, issueDocuments.documentId))
     .where(and(
       eq(issueDocuments.companyId, companyId),
       eq(issueDocuments.issueId, issue.id),
-      inArray(issueDocuments.key, ["requirements", "tech-proposal"]),
+      inArray(issueDocuments.key, ["requirements", "tech-proposal", "decision-log"]),
     ));
   const keys = new Set(docRows.map((row) => row.key));
   if (!keys.has("requirements")) {
@@ -44,16 +58,18 @@ export async function missingIssueClosePrerequisites(
     missing.push("缺「技术方案」文档——issue document:put <卡> tech-proposal --body-file 方案.md");
   }
 
+  const decisionLogBody = docRows.find((row) => row.key === "decision-log")?.body ?? "";
   const [decision] = await db
     .select({ id: decisions.id })
     .from(decisions)
     .where(and(
       eq(decisions.companyId, companyId),
       eq(decisions.originIssueId, issue.id),
+      eq(decisions.status, "decided"),
     ))
     .limit(1);
-  if (!decision) {
-    missing.push("缺关联决策卡——decision create --issue <卡> …（库层 originIssueId 已强制非空，这里只验存在）");
+  if (!decision && !hasSettledDecisionLogEntry(decisionLogBody)) {
+    missing.push("缺决策依据（二选一即可）——decision-log 至少一条「已定」条目（issue document:put <卡> decision-log …），或 decided 决策卡（decision create --issue <卡> … 后 decide <id>）");
   }
 
   return missing;
