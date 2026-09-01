@@ -115,6 +115,21 @@ describe("BreadcrumbContext", () => {
     ).toBe("PAP-3515 • Issues • Anachronist Wiki • Paperclip");
   });
 
+  // 卡号前置 (MUL-468): a tab shows only its first words, and tasks whose
+  // titles start alike were indistinguishable across open tabs.
+  it("leads the page title with the card number when the crumb carries one", () => {
+    expect(
+      buildDocumentTitle(
+        [{ label: "Tasks", href: "/issues" }, { label: "让 Workflow tool_policy 支持基础策略叠加", identifier: "MUL-468" }],
+        "实验室",
+      ),
+    ).toBe("[MUL-468] 让 Workflow tool_policy 支持基础策略叠加 • Tasks • 实验室 • Paperclip");
+  });
+
+  it("leaves crumbs without an identifier unprefixed", () => {
+    expect(buildDocumentTitle([{ label: "Inbox" }], "实验室")).toBe("Inbox • 实验室 • Paperclip");
+  });
+
   it("omits blank company names from page titles", () => {
     expect(buildDocumentTitle([{ label: "Inbox" }], "  ")).toBe("Inbox • Paperclip");
     expect(buildDocumentTitle([], null)).toBe("Paperclip");

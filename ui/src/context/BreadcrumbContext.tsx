@@ -51,7 +51,14 @@ function breadcrumbsEqual(left: Breadcrumb[], right: Breadcrumb[]) {
 export function buildDocumentTitle(breadcrumbs: Breadcrumb[], companyName?: string | null) {
   const pageParts = breadcrumbs.length === 0
     ? []
-    : [...breadcrumbs].reverse().map((breadcrumb) => breadcrumb.label);
+    // The card number leads (MUL-468). A browser tab shows only its first
+    // couple of words, and several tabs open on tasks whose titles start the
+    // same way ("让 Workflow …", "[上位] …") were indistinguishable — the
+    // identifier is the one part that never collides and is what a person says
+    // out loud when they mean a specific card.
+    : [...breadcrumbs].reverse().map((breadcrumb) => (
+      breadcrumb.identifier ? `[${breadcrumb.identifier}] ${breadcrumb.label}` : breadcrumb.label
+    ));
   const companyPart = companyName?.trim() ? [companyName.trim()] : [];
   const parts = [...pageParts, ...companyPart, "Paperclip"];
   return parts.join(" • ");
