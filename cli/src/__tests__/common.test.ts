@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { writeContext } from "../client/context.js";
 import { setStoredBoardCredential } from "../client/board-auth.js";
-import { apiPath, inferContentTypeFromPath, resolveApiBase, resolveCommandContext } from "../commands/client/common.js";
+import { apiPath, defaultDocumentTitle, inferContentTypeFromPath, resolveApiBase, resolveCommandContext } from "../commands/client/common.js";
 
 const ORIGINAL_ENV = { ...process.env };
 
@@ -201,5 +201,23 @@ describe("apiPath", () => {
     expect(() => apiPath`/api/issues/${undefined}`).toThrow("Cannot build API path with an empty path segment.");
     expect(() => apiPath`/api/issues/${null}`).toThrow("Cannot build API path with an empty path segment.");
     expect(() => apiPath`/api/issues/${" "}`).toThrow("Cannot build API path with an empty path segment.");
+  });
+});
+
+describe("defaultDocumentTitle", () => {
+  it("gives the standard keys a Chinese name plus the identifier", () => {
+    expect(defaultDocumentTitle("requirements", "MUL-512")).toBe("需求设计 · MUL-512");
+    expect(defaultDocumentTitle("tech-proposal", "MUL-512")).toBe("技术方案 · MUL-512");
+    expect(defaultDocumentTitle("glossary", "MUL-512")).toBe("本卡术语 · MUL-512");
+  });
+
+  it("falls back to the key itself so every document gets a title", () => {
+    expect(defaultDocumentTitle("decision-log", "MUL-512")).toBe("decision-log · MUL-512");
+    expect(defaultDocumentTitle("review-r1", "MUL-512")).toBe("review-r1 · MUL-512");
+  });
+
+  it("returns null when the identifier is unknown, so nothing fabricates a card number", () => {
+    expect(defaultDocumentTitle("requirements", undefined)).toBeNull();
+    expect(defaultDocumentTitle("requirements", "")).toBeNull();
   });
 });

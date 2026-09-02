@@ -48,6 +48,7 @@ import {
   type BaseClientOptions,
   type ResolvedClientContext,
   assertDecisionBodyTemplate,
+  defaultDocumentTitle,
   documentSkeleton,
   findUnwrittenOverturns,
   isSettledDecisionLogEntry,
@@ -1432,8 +1433,11 @@ export function registerIssueCommands(program: Command): void {
         try {
           const ctx = resolveCommandContext(opts);
           const body = opts.bodyFile ? await readFile(opts.bodyFile, "utf8") : opts.body;
+          // 读卡提前到这里只为拿 identifier 补默认标题。它是 GET 不是认领，认领仍在
+          // 模板校验之后，顺序没变。
+          const existing = await ctx.api.get<Issue>(apiPath`/api/issues/${issueId}`).catch(() => null);
           const payload = upsertIssueDocumentSchema.parse({
-            title: opts.title,
+            title: opts.title?.trim() || defaultDocumentTitle(key, existing?.identifier) || undefined,
             format: opts.format,
             body,
             changeSummary: opts.changeSummary,
@@ -1450,7 +1454,6 @@ export function registerIssueCommands(program: Command): void {
           }
           // 认领门禁扩面 (MUL-443): writing a document is taking the card, so
           // the CLI takes it rather than making the caller discover the 409.
-          const existing = await ctx.api.get<Issue>(apiPath`/api/issues/${issueId}`).catch(() => null);
           if (existing) await autoClaimIfUnclaimed(ctx, existing);
           let doc: unknown;
           try {

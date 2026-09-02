@@ -669,6 +669,29 @@ export function handleCommandError(error: unknown): never {
  * 只做 CLI 侧：服务端 GET 路由保持 404 语义，别的消费方（UI、issue
  * discussion 归档的 answerDocKey 读取）靠它判存在性，不动。
  */
+/**
+ * 标准 key 的中文名。不在表里的 key 直接用 key 本身当名字——目的是「每份文档都有
+ * 标题」，不是「每个 key 都得先登记」，所以不设白名单门禁。
+ */
+const DOCUMENT_TITLE_NAMES: Record<string, string> = {
+  requirements: "需求设计",
+  "tech-proposal": "技术方案",
+  spec: "实现 Spec",
+  glossary: "本卡术语",
+  plan: "拆解计划",
+};
+
+/**
+ * 没给 `--title` 时的默认标题。拿不到卡号就返回 null 而不是编一个——标题里的卡号
+ * 是给人脱离卡单看时定位用的，编错了比没有更坏。
+ */
+export function defaultDocumentTitle(key: string, identifier: string | null | undefined): string | null {
+  const card = (identifier ?? "").trim();
+  if (!card) return null;
+  const name = DOCUMENT_TITLE_NAMES[key.trim().toLowerCase()] ?? key.trim();
+  return `${name} · ${card}`;
+}
+
 export const DOCUMENT_SKELETONS: Record<string, string> = {
   glossary: `# 本卡术语 · <卡号>
 
