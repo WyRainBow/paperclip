@@ -40,11 +40,17 @@ export type SettledDecisionsSnapshot = {
 const ALL_DECISION_LOG_SECTIONS = ["问题", "最终答案", ...REQUIRED_DECISION_LOG_SECTIONS];
 
 /**
- * 行首前缀匹配，不能用等值：`**我推荐（即本次裁决）**` 是真实写法。
- * 两种写法都认：`**问题**` 后另起段落，和 `**问题**：正文` 跟在冒号后。
+ * 先提完整加粗标签再比，不能只比前缀：`**问题不在内容，在触发时机。**` 是正文不是标题，
+ * 前缀匹配会把它当成「问题」格而截断上一格。
+ * 只接受两种标签：恰好等于格名，或格名后跟一个括号补充（`**我推荐（即本次裁决）**` 是真实写法）。
+ * 两种正文写法都认：`**问题**` 后另起段落，和 `**问题**：正文` 跟在冒号后。
  */
 function isSectionHeading(line: string, section: string): boolean {
-  return new RegExp(`^\\*\\*${section}`).test(line);
+  const matched = /^\*\*([^*]+)\*\*/.exec(line);
+  if (!matched) return false;
+  const label = matched[1].trim();
+  if (label === section) return true;
+  return new RegExp(`^${section}[（(][^（）()]*[）)]$`).test(label);
 }
 
 function extractSection(entryBody: string, section: string): string | null {

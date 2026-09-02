@@ -140,6 +140,41 @@ describe("buildSettledDecisionsSnapshot", () => {
     expect(snapshot.gapEntryNumbers).toEqual([]);
   });
 
+  it("keeps a bold sentence that merely starts with a section name", () => {
+    const body =
+      HEADER +
+      entry(1, "已定", [
+        ["问题", "加粗句恰好以格名开头时会不会被当成下一格"],
+        ["老板说", "原话"],
+        ["我推荐", "推荐"],
+        ["老板采纳", "采纳"],
+        ["最终答案", "**问题不在内容，在触发时机。** 所以要提完整标签再比。"],
+        ["落点", "落点"],
+      ]);
+    const snapshot = snapshotOf(body);
+    expect(snapshot.rows[0].finalAnswer).toBe(
+      "**问题不在内容，在触发时机。** 所以要提完整标签再比。",
+    );
+    expect(snapshot.gapEntryNumbers).toEqual([]);
+  });
+
+  it("keeps a bold sentence starting with a section name in the middle of a section", () => {
+    const body =
+      HEADER +
+      entry(1, "已定", [
+        ["问题", "格名开头的加粗句出现在正文中段"],
+        ["老板说", "原话"],
+        ["我推荐", "推荐"],
+        ["老板采纳", "采纳"],
+        ["最终答案", "第一段。\n\n**落点已经定了。** 第二段。\n\n第三段。"],
+        ["落点", "落点"],
+      ]);
+    const snapshot = snapshotOf(body);
+    expect(snapshot.rows[0].finalAnswer).toBe(
+      "第一段。\n\n**落点已经定了。** 第二段。\n\n第三段。",
+    );
+  });
+
   it("treats a section heading with a suffix as the next section", () => {
     const body = [
       HEADER,
