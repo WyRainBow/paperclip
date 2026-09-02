@@ -13,6 +13,7 @@ import {
   createIssueThreadInteractionSchema,
   createIssueTreeHoldSchema,
   createIssueWorkProductSchema,
+  decisionLogTemplateError,
   type FeedbackTrace,
   type HeartbeatRun,
   linkIssueApprovalSchema,
@@ -1436,11 +1437,19 @@ export function registerIssueCommands(program: Command): void {
             changeSummary: opts.changeSummary,
             baseRevisionId: opts.baseRevisionId,
           });
+          const path = apiPath`/api/issues/${issueId}/documents/${key}`;
+          // 模板校验排在认领之前：被拒的写入不该留下一次认领。
+          if (key.trim().toLowerCase() === "decision-log") {
+            // 上一版正文只为「只查这次动过的条目」而读：继承来的不合规条目不该
+            // 挡住后来人。第一次建文档撞 404，当空串走全查。
+            const prev = await ctx.api.get<{ body?: string }>(path).catch(() => null);
+            const templateError = decisionLogTemplateError(prev?.body ?? "", payload.body ?? "");
+            if (templateError) throw new Error(templateError);
+          }
           // 认领门禁扩面 (MUL-443): writing a document is taking the card, so
           // the CLI takes it rather than making the caller discover the 409.
           const existing = await ctx.api.get<Issue>(apiPath`/api/issues/${issueId}`).catch(() => null);
           if (existing) await autoClaimIfUnclaimed(ctx, existing);
-          const path = apiPath`/api/issues/${issueId}/documents/${key}`;
           let doc: unknown;
           try {
             doc = await ctx.api.put(path, payload);

@@ -66,6 +66,7 @@ import {
   updateDocumentAnnotationThreadSchema,
   upsertIssueDocumentSchema,
   updateIssueSchema,
+  decisionLogTemplateError,
   isClosedIsolatedExecutionWorkspace,
   isMarkdownArtifactWorkProduct,
   isMarkdownAttachmentContent,
@@ -7725,6 +7726,16 @@ export function issueRoutes(
     }
 
     const actor = getActorInfo(req);
+    // 只对 agent 身份拦：网页编辑器是 900 毫秒防抖自动保存，无差别硬拦会在
+    // 老板手打第一格时就开始报红。
+    if (keyParsed.data === "decision-log" && actor.actorType !== "user") {
+      const prev = await documentsSvc.getIssueDocumentByKey(issue.id, keyParsed.data);
+      const templateError = decisionLogTemplateError(prev?.body ?? "", req.body.body ?? "");
+      if (templateError) {
+        res.status(422).json({ error: templateError, details: { code: "decision_log_template_missing" } });
+        return;
+      }
+    }
     const sourceTrust = await sourceTrustForActorWrite(issue, actor);
     const referenceSummaryBefore = await issueReferencesSvc.listIssueReferenceSummary(issue.id);
     const result = await documentsSvc.upsertIssueDocument({

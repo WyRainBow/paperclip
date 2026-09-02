@@ -28,6 +28,14 @@ export {
   DECISION_TEMPLATE_INPUTS,
   missingDecisionBodySections,
 } from "./decision-template.js";
+export {
+  REQUIRED_DECISION_LOG_SECTIONS,
+  decisionLogTemplateError,
+  isSettledDecisionLogEntry,
+  missingDecisionLogSections,
+  parseDecisionLogEntries,
+} from "./decision-log-template.js";
+export type { DecisionLogEntry } from "./decision-log-template.js";
 
 export type {
   DecisionEffectStaleness,
