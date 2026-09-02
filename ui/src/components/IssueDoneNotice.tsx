@@ -37,7 +37,7 @@ export function IssueDoneNotice({ issueStatus, issueId }: IssueDoneNoticeProps) 
 
   return (
     <InlineBanner tone="info" compact icon={History} title="本 issue 为过去时">
-      这张卡已经收了。里面写的是当时的事实，现在可能已经不成立，一切以当前为准；发现过期也不用回头改它。
+      这张卡已经收了。里面写的是当时的事实、现在可能已经不成立、一切以当前为准。发现过期也不用回头改它。
       {documents ? (
         <div className="mt-1 text-xs opacity-80">
           {kept.length > 0 ? `留下的材料：${kept.map((m) => m.label).join("、")}` : "除正文外没有留下其他文档。"}
