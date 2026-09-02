@@ -5,7 +5,7 @@ import { decisions, documents, issueDocuments } from "@paperclipai/db";
 /**
  * The close-out prerequisite check (MUL-137, 老板令 2026-08-28).
  *
- * 一个 issue 必须起码有需求底稿、技术方案，以及决策依据。决策依据二选一
+ * 一个 issue 必须起码有需求设计、技术方案，以及决策依据。决策依据二选一
  * （MUL-465 放宽，老板令 2026-09-01）：decision-log 文档至少一条「已定」条目，
  * 或一张 decided 状态的关联决策卡——决策卡降级后，亲审场景只记 decision-log，
  * 不再强制开卡。That rule started as the MUL-37 convention (documents keyed
@@ -52,7 +52,7 @@ export async function missingIssueClosePrerequisites(
     ));
   const keys = new Set(docRows.map((row) => row.key));
   if (!keys.has("requirements")) {
-    missing.push("缺「需求底稿」文档——issue document:put <卡> requirements --body-file 底稿.md");
+    missing.push("缺「需求设计」文档——issue document:put <卡> requirements --body-file 需求设计.md");
   }
   if (!keys.has("tech-proposal")) {
     missing.push("缺「技术方案」文档——issue document:put <卡> tech-proposal --body-file 方案.md");
@@ -97,6 +97,33 @@ export async function missingIssueClosePrerequisites(
  * importantly, keeps the write-time gate and this read the same judgement —
  * both call the route's hasInReviewReviewPath.
  */
+/**
+ * 卡内术语的状态 (MUL-494)：这张卡有没有 `glossary`、里面几条。
+ *
+ * 只报事实，不判断「这卡该不该有」——那要看它有没有造新词，机器判不了。当天
+ * 6 张新卡只有 1 张真有新词，硬报「你该写」会让另外 5 张留空段或硬凑，把一个
+ * 思考动作变成填空。词条按 `_别用_` 行计数：每条词条恰好一行，比数加粗标记稳。
+ */
+async function readGlossaryState(
+  db: Pick<Db, "select">,
+  companyId: string,
+  issueId: string,
+): Promise<{ exists: boolean; termCount: number }> {
+  const [row] = await db
+    .select({ body: documents.latestBody })
+    .from(issueDocuments)
+    .innerJoin(documents, eq(documents.id, issueDocuments.documentId))
+    .where(and(
+      eq(issueDocuments.companyId, companyId),
+      eq(issueDocuments.issueId, issueId),
+      eq(issueDocuments.key, "glossary"),
+    ))
+    .limit(1);
+  if (!row) return { exists: false, termCount: 0 };
+  const termCount = (row.body ?? "").split("\n").filter((line) => line.startsWith("_别用_")).length;
+  return { exists: true, termCount };
+}
+
 export type IssuePreflightActor =
   | { type: "agent"; agentId: string | null }
   | { type: "board" }
@@ -130,6 +157,12 @@ export type IssuePreflight = {
    * short a decision at close time" is usually here.
    */
   startGate: { started: boolean; workingBranch: string | null };
+  /**
+   * 卡内术语 (MUL-494)：同样 not a gate。这张卡有没有 `glossary`、里面几条，
+   * 只报事实不做判断——「这卡该不该有术语表」要看它有没有造新词，那是机器
+   * 判不了的，硬报「你该写」会把一个思考动作变成填空。
+   */
+  glossaryGate: { exists: boolean; termCount: number };
   coverage: string;
 };
 
@@ -150,6 +183,7 @@ export async function issuePreflight(
   hasReviewPath: boolean,
 ): Promise<IssuePreflight> {
   const missing = await missingIssueClosePrerequisites(db, issue.companyId, issue);
+  const glossaryState = await readGlossaryState(db, issue.companyId, issue.id);
   const claimed = issue.assigneeAgentId != null || issue.drivingAgentId != null;
   // Both agent-only gates exempt board callers, so every answer here is about
   // this caller rather than about the card in the abstract.
@@ -209,6 +243,7 @@ export async function issuePreflight(
     adjudicationGate: { mode: adjudicationMode, canSelfClose },
     reviewPathGate: { ready: hasReviewPath, blocksThisActor: reviewPathBlocks },
     startGate: { started: issue.workingBranch != null, workingBranch: issue.workingBranch ?? null },
+    glossaryGate: glossaryState,
     coverage:
       "只覆盖收卡门禁、认领门禁、裁决模式、交接门禁四道。开工登记不是门禁，只随报。文档修订冲突、正文防旧覆盖、决策三段校验等要到写入那一刻才判得出来，blocking 为空不等于一定写得进去。",
   };
