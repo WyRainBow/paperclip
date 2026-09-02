@@ -123,4 +123,88 @@ describe("buildSettledDecisionsSnapshot", () => {
       finalAnswer: "算数",
     });
   });
+
+  it("keeps a section whose body opens with a bold sentence", () => {
+    const body =
+      HEADER +
+      entry(1, "已定", [
+        ["问题", "同步是单向还是双向"],
+        ["老板说", "原话"],
+        ["我推荐", "推荐"],
+        ["老板采纳", "采纳"],
+        ["最终答案", "**单向。** 后面还有正文，说明为什么单向。"],
+        ["落点", "落点"],
+      ]);
+    const snapshot = snapshotOf(body);
+    expect(snapshot.rows[0].finalAnswer).toBe("**单向。** 后面还有正文，说明为什么单向。");
+    expect(snapshot.gapEntryNumbers).toEqual([]);
+  });
+
+  it("treats a section heading with a suffix as the next section", () => {
+    const body = [
+      HEADER,
+      "## 1 · 2026-09-02 07:00 · 已定",
+      "",
+      "**问题**",
+      "",
+      "这一格的正文",
+      "",
+      "**老板说（原话照抄）**",
+      "",
+      "原话",
+      "",
+      "**我推荐（即本次裁决）**",
+      "",
+      "推荐",
+      "",
+      "**老板采纳**",
+      "",
+      "采纳",
+      "",
+      "**最终答案**",
+      "",
+      "答案",
+      "",
+      "**落点**",
+      "",
+      "落点",
+      "",
+      "---",
+      "",
+    ].join("\n");
+    const snapshot = snapshotOf(body);
+    expect(snapshot.rows[0].question).toBe("这一格的正文");
+    expect(snapshot.rows[0].finalAnswer).toBe("答案");
+  });
+
+  it("does not truncate at a bold paragraph in the middle of a section", () => {
+    const body =
+      HEADER +
+      entry(1, "已定", [
+        ["问题", "问题一"],
+        ["老板说", "原话"],
+        ["我推荐", "推荐"],
+        ["老板采纳", "采纳"],
+        ["最终答案", "第一段。\n\n**第二段以加粗开头。** 还有下文。\n\n第三段。"],
+        ["落点", "落点"],
+      ]);
+    const snapshot = snapshotOf(body);
+    expect(snapshot.rows[0].finalAnswer).toBe("第一段。\n\n**第二段以加粗开头。** 还有下文。\n\n第三段。");
+  });
+
+  it("stops one section at the next one instead of swallowing it", () => {
+    const body =
+      HEADER +
+      entry(1, "已定", [
+        ["问题", "问题一"],
+        ["老板说", "原话"],
+        ["我推荐", "推荐"],
+        ["老板采纳", "采纳"],
+        ["最终答案", "**只有这句是答案。**"],
+        ["落点", "落点内容不该被吃进来"],
+      ]);
+    const snapshot = snapshotOf(body);
+    expect(snapshot.rows[0].finalAnswer).toBe("**只有这句是答案。**");
+    expect(snapshot.rows[0].question).toBe("问题一");
+  });
 });

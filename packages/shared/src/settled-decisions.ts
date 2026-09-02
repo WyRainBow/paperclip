@@ -1,4 +1,8 @@
-import { isSettledDecisionLogEntry, parseDecisionLogEntries } from "./decision-log-template.js";
+import {
+  REQUIRED_DECISION_LOG_SECTIONS,
+  isSettledDecisionLogEntry,
+  parseDecisionLogEntries,
+} from "./decision-log-template.js";
 
 /**
  * settled-decisions 快照：把 decision-log 这本流水账机械压成「问题 → 最终答案」一张表，
@@ -32,19 +36,26 @@ export type SettledDecisionsSnapshot = {
   rows: SettledDecisionRow[];
 };
 
+/** 六格全认：硬校验只管四格，但划格与格的边界要认全六个，否则正文里的加粗句会被当成下一格。 */
+const ALL_DECISION_LOG_SECTIONS = ["问题", "最终答案", ...REQUIRED_DECISION_LOG_SECTIONS];
+
 /**
  * 行首前缀匹配，不能用等值：`**我推荐（即本次裁决）**` 是真实写法。
  * 两种写法都认：`**问题**` 后另起段落，和 `**问题**：正文` 跟在冒号后。
  */
+function isSectionHeading(line: string, section: string): boolean {
+  return new RegExp(`^\\*\\*${section}`).test(line);
+}
+
 function extractSection(entryBody: string, section: string): string | null {
   const lines = entryBody.split("\n");
-  const start = lines.findIndex((line) => new RegExp(`^\\*\\*${section}`).test(line));
+  const start = lines.findIndex((line) => isSectionHeading(line, section));
   if (start < 0) return null;
   const collected: string[] = [];
   const inline = lines[start].replace(/^\*\*[^*]*\*\*/, "").replace(/^\s*[:：]\s*/, "");
   if (inline.trim()) collected.push(inline);
   for (let i = start + 1; i < lines.length; i += 1) {
-    if (lines[i].startsWith("**")) break;
+    if (ALL_DECISION_LOG_SECTIONS.some((name) => isSectionHeading(lines[i], name))) break;
     collected.push(lines[i]);
   }
   const text = collected.join("\n").trim();
