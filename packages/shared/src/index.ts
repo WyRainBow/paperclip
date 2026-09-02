@@ -36,6 +36,8 @@ export {
   parseDecisionLogEntries,
 } from "./decision-log-template.js";
 export type { DecisionLogEntry } from "./decision-log-template.js";
+export { buildSettledDecisionsSnapshot, renderSettledDecisionsDocument } from "./settled-decisions.js";
+export type { SettledDecisionRow, SettledDecisionsSnapshot } from "./settled-decisions.js";
 
 export type {
   DecisionEffectStaleness,

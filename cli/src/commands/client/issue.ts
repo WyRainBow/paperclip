@@ -5,6 +5,8 @@ import { ApiRequestError } from "../../client/http.js";
 import {
   addIssueCommentSchema,
   acceptIssueThreadInteractionSchema,
+  buildSettledDecisionsSnapshot,
+  renderSettledDecisionsDocument,
   cancelIssueThreadInteractionSchema,
   checkoutIssueSchema,
   createChildIssueSchema,
@@ -1922,6 +1924,86 @@ export function registerIssueCommands(program: Command): void {
           // 计数先行：提炼前要知道自己在拿几条里的几条，漏了才看得出来。
           console.error(`decision-log 共 ${all.length} 条，其中已定 ${all.filter(isSettledDecisionLogEntry).length} 条。下面是${opts.all ? "全部" : "已定的"}原料，提炼路线选项时以它为准：\n`);
           console.log(picked.map((e) => e.body).join("\n\n---\n\n"));
+        } catch (err) {
+          handleCommandError(err);
+        }
+      }),
+  );
+
+  addCommonClientOptions(
+    issue
+      .command("decisions:snapshot")
+      .description("Regenerate this card's settled-decisions table from its decision-log — 全量重新生成，不局部手改")
+      .argument("<issueId>", "Issue ID")
+      .action(async (issueId: string, opts: BaseClientOptions) => {
+        try {
+          const ctx = resolveCommandContext(opts);
+          const logPath = apiPath`/api/issues/${issueId}/documents/decision-log`;
+          const targetPath = apiPath`/api/issues/${issueId}/documents/settled-decisions`;
+          const log = await ctx.api
+            .get<{ body?: string; latestRevisionId?: string | null }>(logPath)
+            .catch((err) => {
+              if (err instanceof ApiRequestError && err.status === 404) return null;
+              throw err;
+            });
+          if (!log) {
+            if (ctx.json) printOutput({ changed: false, reason: "no-decision-log" }, { json: true });
+            else console.error("这张卡还没有 decision-log，没有可快照的决策。");
+            return;
+          }
+          const snapshot = buildSettledDecisionsSnapshot(log.body ?? "");
+          if (snapshot.settled === 0) {
+            if (ctx.json) printOutput({ changed: false, reason: "nothing-settled", ...snapshot }, { json: true });
+            else console.error(`decision-log 共 ${snapshot.total} 条，当前已定 0 条，不生成空表。`);
+            return;
+          }
+          const body = renderSettledDecisionsDocument({
+            issueId,
+            sourceRevisionId: log.latestRevisionId ?? null,
+            snapshot,
+          });
+          const existing = await ctx.api
+            .get<{ body?: string; latestRevisionId?: string | null }>(targetPath)
+            .catch((err) => {
+              if (err instanceof ApiRequestError && err.status === 404) return null;
+              throw err;
+            });
+          if (existing && (existing.body ?? "") === body) {
+            if (ctx.json) printOutput({ changed: false, reason: "unchanged", ...snapshot }, { json: true });
+            else console.error("与现有 settled-decisions 逐字相同，无变化，未产生新 revision。");
+            return;
+          }
+          const payload = upsertIssueDocumentSchema.parse({
+            title: `settled-decisions · ${issueId}`,
+            format: "markdown",
+            body,
+            changeSummary: `从 decision-log 重新生成：已定 ${snapshot.settled} 条，结构化完整 ${snapshot.complete} 条`,
+            baseRevisionId: existing?.latestRevisionId ?? undefined,
+          });
+          let doc: unknown;
+          try {
+            doc = await ctx.api.put(targetPath, payload);
+          } catch (err) {
+            // 快照是全量覆盖，盲目 re-base 会抹掉别人刚写的那版，所以冲突一律交回调用方。
+            if (err instanceof ApiRequestError && err.status === 409) {
+              throw new Error(
+                `并发冲突：settled-decisions 在这次读与写之间被别人改过（${err.message}）。重跑一次 decisions:snapshot 即可，它会基于最新版重新生成。`,
+              );
+            }
+            throw err;
+          }
+          if (ctx.json) {
+            printOutput({ changed: true, ...snapshot, document: doc }, { json: true });
+            return;
+          }
+          console.error(
+            `已写入 settled-decisions：已定 ${snapshot.settled} 条，结构化完整 ${snapshot.complete} 条` +
+              (snapshot.gapEntryNumbers.length > 0
+                ? `，缺口条目第 ${snapshot.gapEntryNumbers.join(", ")} 条（需读 decision-log 原文）`
+                : "") +
+              "\n",
+          );
+          console.log(body);
         } catch (err) {
           handleCommandError(err);
         }
