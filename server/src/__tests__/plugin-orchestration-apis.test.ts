@@ -331,15 +331,15 @@ describeEmbeddedPostgres("plugin orchestration APIs", () => {
     const pluginId = randomUUID();
     await db.insert(plugins).values({
       id: pluginId,
-      pluginKey: "paperclipai.plugin-llm-wiki",
-      packageName: "@paperclipai/plugin-llm-wiki",
+      pluginKey: "paperclipai.plugin-folder-demo",
+      packageName: "@paperclipai/plugin-folder-demo",
       version: "0.1.0",
       manifestJson: {
-        id: "paperclipai.plugin-llm-wiki",
+        id: "paperclipai.plugin-folder-demo",
         apiVersion: 1,
         version: "0.1.0",
-        displayName: "LLM Wiki",
-        description: "Local-file LLM Wiki plugin",
+        displayName: "Folder Demo",
+        description: "Local-file Folder Demo plugin",
         author: "Paperclip",
         categories: ["automation"],
         capabilities: ["local.folders"],
@@ -360,16 +360,16 @@ describeEmbeddedPostgres("plugin orchestration APIs", () => {
     const services = buildHostServices(
       db,
       pluginId,
-      "paperclipai.plugin-llm-wiki",
+      "paperclipai.plugin-folder-demo",
       createEventBusStub(),
       undefined,
       {
         manifest: {
-          id: "paperclipai.plugin-llm-wiki",
+          id: "paperclipai.plugin-folder-demo",
           apiVersion: 1,
           version: "0.1.0",
-          displayName: "LLM Wiki",
-          description: "Local-file LLM Wiki plugin",
+          displayName: "Folder Demo",
+          description: "Local-file Folder Demo plugin",
           author: "Paperclip",
           categories: ["automation"],
           capabilities: ["local.folders"],

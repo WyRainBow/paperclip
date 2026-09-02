@@ -177,13 +177,13 @@ describe("PluginSettings", () => {
   it("renders unconfigured manifest local folders with required paths", async () => {
     const declaration = wikiFolderDeclaration();
     mockPluginsApi.get.mockResolvedValue(basePlugin({
-      pluginKey: "paperclipai.plugin-llm-wiki",
-      packageName: "@paperclipai/plugin-llm-wiki",
+      pluginKey: "paperclipai.plugin-folder-demo",
+      packageName: "@paperclipai/plugin-folder-demo",
       status: "ready",
       manifestJson: {
-        displayName: "LLM Wiki",
+        displayName: "Folder Demo",
         version: "0.1.0",
-        description: "Local-file LLM Wiki plugin.",
+        description: "Local-file Folder Demo plugin.",
         author: "Paperclip",
         capabilities: ["local.folders"],
         localFolders: [declaration],
@@ -214,9 +214,9 @@ describe("PluginSettings", () => {
     const declaration = wikiFolderDeclaration();
     mockPluginsApi.get.mockResolvedValue(basePlugin({
       manifestJson: {
-        displayName: "LLM Wiki",
+        displayName: "Folder Demo",
         version: "0.1.0",
-        description: "Local-file LLM Wiki plugin.",
+        description: "Local-file Folder Demo plugin.",
         author: "Paperclip",
         capabilities: ["local.folders"],
         localFolders: [declaration],
@@ -256,9 +256,9 @@ describe("PluginSettings", () => {
     const declaration = wikiFolderDeclaration();
     mockPluginsApi.get.mockResolvedValue(basePlugin({
       manifestJson: {
-        displayName: "LLM Wiki",
+        displayName: "Folder Demo",
         version: "0.1.0",
-        description: "Local-file LLM Wiki plugin.",
+        description: "Local-file Folder Demo plugin.",
         author: "Paperclip",
         capabilities: ["local.folders"],
         localFolders: [declaration],
@@ -295,9 +295,9 @@ describe("PluginSettings", () => {
     const declaration = wikiFolderDeclaration();
     mockPluginsApi.get.mockResolvedValue(basePlugin({
       manifestJson: {
-        displayName: "LLM Wiki",
+        displayName: "Folder Demo",
         version: "0.1.0",
-        description: "Local-file LLM Wiki plugin.",
+        description: "Local-file Folder Demo plugin.",
         author: "Paperclip",
         capabilities: ["local.folders"],
         localFolders: [declaration],
