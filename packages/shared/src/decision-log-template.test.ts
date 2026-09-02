@@ -52,6 +52,28 @@ describe("missingDecisionLogSections", () => {
     const next = prev.replace("· 已定", "· 已被第 2 条推翻") + entry(2, FULL);
     expect(missingDecisionLogSections(prev, next)).toEqual([]);
   });
+
+  it("skips an inherited incomplete entry whose status line is the only change", () => {
+    const prev = HEADER + entry(1, ["我推荐"]);
+    const next = prev.replace("· 已定", "· 已被第 2 条推翻") + entry(2, FULL);
+    expect(missingDecisionLogSections(prev, next)).toEqual([]);
+  });
+
+  it("still checks an inherited entry when the body changed alongside the status line", () => {
+    const prev = HEADER + entry(1, ["我推荐"]);
+    const next = HEADER + entry(1, ["我推荐"], "**推翻原因**").replace("· 已定", "· 已被第 2 条推翻");
+    expect(missingDecisionLogSections(prev, next)).toEqual([
+      { number: 1, missing: ["老板说", "老板采纳", "落点"] },
+    ]);
+  });
+
+  it("checks the new entry appended by an overturn writeback", () => {
+    const prev = HEADER + entry(1, FULL);
+    const next = prev.replace("· 已定", "· 已被第 2 条推翻") + entry(2, ["老板说"]);
+    expect(missingDecisionLogSections(prev, next)).toEqual([
+      { number: 2, missing: ["我推荐", "老板采纳", "落点"] },
+    ]);
+  });
 });
 
 describe("decisionLogTemplateError", () => {
@@ -62,7 +84,8 @@ describe("decisionLogTemplateError", () => {
   it("names the entry number, the missing sections and the placeholder wording", () => {
     const message = decisionLogTemplateError("", HEADER + entry(3, ["我推荐", "老板采纳"]));
     expect(message).toContain("第 3 条缺「老板说」「落点」");
-    expect(message).toContain("老板说（原话照抄）/ 我推荐 / 老板采纳 / 落点");
+    expect(message).toContain("问题 / 老板说（原话照抄）/ 我推荐 / 老板采纳 / 最终答案 / 落点");
+    expect(message).toContain("程序当前硬校验其中四格：老板说 / 我推荐 / 老板采纳 / 落点");
     expect(message).toContain("本条老板未直接发话，由我主动记录");
   });
 });

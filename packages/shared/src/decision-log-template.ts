@@ -66,19 +66,25 @@ function missingSectionsInEntry(entryBody: string): string[] {
   );
 }
 
+/** 标题行带状态，推翻回写只翻状态不动正文，故「有没有改过」比对时剔掉它。 */
+function bodyWithoutHeading(entry: DecisionLogEntry): string {
+  return entry.body.slice(entry.heading.length).trim();
+}
+
 /**
  * 只查本次新增或改动的条目：prev 里没有这个编号、或有但正文不同，才查四格。
  * 继承来的不合规条目不挡住后来人——你只为自己写的负责。`prevBody` 传空串退化
- * 成全查，第一次建文档就是这个情况。
+ * 成全查，第一次建文档就是这个情况。把已定翻成「已被第 N 条推翻」不算改动，
+ * 否则存量缺格条目会挡住推翻回写。
  */
 export function missingDecisionLogSections(
   prevBody: string,
   nextBody: string,
 ): Array<{ number: number; missing: string[] }> {
-  const prev = new Map(parseDecisionLogEntries(prevBody).map((e) => [e.number, e.body.trim()]));
+  const prev = new Map(parseDecisionLogEntries(prevBody).map((e) => [e.number, bodyWithoutHeading(e)]));
   const out: Array<{ number: number; missing: string[] }> = [];
   for (const entry of parseDecisionLogEntries(nextBody)) {
-    if (prev.get(entry.number) === entry.body.trim()) continue;
+    if (prev.get(entry.number) === bodyWithoutHeading(entry)) continue;
     const missing = missingSectionsInEntry(entry.body);
     if (missing.length > 0) out.push({ number: entry.number, missing });
   }
@@ -97,7 +103,8 @@ export function decisionLogTemplateError(prevBody: string, nextBody: string): st
     .join("，");
   return [
     `decision-log 缺格：${detail}`,
-    "—— 每条四格缺一不可：老板说（原话照抄）/ 我推荐 / 老板采纳 / 落点。",
+    "—— 每条六格，顺序固定：问题 / 老板说（原话照抄）/ 我推荐 / 老板采纳 / 最终答案 / 落点，一格只回答一个问题。",
+    "—— 程序当前硬校验其中四格：老板说 / 我推荐 / 老板采纳 / 落点；「问题」和「最终答案」同样要写，没被程序拦住不等于可以省。",
     "老板没直接发话的条目，「老板说」写明「本条老板未直接发话，由我主动记录」。",
   ].join("\n");
 }
