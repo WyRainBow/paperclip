@@ -83,6 +83,9 @@ export const FRICTION_WEIGHTS = {
 export const RETRO_OWED_SCORE_THRESHOLD = 20;
 
 export const RETRO_OWED_LABEL = "retro-owed";
+/** 老板 2026-09-03 判看板「不用但机制不删」：摩擦分照记进活动记录（数据留着），
+ *  但不再贴 retro-owed 标签、不写 progress note。要恢复可见痕迹把它改回 true。 */
+export const RETRO_OWED_VISIBLE = false;
 
 interface StatusTransitionRow {
   actorType: string;
@@ -440,7 +443,7 @@ export async function recordRetroGate(db: Db, input: RetroGateInput): Promise<Fr
       },
     });
 
-    if (score.total < RETRO_OWED_SCORE_THRESHOLD) return score;
+    if (score.total < RETRO_OWED_SCORE_THRESHOLD || !RETRO_OWED_VISIBLE) return score;
 
     const labelId = await ensureRetroOwedLabel(db, input.companyId);
     await db
