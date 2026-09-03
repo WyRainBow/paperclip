@@ -14,13 +14,6 @@ import { Router, type Request, type Response } from "express";
 import { assertCompanyAccess } from "./authz.js";
 import { badRequest } from "../errors.js";
 import {
-  type AssetKind,
-  adoptionBoost,
-  citedCountsByAsset,
-  recordRecallQuery,
-  recordServed,
-} from "../services/asset-citations.js";
-import {
   MIN_COVERAGE,
   buildSnippet,
   buildTermWeights,
@@ -31,14 +24,12 @@ import {
   type RankableHit,
   type ScorableCandidate,
 } from "../services/recall-ranking.js";
-import { SOURCE_WEIGHT, fetchSourceRows, type RecallSource } from "../services/recall-corpus.js";
+import { SOURCE_WEIGHT, fetchSourceRows, type AssetKind, type RecallSource } from "../services/recall-corpus.js";
 import { EMBEDDING_SECRET_NAME, resolveEmbeddingConfig } from "../services/recall-embedding-config.js";
 import { reindexCompany } from "../services/recall-indexer.js";
 import { semanticSearch } from "../services/recall-semantic.js";
 
 const DEFAULT_BUDGET_CHARS = 2000;
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // CJK-aware token estimation (OV pattern): CJK chars ≈ 1.5 tokens,
 // ASCII ≈ 0.25 tokens. This is an estimate — the goal is budget
@@ -103,8 +94,6 @@ interface RecallHit extends RankableHit {
    */
   assetKind: AssetKind | null;
   assetId: string;
-  /** How much of this hit's score came from prior adoption, not from the query. */
-  adoptionBoost: number;
   /** Cosine similarity from the vector leg, 0 when it contributed nothing. */
   similarity: number;
 }
@@ -218,8 +207,6 @@ export function workspaceRecallRoutes(db: Db): Router {
           for (const p of pages) lines.push(`  ${p.path} — ${p.title}`);
         }
       }
-      lines.push("");
-      lines.push("查询正文：paperclipai workspace recall --query <关键词> [--budget N]");
 
       const mapText = lines.join("\n");
       const tokenBudget = Math.max(budget, 2000); // directory mode uses larger budget
@@ -252,44 +239,6 @@ export function workspaceRecallRoutes(db: Db): Router {
 
     const hits: RecallHit[] = [];
 
-    // Adoption counts for the whole company, fetched once. Assets a session
-    // previously declared it used rank above equally-relevant ones that
-    // nobody has ever cited (MUL-133 decision 61891ec2, option b).
-    const citedCounts = await citedCountsByAsset(db, companyId);
-
-    // Attribution, resolved before any search work.
-    //
-    // Moved ahead of ranking in MUL-449 so both miss paths can record with the
-    // same attribution the served rows get, and so a malformed issue id fails
-    // before a search is spent on it.
-    //
-    // `recordServed` and `recordMiss` swallow their own errors (a ledger write
-    // must not fail recall), so a bad issue id reaching the insert would not
-    // 500 — it would silently drop the whole batch and the signal with it.
-    // Failing with a 400 keeps the caller's typo loud, and the company check
-    // keeps a cross-company card id out of this company's ledger.
-    const servedIssueIdRaw = typeof req.query.issue === "string" ? req.query.issue : null;
-    let servedIssueId: string | null = null;
-    if (servedIssueIdRaw) {
-      if (!UUID_RE.test(servedIssueIdRaw)) {
-        throw badRequest(`issue "${servedIssueIdRaw}" is not a uuid`);
-      }
-      const [issueRow] = await db
-        .select({ id: issues.id })
-        .from(issues)
-        .where(and(eq(issues.id, servedIssueIdRaw), eq(issues.companyId, companyId)))
-        .limit(1);
-      if (!issueRow) throw badRequest(`issue "${servedIssueIdRaw}" not found in this company`);
-      servedIssueId = issueRow.id;
-    }
-    const servedSessionId = typeof req.query.session === "string" ? req.query.session.slice(0, 200) : null;
-    const ledgerActor = {
-      companyId,
-      issueId: servedIssueId,
-      agentId: req.actor.type === "agent" ? (req.actor.agentId ?? null) : null,
-      sessionId: servedSessionId,
-    };
-
     // Tokenization and scoring live in `recall-ranking` (MUL-441), shared with
     // the other recall consumers. The rule this replaced split on whitespace
     // and required every term to hit. That is correct for English and useless
@@ -302,18 +251,7 @@ export function workspaceRecallRoutes(db: Db): Router {
     // corpus-wide term weights are known. Capping the term count keeps a long
     // question from building a hundred-clause OR.
     const sqlTerms = terms.slice(0, MAX_SQL_TERMS);
-    if (sqlTerms.length === 0) {
-      // A query that tokenizes to nothing is the most extreme failure there is,
-      // and the one most worth seeing: it means the tokenizer failed, not the
-      // corpus. Recorded before the 400 so the error does not swallow it.
-      await recordRecallQuery(db, ledgerActor, query, {
-        termCount: 0,
-        candidateCount: 0,
-        semanticUsed: false,
-        resultCount: 0,
-      });
-      throw badRequest("q has no searchable terms");
-    }
+    if (sqlTerms.length === 0) throw badRequest("q has no searchable terms");
 
     // Keyword candidates. The corpus definition lives in `recall-corpus` so the
     // indexer embeds exactly the set recall searches — defining it here meant
@@ -406,9 +344,6 @@ export function workspaceRecallRoutes(db: Db): Router {
       // match on wording the vectors find unremarkable, and the paraphrase that
       // shares no characters with the query.
       if (scored.coverage < MIN_COVERAGE && similarity <= 0) continue;
-      const boost = entry.row.assetKind
-        ? adoptionBoost(citedCounts.get(entry.row.sourceKey) ?? 0)
-        : 0;
       // Snippet offsets are chunk-relative; shift them back onto the full body
       // so the reader gets surrounding context, not a window clipped at the
       // chunk seam.
@@ -425,14 +360,9 @@ export function workspaceRecallRoutes(db: Db): Router {
         path: entry.row.path,
         title: entry.row.title,
         snippet: buildSnippet(entry.row.body, bodyIndex),
-        // Adoption boost is added after the source weight, not scaled by it:
-        // it is evidence a session actually used the asset, and that evidence
-        // should not be discounted for being attached to one source or another.
-        score:
-          (scored.score + similarity * SEMANTIC_WEIGHT) * SOURCE_WEIGHT[entry.row.source] + boost,
+        score: (scored.score + similarity * SEMANTIC_WEIGHT) * SOURCE_WEIGHT[entry.row.source],
         assetKind: entry.row.assetKind,
         assetId: entry.row.sourceId,
-        adoptionBoost: boost,
         sourceKey: entry.row.sourceKey,
         matched: scored.matched,
         coverage: scored.coverage,
@@ -457,65 +387,14 @@ export function workspaceRecallRoutes(db: Db): Router {
       }
     }
 
-    // Each reference line ends with the ref the caller pastes back into
-    // `workspace cite`. Making the declaration a copy of a line already on
-    // screen is the whole trick: teamai-cli's equivalent asks the model to
-    // reconstruct doc ids from memory at the end of a long session, and
-    // documents that models simply skip it.
-    //
-    // Only Team assets get a citable ref. The card-shaped sources are listed
-    // with their identifier instead, so the caller can still find what it read
-    // without being handed a ref that `workspace cite` would reject.
+    // Only Team assets carry a `kind:id` ref; card-shaped sources are listed by
+    // identifier instead, so a caller can still name what it read either way.
     const references = results
       .map((hit) => {
         const label = `[${hit.source}${hit.space ? `/${hit.space}` : ""}] ${hit.path ?? hit.title}`;
         return hit.assetKind ? `${label} → ${hit.assetKind}:${hit.assetId}` : label;
       })
       .join("\n");
-    // The served half of the ledger. Written after the response is assembled
-    // and before it is sent, so what is recorded is exactly what the caller
-    // received — including the degraded, title-only entries, which were still
-    // put in front of the session and still spent budget.
-    //
-    // Attribution was resolved before the search (see `ledgerActor` above), so
-    // both halves and the miss path record the same actor.
-    // The other half of the picture, added in MUL-449: one row per search,
-    // whatever the outcome. A query that found nothing used to leave no trace,
-    // which is why MUL-80 spent two months waiting for a failure a human
-    // eventually had to produce by hand. Recording only the empty ones turned
-    // out to miss the common case — measured on the real corpus, questions
-    // built to have no answer still returned results, so the failure worth
-    // catching is "only noise" rather than "nothing" (decision 37dc4085).
-    //
-    // Nothing here judges quality. `topScore` and `topCoverage` are stored so
-    // the threshold can be chosen later from a real distribution instead of
-    // guessed now and baked into the write path.
-    await recordRecallQuery(db, ledgerActor, query, {
-      termCount: terms.length,
-      // What survived df pruning. Measured on the real corpus, this is the
-      // column that separates noise from a real answer: a question about
-      // something the corpus knows nothing about still scored coverage 1.000,
-      // because pruning left it one generic bigram which then matched
-      // perfectly. Twelve terms reduced to one is the tell, not the coverage.
-      scoringTermCount: weights.terms.length,
-      candidateCount: rows.length,
-      semanticUsed: embeddingConfig !== null,
-      resultCount: results.length,
-      topScore: results[0]?.score ?? null,
-      topCoverage: results[0]?.coverage ?? null,
-    });
-    await recordServed(
-      db,
-      ledgerActor,
-      query,
-      // Non-asset sources are left out of the ledger entirely. The served/cited
-      // ratio drives asset adoption ranking (MUL-133), and an issue that can
-      // never be cited would sit in it as permanent dead weight.
-      results
-        .filter((hit): hit is typeof hit & { assetKind: AssetKind } => hit.assetKind !== null)
-        .map((hit) => ({ kind: hit.assetKind, id: hit.assetId, score: hit.score })),
-    );
-
     res.json({
       query,
       budgetChars: budget,

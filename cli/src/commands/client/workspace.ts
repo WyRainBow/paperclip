@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { registerWorkspaceRecallCommands } from "./workspace-recall.js";
+import { registerWorkspaceRulesCommands } from "./workspace-rules.js";
 import {
   addCommonClientOptions,
   apiPath,
@@ -103,7 +103,7 @@ export function registerWorkspaceCommands(program: Command): void {
   );
   addProjectRuntimeAction(projectWorkspace, "runtime-service", "Control a project workspace runtime service", "runtime-services");
   addProjectRuntimeAction(projectWorkspace, "runtime-command", "Run a project workspace runtime command", "runtime-commands");
-  registerWorkspaceRecallCommands(program);
+  registerWorkspaceRulesCommands(program);
 }
 
 function addCompanyGet(parent: Command, name: string, description: string, path: string): void {

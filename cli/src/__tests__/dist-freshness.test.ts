@@ -3,17 +3,18 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-// MUL-139: the knowledge-command family (recall/cite/stats/remember/rules) once
-// landed in master source while the built cli/dist everyone actually runs kept
-// serving an older bundle — recall's own output told agents to run
-// `workspace cite`, and every terminal answered "unknown command". The gap is
+// MUL-139: the knowledge-command family once landed in master source while the
+// built cli/dist everyone actually runs kept serving an older bundle, and every
+// terminal answered "unknown command". MUL-519 retired all of that family but
+// `workspace rules`, which is the entry point every terminal agent runs to pull
+// Team Rules — a stale dist stranding it is the same outage. The gap is
 // invisible to typecheck and tests because dist is gitignored; this test is the
 // tripwire. It fails wherever a dist EXISTS but predates the source commands —
 // on the main checkout that is exactly the broken state. In a fresh worktree
 // with no dist it skips loudly (a skip is a skip, not a pass).
 
 const cliRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const sourcePath = path.join(cliRoot, "src", "commands", "client", "workspace-recall.ts");
+const sourcePath = path.join(cliRoot, "src", "commands", "client", "workspace-rules.ts");
 const defaultDist = path.join(cliRoot, "dist", "index.js");
 const distPath = process.env.PAPERCLIP_DIST_FRESHNESS_TARGET
   ? path.resolve(process.env.PAPERCLIP_DIST_FRESHNESS_TARGET)
@@ -33,8 +34,7 @@ describe("cli dist freshness (MUL-139)", () => {
 
   it("found the command registrations this test guards", () => {
     // If this ever fails the parser drifted, not the build — fix the regex.
-    expect(names).toContain("recall");
-    expect(names.length).toBeGreaterThanOrEqual(4);
+    expect(names).toContain("rules");
   });
 
   it.runIf(fs.existsSync(distPath))(
