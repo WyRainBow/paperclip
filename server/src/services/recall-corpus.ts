@@ -10,7 +10,6 @@ import {
   teamWikiPages,
 } from "@paperclipai/db";
 
-import type { AssetKind } from "./asset-citations.js";
 
 /**
  * What recall can see, defined once (MUL-441).
@@ -22,6 +21,9 @@ import type { AssetKind } from "./asset-citations.js";
  * in the route meant the indexer would embed a different set of things than
  * recall searches, and the mismatch would be silent.
  */
+
+/** Team assets carry a citation identity; cards, documents and decisions do not. */
+export type AssetKind = "rule" | "wiki" | "skill";
 
 export type RecallSource = "wiki" | "rules" | "issue" | "document" | "decision" | "case";
 

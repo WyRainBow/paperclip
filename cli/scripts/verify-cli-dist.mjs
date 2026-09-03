@@ -8,7 +8,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const cliRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const sourcePath = path.join(cliRoot, "src", "commands", "client", "workspace-recall.ts");
+const sourcePath = path.join(cliRoot, "src", "commands", "client", "workspace-rules.ts");
 const distPath = path.join(cliRoot, "dist", "index.js");
 
 const source = fs.readFileSync(sourcePath, "utf8");
