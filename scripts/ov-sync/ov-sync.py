@@ -13,6 +13,7 @@
 用法：ov-sync.py [--force] [--only rules,wiki,skills,issues]
 """
 import argparse, json, os, re, subprocess, sys, tempfile, urllib.request, urllib.parse
+import yaml
 from datetime import datetime, timezone
 
 API = os.environ.get("PAPERCLIP_API_BASE", "http://localhost:3100")
@@ -57,6 +58,23 @@ def _ov(args, timeout=60):
     return r.returncode, (r.stderr or r.stdout)
 
 
+def frontmatter_ok(text):
+    """OV 的 add-skill 严格解析 YAML frontmatter，Claude Code 的解析器容忍。差异最常撞在
+    未加引号的标量里含 ": "（例如 description 写「…in English or Chinese: grill, …」），
+    OV 报 [INTERNAL] Internal server error，完全不指向 YAML，资产就这么静默丢了。"""
+    if not text.startswith("---"):
+        return True, ""
+    end = text.find("\n---", 3)
+    if end < 0:
+        return False, "frontmatter 没有结束的 ---"
+    try:
+        yaml.safe_load(text[3:end])
+    except yaml.YAMLError as e:
+        hint = str(e).replace(chr(10), " ")[:160]
+        return False, f"frontmatter YAML 非法（{hint}）；最常见成因是未加引号的值里含冒号加空格，加双引号或改用 >- 折叠"
+    return True, ""
+
+
 def ov_write(uri, text, on_missing="create"):
     """replace 对不存在的文件报 NOT_FOUND（CLI 不像 MCP write 那样自动建），
     所以先 replace，没有再按 on_missing 建：普通文件用 create，skill 走 add-skill 才会按
@@ -72,6 +90,10 @@ def ov_write(uri, text, on_missing="create"):
             log(f"  ! write {uri}: {out.strip().replace(chr(10), ' ')[:200]}")
             return False
         if on_missing == "skill":
+            ok, why = frontmatter_ok(text)
+            if not ok:
+                log(f"  ! skip {uri}: {why}")
+                return False
             slug = uri.split("/skills/")[1].split("/")[0]
             d = tempfile.mkdtemp(); sd = os.path.join(d, slug); os.makedirs(sd)
             open(os.path.join(sd, "SKILL.md"), "w").write(text)
