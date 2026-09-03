@@ -58,8 +58,9 @@ export async function missingIssueClosePrerequisites(
       eq(decisions.status, "decided"),
     ))
     .limit(1);
+  // 决策卡已停用（老板 2026-09-03）：提示只引导 decision-log；查询仍认存量 decided 卡，免得在途老卡被卡住
   if (!decision && !parseDecisionLogEntries(decisionLogBody).some(isSettledDecisionLogEntry)) {
-    missing.push("缺决策依据（二选一即可）——decision-log 至少一条「已定」条目（issue document:put <卡> decision-log …），或 decided 决策卡（decision create --issue <卡> … 后 decide <id>）");
+    missing.push("缺决策依据——decision-log 至少一条「已定」条目（issue document:get <卡> decision-log 给骨架，填完 document:put）");
   }
 
   return missing;

@@ -1903,7 +1903,7 @@ export function registerIssueCommands(program: Command): void {
               throw err;
             });
           if (!doc) {
-            console.error("这张卡还没有 decision-log。开决策卡前先把讨论记下来：issue document:get <卡> decision-log 会给你骨架。");
+            console.error("这张卡还没有 decision-log。先把讨论记下来：issue document:get <卡> decision-log 会给你骨架。");
             return;
           }
           const all = parseDecisionLogEntries(doc.body ?? "");
